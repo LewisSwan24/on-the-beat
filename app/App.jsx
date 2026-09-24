@@ -8,7 +8,7 @@ import { Bar, Home } from './screens/Home.jsx';
 import { Beacon, Near, WristBeacon } from './screens/Hi.jsx';
 import { Pair, bandLine } from './screens/Band.jsx';
 import { Scan } from './screens/Scan.jsx';
-import { codeFrom } from './lib/pairing.js';
+import { PAIR_SAY, codeFrom } from './lib/pairing.js';
 import { Name, Promises, Splash, Venue } from './screens/Onboard.jsx';
 import { Pick, Wall } from './screens/Song.jsx';
 import { Camera, Floor } from './screens/Dance.jsx';
@@ -65,9 +65,6 @@ export default function App() {
   const [pairError, setPairError] = useState(null);
   const [pairCode, setPairCode] = useState(null);
   const [pairPending, setPairPending] = useState(false);
-  // A code that arrived in the address, sitting on the pair screen pre-filled
-  // and waiting for a tap. A link is a bearer token: it must not pair on its own.
-  const [pairConfirm, setPairConfirm] = useState(null);
   // Opened by a phone's own camera from a wristband's code: /pair/ABCD. Kept
   // for this tab until it pairs, so a reload during onboarding does not lose it.
   const [linked, setLinked] = useState(() => {
@@ -89,6 +86,15 @@ export default function App() {
   const bandId = night?.state?.wristband || null;
   const band = view.me?.wristband ?? (bandId ? { battery: null, live: false } : null);
   const paired = !!band;
+  // A pairing waiting for YES (§0). It belongs to the person, so every view carries it until it is answered.
+  const check = view.me?.check ?? null;
+  // Away for two minutes, the chip says so and offers to pair again.
+  const [bandAwaySince, setBandAwaySince] = useState(null);
+  useEffect(() => {
+    if (!band || band.live) setBandAwaySince(null);
+    else setBandAwaySince((t) => t ?? Date.now());
+  }, [band?.live, !!band]);
+  const bandShown = band ? { ...band, offline: !band.live && bandAwaySince !== null && now - bandAwaySince >= 120_000 } : null;
 
   const say = useCallback((msg) => {
     clearTimeout(toastTimer.current);
@@ -137,7 +143,7 @@ export default function App() {
     n.say('arm', { t: 'arm', intent: null });
     if (night.state?.invisible) n.say('invisible', { t: 'invisible', on: true });
     if (night.state?.pick) n.say('pick', { t: 'pick', track: night.state.pick });
-    if (night.state?.wristband) n.say('pair', { t: 'pair', band: night.state.wristband });
+    if (night.state?.wristband) n.keep('pair', { t: 'pair', band: night.state.wristband, secret: night.state.bandSecret || '' });
     return () => { n.close(); net.current = null; setView(EMPTY); };
     // Only a new room, or a new night, makes a new connection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -161,48 +167,61 @@ export default function App() {
     net.current?.send({ t: 'pair', code });
   }, []);
 
-  // A code from the address does not pair on its own. A /pair/ link is a bearer
-  // token — a hostile QR anywhere would otherwise bind an attacker's wristband
-  // to whoever opened it, leaking their coarse state. So it lands on the pair
-  // screen pre-filled and waits for a tap. The stored copy is kept until the
-  // person confirms or skips, so a reload during onboarding resumes the confirm.
-  // The in-app scanner, where the camera was deliberately pointed, still pairs
-  // on sight.
+  // The answer to the check. NO is said here at once; YES waits for the relay's paired.
+  const answerCheck = useCallback((yes) => {
+    net.current?.send({ t: 'confirm', yes });
+    if (!yes) {
+      setPairPending(false);
+      setPairCode(null);
+      if (screen === 'pair') setPairError(PAIR_SAY.no); else say(PAIR_SAY.no);
+    }
+  }, [screen, say]);
+
+  // A code from the address lands on the pair screen pre-filled. It pairs
+  // nothing on its own: like typed or scanned letters, it only starts the
+  // check, and the person must see the number on their own wrist and say yes.
+  // A decoy QR puts that number on someone else's wrist. Once the check has
+  // started it belongs to the person, so the stored copy is dropped: a reload
+  // brings the check back, not the letters a second time.
   useEffect(() => {
     if (!linked || !inRoom || !net.current) return;
     setLinked(null);
-    setPairConfirm(linked);
+    try { sessionStorage.removeItem('otb:pair-link'); } catch { /* private window */ }
     setSheet(null);
     setStack([]);
     setScreen('pair');
-  }, [linked, inRoom]);
+    pairWith(linked);
+  }, [linked, inRoom, pairWith]);
 
   // What the relay answers that is not a view. Read through a ref, so the one
   // long-lived connection always acts on this render's state.
   const onRelay = useRef(null);
   onRelay.current = (m) => {
     if (m.t === 'error' && m.why === 'clip refused') say("that didn't go. they may have left, or gone quiet.");
+    const pairFailed = (words) => {
+      setPairPending(false);
+      setPairCode(null);
+      if (screen === 'pair') setPairError(words); else say(words);
+    };
     if (m.t === 'paired') {
       setPairPending(false);
       setPairCode(null);
-      setPairConfirm(null);
-      if (bandId !== m.band) setNightState({ wristband: m.band });
-      // Kept, not said: saying it again would be answered with paired again, for ever.
-      net.current?.keep('pair', { t: 'pair', band: m.band });
-      if (screen === 'pair') { setPairError(null); say('Paired. It’s your light tonight.'); setStack([]); setScreen('home'); }
+      setNightState({ wristband: m.band, bandSecret: m.secret });
+      // Kept, not said: re-said as a claim only after a reconnect.
+      net.current?.keep('pair', { t: 'pair', band: m.band, secret: m.secret });
+      setPairError(null);
+      say(PAIR_SAY.paired);
+      if (screen === 'pair') { setStack([]); setScreen('home'); }
     }
-    if (m.t === 'error' && m.why === 'no such wristband') {
-      setPairPending(false);
-      setPairCode(null);
-      if (screen === 'pair') setPairError('That’s not a wristband here. Check the letters.');
-      else if (bandId) { net.current?.forget('pair'); setNightState({ wristband: null }); }
-    }
-    // The relay throttles wrong guesses. A real person only meets this after a
-    // run of mistypes, so it says to slow down rather than that the code is bad.
-    if (m.t === 'error' && m.why === 'too many tries') {
-      setPairPending(false);
-      setPairCode(null);
-      if (screen === 'pair') setPairError('Too many tries. Wait a moment, then scan it instead.');
+    if (m.t === 'check' && m.ok === false) pairFailed(PAIR_SAY.timeout);
+    // Every refusal while pairing has its own words — the relay's throttle
+    // included, which a real person only meets after a run of mistypes.
+    if (m.t === 'error' && PAIR_SAY[m.why] && m.why !== 'gone') pairFailed(PAIR_SAY[m.why]);
+    // The only way this phone decides its wristband is gone: the relay says so to its claim.
+    if (m.t === 'claim' && m.ok === false && m.why === 'gone' && bandId) {
+      net.current?.forget('pair');
+      setNightState({ wristband: null, bandSecret: null });
+      say(PAIR_SAY.gone);
     }
   };
 
@@ -342,14 +361,16 @@ export default function App() {
   const unpair = () => {
     net.current?.send({ t: 'unpair' });
     net.current?.forget('pair');
-    setNightState({ wristband: null });
+    setNightState({ wristband: null, bandSecret: null });
     setSheet(null);
     say('unpaired. your phone is your light again.');
   };
 
   const bandSheet = () => setSheet({
-    title: 'Your wristband', sub: bandLine(band), close: 'Done',
+    title: 'Your wristband', sub: bandLine(bandShown), close: 'Done',
     rows: [
+      ...(bandShown?.offline ? [{ icon: 'link', label: 'PAIR AGAIN', sub: 'it has been away a while. show its letters and pair it again.', fg: '#fff',
+        onTap: () => { unpair(); go('pair'); } }] : []),
       { icon: 'flashlight_on', label: 'TEST THE LIGHT', sub: 'it flashes white for two seconds.', fg: '#fff',
         onTap: () => { net.current?.send({ t: 'testLight' }); setSheet(null); say('watch your wrist.'); } },
       { icon: 'link_off', label: 'UNPAIR', sub: 'it forgets you, and shows new letters.', fg: 'var(--stop)', onTap: unpair },
@@ -497,6 +518,15 @@ export default function App() {
     floor: { label: 'POCKET IT', tap: () => go('home') },
   }[screen];
 
+  // The check, while there is one, over any screen: it asks about the number on the wrist.
+  const checkSheet = check ? {
+    title: PAIR_SAY.check(check), sub: PAIR_SAY.checkSub, close: 'NO',
+    rows: [
+      { icon: 'check_circle', label: 'YES', sub: 'my wristband shows ' + check + '.', fg: 'var(--ok)', onTap: () => answerCheck(true) },
+      { icon: 'cancel', label: 'NO', sub: 'it shows something else, or nothing.', fg: 'var(--stop)', onTap: () => answerCheck(false) },
+    ],
+  } : null;
+
   let body = null;
   switch (screen) {
     case 'splash': body = <Splash onNext={afterSplash} />; break;
@@ -512,9 +542,9 @@ export default function App() {
       break;
     case 'pair': {
       const dropLink = () => { try { sessionStorage.removeItem('otb:pair-link'); } catch { /* private window */ } };
-      body = <Pair error={pairError} initial={pairConfirm || pairCode} pending={pairPending} confirm={pairConfirm}
-        onCode={(code) => { setPairConfirm(null); dropLink(); pairWith(code); }} onScan={() => go('scan')}
-        onSkip={() => { setPairConfirm(null); dropLink(); setStack([]); setScreen('home'); }} onBack={stack.length ? back : null} />;
+      body = <Pair error={pairError} initial={pairCode} pending={pairPending}
+        onCode={(code) => { dropLink(); pairWith(code); }} onScan={() => go('scan')}
+        onSkip={() => { dropLink(); setStack([]); setScreen('home'); }} onBack={stack.length ? back : null} />;
       break;
     }
     case 'scan':
@@ -522,7 +552,7 @@ export default function App() {
       break;
     case 'home':
       body = <Home show={show} phase={phase} line={line} armed={invisible ? null : armed} ci={ci} setCi={setCi}
-        band={band} onBand={() => (paired ? bandSheet() : go('pair'))}
+        band={bandShown} onBand={() => (paired ? bandSheet() : go('pair'))}
         onArm={(id) => arm(armed === id ? null : id)} onOpen={(id) => go(({ hi: 'beacon', song: 'pick', dance: 'camera' })[id])} onHow={howSheet} />;
       break;
     case 'beacon':
@@ -578,7 +608,7 @@ export default function App() {
             onTonight={() => go('tonight')} onNotNow={notNow} />
         ) : <div className="tail" />}
       </div>
-      {sheet ? <Sheet sheet={sheet} onClose={closeSheet} screenRef={stageRef} /> : null}
+      {checkSheet || sheet ? <Sheet sheet={checkSheet || sheet} onClose={checkSheet ? () => answerCheck(false) : closeSheet} screenRef={stageRef} /> : null}
       {toast ? <div className="toast" role="status" aria-live="polite">{toast}</div> : null}
     </div>
   );

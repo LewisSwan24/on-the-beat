@@ -88,7 +88,9 @@ export function Home({ show, phase, line, armed, ci, setCi, onArm, onOpen, onHow
         <span style={{ display: 'flex', alignItems: 'center', marginRight: -10 }}>
           <button type="button" className="bandchip" onClick={onBand}
             aria-label={band ? ['Your wristband', bandLine(band)].filter(Boolean).join(', ') : 'Pair a wristband'}>
-            {band ? <><Icon name="watch" size={18} color={band.live ? '#fff' : 'var(--text-3)'} />{band.battery != null ? <span className="tnum">{band.battery}%</span> : null}</>
+            {band ? <><Icon name="watch" size={18} color={band.live ? '#fff' : 'var(--text-3)'} />
+              {band.offline ? <span className="tnum" style={{ color: 'var(--warn)' }}>OFFLINE</span>
+                : band.battery != null ? <span className="tnum">{band.battery}%</span> : null}</>
               : <span style={{ color: 'var(--text-3)' }}>pair</span>}
           </button>
           <button type="button" className="icon-btn" style={{ borderRadius: 14 }} onClick={onHow} aria-label="How this works">

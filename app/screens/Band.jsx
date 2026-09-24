@@ -69,7 +69,7 @@ function faceLabel(s, awake, battery, pairAt) {
 }
 
 /** S2b — pair a wristband: scan what its screen shows, or type its four letters. */
-export function Pair({ error, initial, pending, confirm, onCode, onScan, onSkip, onBack }) {
+export function Pair({ error, initial, pending, onCode, onScan, onSkip, onBack }) {
   const [v, setV] = useState(initial || '');
   const input = useRef(null);
   useEffect(() => { if (error) setV(''); }, [error]);
@@ -78,11 +78,9 @@ export function Pair({ error, initial, pending, confirm, onCode, onScan, onSkip,
   return (
     <div className="scr tall">
       {onBack ? <Back onClick={onBack} /> : null}
-      <h1 className="h1" style={{ marginBottom: 6 }}>{confirm ? 'Pair this wristband?' : 'Got a wristband?'}</h1>
+      <h1 className="h1" style={{ marginBottom: 6 }}>Got a wristband?</h1>
       <span className="body muted" style={{ marginBottom: 22 }}>
-        {confirm
-          ? 'This link is for the wristband showing these letters. Pair it to make it your light tonight.'
-          : 'Press its button. Scan what it shows, or type the four letters.'}
+        Press its face button. Scan what it shows, or type the four letters. It will show a number to check.
       </span>
       <label className="codebox" onClick={() => input.current?.focus()}>
         <input ref={input} value={v} autoFocus={!initial} autoCapitalize="characters" autoComplete="one-time-code" spellCheck={false}
@@ -95,16 +93,9 @@ export function Pair({ error, initial, pending, confirm, onCode, onScan, onSkip,
         {[0, 1, 2, 3].map((i) => <span key={i} className={'box' + (i === v.length ? ' at' : '')} aria-hidden="true">{v[i] || ''}</span>)}
       </label>
       <span id="pair-note" className="small" role="status" style={{ marginTop: 14, minHeight: 20, color: error ? 'var(--warn)' : undefined }}>
-        {error || (pending ? 'pairing…'
-          : confirm ? 'not yours? type or scan the right one.'
+        {error || (pending ? 'check your wrist…'
           : 'letters only — no I, L or O, so nothing looks like something else.')}
       </span>
-      {confirm ? (
-        <button type="button" className="cta" style={{ marginTop: 20, '--c': 'var(--hi)', '--g': 'var(--hi-g)' }}
-          disabled={v.length !== 4 || pending} onClick={() => { if (v.length === 4) onCode(v); }}>
-          PAIR THIS WRISTBAND
-        </button>
-      ) : null}
       <button type="button" className="btn-s pairscan" onClick={onScan}>
         <Icon name="qr_code_scanner" size={20} />SCAN IT INSTEAD
       </button>
@@ -117,7 +108,7 @@ export function Pair({ error, initial, pending, confirm, onCode, onScan, onSkip,
 
 /** The wristband sheet's body: how full it is, and whether it can hear the relay. */
 export const bandLine = (band) => (band
-  ? [band.battery != null ? band.battery + '% battery' : null, band.live ? null : 'not connected right now'].filter(Boolean).join(' · ')
+  ? (band.offline ? 'OFFLINE — away for a while' : [band.battery != null ? band.battery + '% battery' : null, band.live ? null : 'not connected right now'].filter(Boolean).join(' · '))
   : '');
 
 /**

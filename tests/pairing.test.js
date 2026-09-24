@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { codeFrom, pairUrl } from '../app/lib/pairing.js';
+import { PAIR_SAY, codeFrom, pairUrl } from '../app/lib/pairing.js';
 
 test('a pairing address carries the four letters, and gives them back', () => {
   assert.equal(pairUrl('https://otb.example/', 'NQJA'), 'https://otb.example/pair/NQJA');
@@ -18,4 +18,16 @@ test('anything else is not a wristband code, and is not trimmed until it looks l
     'WIFI:S:venue;T:WPA;P:secret;;', null, undefined,
   ];
   for (const s of not) assert.equal(codeFrom(s), null, JSON.stringify(s));
+});
+
+test('every answer the relay gives a pairing phone has words, and the check asks about the number', () => {
+  for (const k of ['no', 'timeout', 'busy', 'old firmware', 'no such wristband', 'too many tries', 'gone', 'paired']) {
+    assert.equal(typeof PAIR_SAY[k], 'string', k);
+  }
+  assert.equal(PAIR_SAY.check(27), 'Does your wristband show 27?');
+  assert.equal(PAIR_SAY.timeout, 'No answer in time. Try again.');
+  assert.equal(PAIR_SAY.busy, 'Someone is pairing that wristband right now. Try again in a minute.');
+  assert.equal(PAIR_SAY.gone, 'Your wristband restarted or went away. Pair it again.');
+  assert.equal(PAIR_SAY['old firmware'], 'Update this wristband’s firmware.');
+  assert.equal(PAIR_SAY.no, 'That’s not this wristband.');
 });
