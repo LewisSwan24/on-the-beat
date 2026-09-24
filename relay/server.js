@@ -229,7 +229,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   function holdOn(b) {
     const room = b.key ? rooms.get(b.key)?.room : null;
     if (b.person && room?.has(b.person)) room.setInvisible(b.person, true, 'band');
-    else if (b.waiting) b.quiet = true;
+    else if (b.person || b.waiting) b.quiet = true;
   }
 
   /** Rule 1: the wristband may say `set`. Returns whether anything changed. */
@@ -423,6 +423,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       ws.r.heard.set(me, now());
       // `quiet` counts only if this join makes the person.
       ws.r.room.join(me, { band: m.band, quiet: m.quiet === true });
+      // A hold on their wristband while they were out of the room.
+      const b = bandOf(key, me);
+      if (b?.quiet) { ws.r.room.setInvisible(me, true, 'band'); b.quiet = false; }
       ws.r.sockets.add(ws);
       push(ws.r);
       return;
@@ -474,13 +477,18 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         ws.send(JSON.stringify({ t: 'sent', to }));
         break;
       }
-      case 'leave':
+      case 'leave': {
+        // Carried until it is heard: the phone re-sends it until this answer comes.
+        const b = bandOf(r.key, me);
+        if (b) unpairBand(b);
         stopGrace(r, me);
         room.leave(me);
         r.sockets.delete(ws);
         ws.r = null;
+        ws.send(JSON.stringify({ t: 'left' }));
         gcRoom(r);
         break;
+      }
       default: return;
     }
     push(r);

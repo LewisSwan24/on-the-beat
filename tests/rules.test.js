@@ -299,3 +299,36 @@ test('a phone message with no basis is taken as it always was', async () => {
   await ana.until((v) => v.me.armed === 'dance' && !v.me.invisible && v.me.by === 'phone');
   close(ana);
 });
+
+// ---------- leaving ----------
+
+test('a leave sent into a dead socket still removes the person once it is re-sent, and unpairs the wristband', async () => {
+  await relayWith();
+  const { band, ana, ben } = await pairedWithWatcher('leave-room');
+  ana.ws.terminate();                      // the first leave went nowhere
+  const again = await phone('leave-room', { me: ana.me });
+  const left = reply(again, 'left');
+  again.send({ t: 'leave' });
+  await left;
+  await ben.until((v) => v.near.length === 0);
+  await band.until((s) => s.kind === 'pairing');
+  close(ben, again, band);
+});
+
+test('a hold on a paired wristband whose person left is applied when they come back', async () => {
+  // 21:00, well clear of 06:00, so it is the hour that takes them out whenever this runs.
+  let t = new Date(2026, 8, 24, 21, 0).getTime();
+  const relay = await relayWith({ clock: () => t });
+  const { band, ana, ben } = await pairedWithWatcher('hold-later');
+  ana.ws.close();
+  await pause(50);
+  t += BAND_ALONE_MS + 1_000;
+  ben.send({ t: 'ping' });
+  relay.expire(t);                         // held only by the wristband, for the hour: out
+  await band.until((s) => s.away);
+  band.send({ t: 'hold' });
+  await pause(100);
+  const back = await phone('hold-later', { me: ana.me });
+  await back.until((v) => v.me.invisible && v.me.by === 'band');
+  close(ben, back, band);
+});
