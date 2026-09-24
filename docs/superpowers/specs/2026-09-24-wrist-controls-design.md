@@ -1,7 +1,8 @@
 # Wrist controls, phase A: changing your own state from the wristband
 
 Date: 24 Sep 2026. Decided with the owner section by section the same day,
-after the first StickS3 was paired end to end. Checked twice before any code:
+after the first StickS3 was paired end to end. Checked three times before any
+code:
 
 - **Round 1.** Five reviewers read the spec against the code, a skeptic tried
   to refute each finding, and a critic looked for gaps. 23 of 38 findings and
@@ -12,6 +13,12 @@ after the first StickS3 was paired end to end. Checked twice before any code:
   closed. Of the 16 still open, the high one was that a wristband's permanent
   id let any earlier pairer impersonate it. §0's identity model and §2 rule 3
   below answer that one and the rest.
+- **Round 3.** A checker tested round 2's items and a walker traced twelve
+  cross-device timelines. 10 of 16 closed and nothing high was left; the six
+  medium and five low items are answered here — the band key whose hash is the
+  id, rule 5's basis for every showing change, invisibility remembered past
+  leaving, the phone-first order after a restart, a leave carried until it is
+  heard, and `gone` said only by the relay.
 
 ## Goal
 
@@ -66,34 +73,55 @@ record (`server.js` ~184). Both holes close before `set` exists.
 
 ### Identity: an id per boot, a secret per pairing
 
-- **The id is made at every boot and kept in RAM only.** Switching the band off
-  and on makes it a new wristband, with new letters. (README's "an id it made
-  once and keeps" changes.)
+- **A key is made at every boot, and the id is its hash.** The wristband makes
+  a random 128-bit key at boot, in RAM only, and its id is the first 32 hex of
+  SHA-256 of that key. Every hello carries the key; the relay recomputes the id
+  and refuses a hello whose key does not hash to it. The key never leaves the
+  hello and is never told to a phone, so knowing an id — every pairer does —
+  is not enough to speak as the band, for a paired, pending or unpaired record
+  alike. Switching the band off and on makes it a new wristband, with new
+  letters. (README's "an id it made once and keeps" changes.)
 - **A secret is made at every pairing.** On `YES` (below) the relay makes a
   random secret and gives it to that phone (stored with the night) and to that
   wristband (RAM only). An unpair, a timeout of the waiting state (below), or a
   reboot ends it.
 - **A paired record is only ever reached with its secret.** A hello
-  `{t:'wristband', id, v:2}` for an id the relay holds as paired must carry the
-  current `secret`; without it, or with the wrong one, the new socket is
-  refused and closed, and the live socket is left alone. A phone's claim by id
-  needs the secret too.
+  `{t:'wristband', id, key, v:2}` for an id the relay holds as paired must also
+  carry the current `secret`; without it, or with the wrong one, the new
+  socket is refused and closed, and the live socket is left alone. A phone's
+  claim by id needs the secret too. Frames from a wristband are taken only
+  from its current socket (`b.ws`); anything still arriving on a replaced one
+  is dropped.
 - **The hello carries a protocol version** (`v:2`). The relay does not pair a
   wristband without it; the phone says *Update this wristband's firmware.*
 
 ### After a relay restart: waiting for its owner
 
-The wristband says hello with its id, secret and, if a KEY1 hold is still
+The wristband says hello with its id, key, secret and, if a KEY1 hold is still
 waiting to be sent, `quiet:true`. The relay records it as *waiting for its
 owner*: no letters, no public QR; the face says `OPEN YOUR PHONE` / `OR SWITCH
-ME OFF`. Only a claim with the same secret pairs it, and a `quiet` it brought
-is applied at that moment. If no claim comes within `BAND_ALONE_MS` or by the
-relay's 06:00, the relay sends it a pairing show; it forgets its secret and
-shows fresh letters.
+ME OFF`. A KEY1 hold while it waits sets that record's `quiet` too. Only a
+claim with the same secret pairs it, and the record's `quiet` is applied at
+that moment. If no claim comes within `BAND_ALONE_MS` or by the relay's 06:00,
+the relay sends it a pairing show; it forgets its secret and shows fresh
+letters.
 
-A wristband that reboots while the relay stays up is simply new. The phone,
-seeing its wristband gone from the view (an explicit `wristband: null`, read
-with `in`, not `??`), says *Your wristband restarted. Pair it again.*
+**Either may be back first.** A phone's claim (id and secret) for an id the
+relay does not hold keeps a placeholder with that secret — one per person —
+for `BAND_ALONE_MS`; the phone is told it is waiting, not that there is no such
+wristband. When the wristband's hello comes, proven by its key, its own secret
+decides: if the placeholder's matches, they pair; if not, the placeholder is
+dropped and its claimer told `gone`.
+
+**A wristband that is gone.** The relay forgets a paired record whose
+wristband has been away for `BAND_ALONE_MS`. Until then the phone's wristband
+chip says `OFFLINE` once the band has been away for two minutes, with `PAIR
+AGAIN`; after it, the phone's next claim is answered `{t:'claim', ok:false,
+why:'gone'}` and the phone says *Your wristband restarted or went away. Pair
+it again.* The phone decides a band is gone only from that answer, never from
+a view without a wristband — which is what every first view after a relay
+restart looks like, before the claim is heard. A wristband that reboots while
+the relay stays up is new, and its old record goes this way.
 
 ### The check
 
@@ -104,8 +132,9 @@ opening a `/pair/` link — end the same way:
    wristband *pending* for that person and draws a check number, 10–99, unique
    among all pendings in progress (as match numbers are). One pending per
    wristband and one per person: another `pair` for a pending wristband is
-   refused `busy`. Every `pair` attempt, right or wrong, counts toward the
-   per-socket attempt limit.
+   refused `busy`, and that phone says *Someone is pairing that wristband right
+   now. Try again in a minute.* and leaves its waiting state. Every `pair`
+   attempt, right or wrong, counts toward the per-socket attempt limit.
 2. The wristband that was actually reached shows the number, large, with
    `ON YOUR PHONE?` under it. The phone shows a sheet — *Does your wristband
    show 27?* with `YES` and `NO` — that stays over any screen and comes back
@@ -177,9 +206,12 @@ CHANGED   the relay refused the set because the state moved since `basis`:
           small CHANGED for RESULT_MS, then the relay's show.
           Any other refusal (too fast, not paired, no room) is NOT SENT at once.
 NOT SENT  nothing within CONFIRM_MS: small NOT SENT for RESULT_MS, then the relay's show.
+          The wrist drops its socket and connects again, and the relay takes
+          frames only from a wristband's current socket, so a set stuck in the
+          old one can no longer land. If it had already landed, the new
+          connection's first show says so, and the face shows the truth.
           If the choice was leaving NOT NOW, the wrist also holds NOT NOW again
-          (as a KEY1 hold does), so a set stuck in a stalled socket that lands
-          later is hidden again straight after it.
+          (as a KEY1 hold does): hiding may arrive late, showing may not.
 ```
 
 - **OFF** is visible with nothing armed — tapping an armed card on the phone.
@@ -214,6 +246,11 @@ The firmware draws two lines on one field (`wordsFor`, `lightFor`); these fit.
 | KEY1 held | unchanged | `KEEP HOLDING` + bar | unchanged | at least `LIGHT_AWAKE` |
 | check | the number | `ON YOUR PHONE?` | black | `LIGHT_PAIR` |
 | waiting for its owner | `OPEN YOUR PHONE` | `OR SWITCH ME OFF` | black | `LIGHT_AWAKE` |
+| paired, person not in a room | `OPEN YOUR PHONE` | `TO COME BACK` | black | `LIGHT_AWAKE`, on a press |
+
+A paired wristband whose person has left the room (the hour, 06:00, a grace)
+stays paired. A KEY1 hold on it is kept on the record as `quiet` and applied
+when the person comes back; KEY2 only wakes.
 
 A preview is never a colour field, so nobody across the room reads a card the
 wearer is only passing through. The card words the firmware draws for a
@@ -230,9 +267,11 @@ JSON reader learns to read integers (today `number()` only validates) and
 The relay is the one place a person's state lives. Per person it keeps
 `armed`, `invisible`, and three new fields: `rev` (bumped on every change to
 `armed` or `invisible`, from anywhere), `seq` (the largest phone seq received;
-0 for a new person; a message without one counts as 0), and `by` (`'phone'` or
-`'band'`, who made the last change). A view carries `me.seq` and `me.by`; a
-wristband show made from a view carries `armed` and `rev`.
+0 for a new person; a message without one counts as 0), and `by` (`'phone'`,
+`'band'`, or `'relay'` for a person the relay has just created or re-created).
+A view carries `me.rev`, `me.seq`, `me.by`, and `me.fresh` on the first view
+after the relay created the person; a wristband show made from a view carries
+`armed` and `rev`.
 
 1. **The wristband may say `set`.** `{"t":"set","intent":"hi"|"song"|"dance"|null,"basis":<rev>}`.
    The whole frame is dropped, before anything is touched, unless `intent` is
@@ -275,6 +314,24 @@ wristband show made from a view carries `armed` and `rev`.
    phone ignores `armed` and `invisible` in any view whose `me.seq` is below
    the last seq it sent. A `seq` that is present but not a finite number drops
    the frame.
+5. **A change that shows a person names the state it was chosen from.** The
+   wrist's `set`, and the phone's own arming of a card and `invisible: false`,
+   carry `basis`, the `rev` of the view or show they were chosen from. If `rev`
+   has moved since, they are refused `changed` and nothing changes: a tap that
+   sat in a dead-but-open socket while the wrist went NOT NOW cannot land
+   afterwards and show the person. Changes that hide — NOT NOW, a card off —
+   carry no basis and are always taken. The wrist's `set` without an integer
+   `basis` is dropped (rule 1). A phone message without `basis` is taken as
+   today, so the existing tests and `scripts/crowd.mjs` keep working; the app
+   always sends one, and a test holds it to that.
+
+**Remembered past leaving.** For the night, the relay keeps each person's last
+`invisible` after they leave the room, as it keeps blocks. A person re-created
+by a join starts invisible if either that record or the join's `quiet` says
+so.
+
+**The night's end** is 06:00 in the relay's `nightTz` option, the venue's time
+zone, defaulting to the relay machine's own.
 
 **Order on a new connection.** A phone's join carries `quiet: true` when it
 holds NOT NOW. It counts only when the join creates the person — after a
@@ -284,10 +341,13 @@ phone's old NOT NOW cannot undo a wrist that came back meanwhile. Its re-said fa
 claim first — `pair`, then `invisible`, `profile`, `pick`, `arm` — so a
 wristband's kept hold lands before anything else about the person.
 
-**Leaving is carried until it is heard.** The phone's "I've left" waits up to
-5 s for the relay's `{t:'left'}` before tearing the connection down; if none
-comes, the leave is kept with the night and sent first on the next connection.
-A wristband can therefore not hold a person who asked to leave.
+**Leaving is carried until it is heard.** The phone's "I've left" keeps the
+room connection open, and re-sends the leave across reconnects, until the
+relay answers `{t:'left'}`; only then does the night become `left`. Meanwhile
+the phone shows *Leaving…*, and with no signal *You'll be taken out as soon as
+there's signal*. The relay's leave also unpairs the person's wristband. If the
+page is closed before the answer, the grace or the band-alone hour still ends
+it.
 
 ## §3. The phone follows the relay
 
@@ -314,7 +374,9 @@ events the phone's own `arm()` would have added. Following never calls `say()`.
 | invisible | The quiet screen, stack cleared, as today — the special case at `App.jsx` ~229 becomes this row. |
 | visible, no card | Off the quiet screen to home; if `by` is `'band'`, `Visible again, from your wristband`. |
 | visible with a card, in one view | Home; if `by` is `'band'`, `Back on, from your wristband: SAY HI`. |
-| not what this phone last asked for, and `by` is not `'band'` | The phone's own tap did not land, or a restart reset the card (rule 3): `That didn't go through — tap again`. |
+| the first view of a re-created person (`me.fresh`), while this phone held a card | `You were away a while, so your card went off.` |
+| not what this phone last asked for, and `by` is not `'band'` | The phone's own tap did not land (rule 3): `That didn't go through — tap again`. |
+| a showing change of this phone refused `changed` (rule 5) | `Something changed — check and tap again.` |
 
 - Every toast that says *from your wristband* carries `NOT YOU? UNPAIR`, which
   unpairs in one tap.
@@ -349,7 +411,9 @@ labels are built from its constants. A test greps `app/`, `relay/`,
   `band_logic.h`. It includes: two stray presses from NOT NOW send nothing;
   KEY1 down at +2 s of a choice sends only `hold`; releases at 1.0, 1.4 and
   1.5 s; a rev change mid-choice; a pairing show mid-choice; offline LOOK;
-  NOT SENT from a NOT NOW exit sends `hold`; the check and waiting faces.
+  NOT SENT drops the socket, and from a NOT NOW exit also sends `hold`; the
+  check, waiting and not-in-a-room faces; the hello carries a key whose hash
+  is the id.
 - **The relay, one test per guard**, each mutation-checked so exactly its
   test goes red; every refusal has its own `why`, so each guard is visible:
   `set` validation (with malformed frames in the fuzz test, NOT NOW surviving
@@ -362,15 +426,26 @@ labels are built from its constants. A test greps `app/`, `relay/`,
   with no phone starts the grace and the person leaves when it runs out; one
   timer per person (phone drops, band drops twice, `close()` leaves no timer);
   no grace while closing; the band-alone hour; 06:00 on the relay's clock;
-  a hello without the secret for a paired id is refused and the live socket
-  survives; claim needs the secret; a restarted relay keeps a paired band
-  waiting, applies its `quiet` at the claim, and sends it letters after the
-  hour; the check — pending until YES, dropped on NO and on timeout with fresh
-  letters, `busy` for a second pair, numbers unique, attempts counted; a v1
-  hello is not paired; a leave is acknowledged.
+  a hello whose key does not hash to its id is refused, for a paired, pending
+  and unpaired record; a hello without the secret for a paired id is refused
+  and the live socket survives; frames on a replaced wristband socket are
+  dropped; claim needs the secret; a restarted relay keeps a paired band
+  waiting, applies its `quiet` (from the hello or a hold while waiting) at the
+  claim, and sends it letters after the hour; phone first after a restart
+  (placeholder kept, the band's secret decides, a mismatch is told `gone`);
+  a paired record away for the hour is forgotten and the next claim is told
+  `gone`; the check — pending until YES, dropped on NO and on timeout with
+  fresh letters, `busy` for a second pair, numbers unique, attempts counted;
+  a v1 hello is not paired; rule 5 — a phone's card tap with an old `basis`,
+  arriving after a wrist NOT NOW, is refused `changed`; a phone message with
+  no `basis` is taken; a person who left NOT NOW'd and is re-created by a join
+  without `quiet` is still invisible; 06:00 in `nightTz`; a leave sent into a
+  dead socket still removes the person once it is re-sent, and unpairs the
+  band; a hold on a paired band whose person left is applied when they return.
 - **The phone**: `tests/follow.test.js` covers every row of the table, the
-  combined row, the tap that did not land, the first view after a restart, a
-  view with `wristband: null`, and that following sends nothing; rule 4's
+  combined row, the tap that did not land, a `changed` refusal, the first view
+  after a restart (no wristband in it, and no *gone* message), `me.fresh`,
+  and that following sends nothing; rule 4's
   mutation check lives there. `tests/net.test.js` covers the re-send order and
   that a page load queues nothing.
 - **Tests that change on purpose**: `logic_test.cpp`'s button checks
