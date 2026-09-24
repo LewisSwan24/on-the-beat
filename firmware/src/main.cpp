@@ -134,9 +134,13 @@ bool toSocket(uint8_t kind, const std::string& text = "") {
 
 std::vector<std::string> waitingOut;  // what the Wrist said to send, and the outbox could not take yet, oldest first
 
-/** A frame to send, or "DROP" to drop the socket, in the order the Wrist said them. */
-void sendFrame(const std::string& text) {
-  waitingOut.push_back(text);
+/**
+ * Hands the socket task what is waiting, oldest first, until it cannot take
+ * more. Called every time round the loop, not only when there is something
+ * new: after a drop the Wrist says nothing until the next hello, so a drop the
+ * outbox could not take would otherwise wait for good.
+ */
+void flushOut() {
   while (!waitingOut.empty()) {
     const std::string& next = waitingOut.front();
     const bool taken = next == "DROP" ? toSocket(OUT_DROP) : toSocket(OUT_SEND, next);
@@ -145,6 +149,12 @@ void sendFrame(const std::string& text) {
     else if (next == HOLD_FRAME) Serial.println("NOT NOW, from the wrist");
     waitingOut.erase(waitingOut.begin());
   }
+}
+
+/** A frame to send, or "DROP" to drop the socket, in the order the Wrist said them. */
+void sendFrame(const std::string& text) {
+  waitingOut.push_back(text);
+  flushOut();
 }
 
 // Runs on the socket task, inside socket_.loop().
@@ -540,6 +550,8 @@ void loop() {
     sendFrame(batteryFrame(battery));
     batteryReport.sent(battery, now);
   }
+  // What the outbox could not take, a drop included, is tried again every time round.
+  flushOut();
   draw(now);
   delay(10);
 }
