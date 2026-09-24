@@ -110,8 +110,8 @@ never becomes a match.
     to the night before.
   - `public/sw.js`: keeps the shell so the app opens in a venue with no
     signal. It never keeps the socket, the shows or the clips.
-- **`firmware/`** — the wristband itself, an M5StickC Plus on a strap, built
-  with PlatformIO. See The wristband's firmware, below.
+- **`firmware/`** — the wristband itself, an M5StickC Plus or a StickS3 on a
+  strap, built with PlatformIO. See The wristband's firmware, below.
 
 ## The wristband
 
@@ -164,7 +164,9 @@ or on a second phone strapped to a wrist, when there is no wristband to hand.
 ## The wristband's firmware
 
 `firmware/` is a PlatformIO project for the M5StickC Plus and Plus2 (M5Unified
-tells them apart as it starts; the first M5StickC works too, drawn smaller). It
+tells them apart as it starts; the first M5StickC works too, drawn smaller),
+and for the M5StickS3, an ESP32-S3 that no ESP32 image boots on, so it is an
+env of its own: `pio run -e m5sticks3`. The code is the same for all of them. It
 speaks exactly what `/band` speaks, on the same clock: it says it is a wristband
 with an id it made once and keeps, shows whatever the relay tells it to, asks
 the relay every two seconds and takes six of silence as a dead socket. A press
@@ -174,6 +176,8 @@ wakes it for three seconds; a one-second hold is NOT NOW.
 cd firmware
 pio run -t upload       # build it and flash it over USB
 pio device monitor      # its console: ssid, pass, relay, show, forget
+
+pio run -e m5sticks3 -t upload    # the same, for a StickS3
 ```
 
 Tell it the venue's Wi-Fi and the relay at the console — `relay` takes the
@@ -203,6 +207,20 @@ across restarts, which matters: a quick tunnel's address changes every run.
 - **The pairing code is as wide as the screen allows**, with four light modules
   round it. A tunnel address is a version 4 code, and the canvas's 115 pixels
   would make each module two pixels — too small to read off a screen this size.
+- **The first flash of a StickS3, as it went.** It has no USB-serial chip: the
+  S3's own USB is the port, so there is no driver to install and a C-to-C
+  cable is fine. Its factory firmware will not be reset into the bootloader,
+  so the first flash needs the side button held until the green LED inside
+  flashes; the port comes back as `303A:1001`. After that flash the chip boots
+  straight back into download mode (`boot:0x22`) until one short press of the
+  side button, and every later flash resets itself with no button at all.
+  Opening the port can reset it too, so the lines it prints as it starts are
+  usually gone before a monitor is there: type `show`. The first flash also
+  found that M5Unified 0.2.23 leaves `Serial` closed unless asked, which left
+  the console deaf on every model; `setup()` now asks.
+- **Wi-Fi is 2.4 GHz with a password, or open.** Networks behind a web login
+  page, like a campus guest network, or a university login, like eduroam, do
+  not work: a phone's hotspot on 2.4 GHz does.
 - **Its fonts are ASCII.** Curly quotes, dashes and Latin accents are folded to
   it; a pick in a script the fonts cannot draw shows no second line rather than
   boxes. The phone still shows it whole.
@@ -288,11 +306,13 @@ relay could drive what a wrist shows.
 - **Proximity.** Wristbands pair and light, but nothing measures who is near
   whom: every person is still `in this room`. Nearness wants ESP-NOW between
   wristbands, which wants the hardware.
-- **The firmware has not run on a wristband.** Its logic has run against the
-  real relay (above), and CI builds the whole firmware with PlatformIO on every
-  push — about 1.2 MB of the 3 MB app partition — and keeps the image to flash.
-  Nothing has been flashed or worn yet. Flashing one, then pairing it from a
-  real phone, is the next check.
+- **The firmware has run on one wristband, not yet on Wi-Fi.** Its logic has
+  run against the real relay (above), and CI builds the ESP32 firmware with
+  PlatformIO on every push — about 1.2 MB of the 3 MB app partition — and
+  keeps the image to flash. On a StickS3 the screen, the button, the battery
+  and the console have been seen working. Joining Wi-Fi, reaching the relay
+  and pairing from a real phone are the next check. CI does not build the
+  StickS3 env.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was

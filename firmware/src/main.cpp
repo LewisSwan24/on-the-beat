@@ -482,6 +482,9 @@ void readBattery(uint32_t now) {
 
 void setup() {
   auto cfg = M5.config();
+  // M5Unified leaves Serial closed unless asked, and the console is the only
+  // way to give the band its Wi-Fi and relay. Found on the first real band.
+  cfg.serial_baudrate = 115200;
   M5.begin(cfg);
   M5.Display.setRotation(0);
   if (M5.Display.width() > M5.Display.height()) M5.Display.setRotation(1);
