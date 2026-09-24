@@ -1,6 +1,6 @@
 // ON THE BEAT — the wristband's own logic, with no hardware in it.
 //
-// main.cpp is only the hardware round this file: the screen, the one button,
+// main.cpp is only the hardware round this file: the screen, the two buttons,
 // Wi-Fi and the socket. Everything that decides something is here, in plain
 // C++17, so it builds on a laptop as well as on the M5StickC.
 // tests/firmware.test.js compiles it with the host's own compiler and holds it
@@ -618,37 +618,6 @@ inline int qrSize(int version) { return 17 + 4 * version; }
 
 /** Pixels per module in a square `side` wide with four light modules all round it; 0 if it will not fit. */
 inline int qrModule(int version, int side) { return version ? side / (qrSize(version) + 8) : 0; }
-
-// ---------- the one button ----------
-
-/** A press wakes the face; held for HOLD_MS it is NOT NOW, once, while it is still held — as /band does. */
-class Button {
- public:
-  enum Event { NONE, WAKE, HOLD };
-
-  Event update(bool down, uint32_t now) {
-    if (down && !down_) {
-      down_ = true;
-      held_ = false;
-      since_ = now;
-      return NONE;
-    }
-    if (down && !held_ && now - since_ >= HOLD_MS) {
-      held_ = true;
-      return HOLD;
-    }
-    if (!down && down_) {
-      down_ = false;
-      return held_ ? NONE : WAKE;
-    }
-    return NONE;
-  }
-
- private:
-  bool down_ = false;
-  bool held_ = false;
-  uint32_t since_ = 0;
-};
 
 // ---------- the line to the relay ----------
 

@@ -1,15 +1,16 @@
-// ON THE BEAT — the wristband: an M5StickC Plus (or Plus2) on a strap.
+// ON THE BEAT — the wristband: an M5StickC Plus, Plus2 or StickS3 on a strap.
 //
-// A light first and words second. It joins the relay exactly as /band does:
-// it says it is a wristband, shows whatever the relay tells it to show, and
-// has one button — a press wakes it for three seconds, a one-second hold is
-// NOT NOW. What it shows is decided by the relay (relay/band.js), from the
+// A light first and words second. It joins the relay exactly as /band does,
+// shows whatever the relay tells it to, and has two buttons. The face button
+// (KEY1): a press wakes it, a hold is NOT NOW. The side button (KEY2): a press
+// shows the card that is armed, more presses choose another, and the relay
+// decides. What it shows is decided by the relay (relay/band.js), from the
 // same view its person's phone is sent, so it can never show more than the
 // phone could.
 //
 // Everything that decides anything is in band_logic.h, which the tests build
 // and run on a laptop. This file is only the hardware round it: the screen,
-// the button, the battery, Wi-Fi, the socket, and a serial console to say
+// the two buttons, the battery, Wi-Fi, the socket, and a serial console to say
 // which Wi-Fi and which relay. The socket has a task of its own, so nothing
 // the network does can hold up the button or the screen.
 
@@ -50,20 +51,15 @@ Preferences prefs;
 WebSocketsClient socket_;
 M5Canvas face(&M5.Display);  // drawn off-screen, then pushed whole: no half-drawn frames on the wrist
 
-std::string bandKey, bandId, ssid, pass, relayText;
-std::string secret;  // given on YES; RAM only, so a reboot is a new wristband
+std::string ssid, pass, relayText;
 Relay relay;
 
-Button button;
-Link net;
-Quiet quiet;
+Wrist* wrist = nullptr;  // made in setup(), once the radio is on and the key is truly random
+bool keyA = false, keyB = false;  // KEY1 (BtnA, the face) and KEY2 (BtnB, the side), as last read
 BatteryReport batteryReport;
 
-Show last;              // what the relay last said to show
-bool haveShow = false;
 int battery = -1;       // percent, or -1 while it will not say
 uint32_t batteryAt = 0;
-uint32_t wakeUntil = 0;
 std::string drawn;      // what is on the screen now, so it is drawn again only when that changes
 std::string typed;      // the console line so far
 
@@ -136,12 +132,19 @@ bool toSocket(uint8_t kind, const std::string& text = "") {
   return xQueueSend(outbox, &o, 0) == pdTRUE;
 }
 
-std::vector<std::string> waitingOut;  // frames the outbox could not take yet, oldest first
+std::vector<std::string> waitingOut;  // what the Wrist said to send, and the outbox could not take yet, oldest first
 
-/** Sends a frame, in order after any the outbox could not take yet. */
+/** A frame to send, or "DROP" to drop the socket, in the order the Wrist said them. */
 void sendFrame(const std::string& text) {
   waitingOut.push_back(text);
-  while (!waitingOut.empty() && toSocket(OUT_SEND, waitingOut.front())) waitingOut.erase(waitingOut.begin());
+  while (!waitingOut.empty()) {
+    const std::string& next = waitingOut.front();
+    const bool taken = next == "DROP" ? toSocket(OUT_DROP) : toSocket(OUT_SEND, next);
+    if (!taken) return;
+    if (next == "DROP") Serial.println("the relay went quiet; trying again");
+    else if (next == HOLD_FRAME) Serial.println("NOT NOW, from the wrist");
+    waitingOut.erase(waitingOut.begin());
+  }
 }
 
 // Runs on the socket task, inside socket_.loop().
@@ -207,44 +210,28 @@ void drain(uint32_t now) {
   Event e;
   while (xQueueReceive(events, &e, 0) == pdTRUE) {
     switch (e.kind) {
-      case EV_OPENED: {
-        // Back after long enough that what it said was no longer shown: wait for it to say it again.
-        if (net.stale(now)) haveShow = false;
-        net.opened(now);
+      case EV_OPENED:
         waitingOut.clear();
-        // A hold not yet heard rides on the hello: the relay applies it before anything else.
-        const bool holding = quiet.due(true);
-        sendFrame(helloFrame(bandId, bandKey, battery, secret, holding));
-        if (holding) quiet.sent(now);
+        wrist->linkUp(now);  // the hello is first in what the Wrist says next
         batteryReport.reset();
-        if (battery >= 0) batteryReport.sent(battery, now);
+        if (battery >= 0) batteryReport.sent(battery, now);  // the hello carried it
         Serial.printf("on the relay: %s\n", relay.origin.c_str());
         break;
-      }
       case EV_CLOSED:
+        if (wrist->up()) Serial.println("lost the relay");
         waitingOut.clear();
-        if (net.up()) Serial.println("lost the relay");
-        net.closed(now);
-        quiet.closed();
+        wrist->linkDown(now);
         break;
       case EV_TEXT: {
-        net.heard(now);
+        if (e.length > sizeof e.text) { wrist->heard(now); break; }  // too long to read, but heard
+        const std::string text(e.text, e.length);
+        wrist->frame(text, now);
         Frame f;
-        if (e.length > sizeof e.text || !readFrame(std::string(e.text, e.length), f)) break;
-        if (f.t == "paired" && !f.secret.empty()) {
-          secret = f.secret;
-        } else if (f.t == "show" && f.hasShow) {
-          last = f.show;
-          haveShow = true;
-          quiet.shown(last);
-          if (last.kind == "pairing") secret.clear();  // unpaired, or nobody came for it: a new pairing
-        } else if (f.t == "error") {
-          Serial.printf("the relay says: %s\n", f.why.c_str());
-        }
+        if (readFrame(text, f) && f.t == "error") Serial.printf("the relay says: %s\n", f.why.c_str());
         break;
       }
       case EV_HEARD:
-        net.heard(now);
+        wrist->heard(now);
         break;
       default:
         break;
@@ -259,8 +246,7 @@ void startRelay() {
     relay = next;
   }
   relayChanged = true;
-  net.closed(millis());
-  quiet.closed();
+  if (wrist) wrist->linkDown(millis());
   if (!relay.ok) Serial.println("no relay yet. Type:  relay https://<the address npm run tunnel printed>");
 }
 
@@ -379,42 +365,47 @@ void drawPairing(const std::string& code, float k) {
   }
 }
 
-void paint(const Face& f, const Words& w) {
+uint16_t inkOf(const std::string& ink) {
+  if (ink == "ink") return rgb565(INK);
+  if (ink == "white") return WHITE;
+  if (const Hue* h = hueFor(ink)) return rgb565(h->c);  // a preview: the card's words in its colour, on black
+  return rgb565(TEXT_2);
+}
+
+void paint(const Screen& s) {
   const int W = face.width(), H = face.height();
   const float k = std::min(W / 135.0f, H / 240.0f);  // the canvas draws the wristband 135 x 240
-  const Show& s = f.show;
-  if (s.kind == "test") {
+  if (s.field == "white") {
     face.fillScreen(WHITE);
-    return;
-  }
-  if (lit(s)) {
-    const Hue& hue = *hueFor(s.intent);
+  } else if (const Hue* hue = hueFor(s.field)) {
     for (int y = 0; y < H; ++y)
-      for (int x = 0; x < W; ++x) face.drawPixel(x, y, rgb565(glow(hue, x, y, W, H)));
-    if (s.kind == "meet") drawMeet(w, rgb565(INK), k);
-    else drawWords(w, rgb565(INK), k);
-    return;
+      for (int x = 0; x < W; ++x) face.drawPixel(x, y, rgb565(glow(*hue, x, y, W, H)));
+  } else {
+    face.fillScreen(BLACK);
   }
-  face.fillScreen(BLACK);
-  if (s.kind == "pairing") drawPairing(s.code, k);
-  else if (s.kind == "check") drawMeet(w, WHITE, k);
-  else if (!w.big.empty()) drawWords(w, rgb565(TEXT_2), k);
+  const uint16_t ink = inkOf(s.ink);
+  const Words w{s.big, s.small};
+  // A number — the meeting number, or the pairing check — stands large under its word.
+  const bool number = !s.big.empty() && s.big.find_first_not_of("0123456789") == std::string::npos;
+  if (!s.code.empty()) drawPairing(s.code, k);
+  else if (number) drawMeet(w, ink, k);
+  else if (!s.big.empty() || !s.small.empty()) drawWords(w, ink, k);
+  if (s.bar >= 0) {  // KEEP HOLDING: how far to NOT NOW
+    const int x = px(12, k), width = W - 2 * x, y = H - px(22, k), h = px(6, k);
+    face.drawRect(x, y, width, h, ink);
+    face.fillRect(x, y, width * s.bar / 99, h, ink);
+  }
 }
 
 void draw(uint32_t now) {
-  const bool awake = static_cast<int32_t>(wakeUntil - now) > 0;
-  const Face f = faceFor(haveShow ? &last : nullptr, net.stale(now), quiet.dark());
-  const Signal signal = WiFi.status() != WL_CONNECTED ? Signal::NO_WIFI : net.up() ? Signal::LIVE : Signal::NO_RELAY;
-  const Words w = wordsFor(f, awake, battery, signal);
-  const uint8_t light = lightFor(f, awake);
-  const std::string key = f.show.kind + '|' + f.show.intent + '|' + f.show.code + '|' + (f.show.away ? "a" : "") +
-                          (f.show.quiet ? "q" : "") + '|' + w.big + '|' + w.small + '|' + std::to_string(light) + '|' +
-                          relay.origin;
+  const Screen s = wrist->face(now);
+  const std::string key = s.big + '|' + s.small + '|' + s.field + '|' + s.ink + '|' + std::to_string(s.light) + '|' +
+                          std::to_string(s.bar) + '|' + s.code + '|' + relay.origin;
   if (key == drawn) return;
   drawn = key;
-  paint(f, w);
+  paint(s);
   face.pushSprite(0, 0);
-  M5.Display.setBrightness(light);
+  M5.Display.setBrightness(s.light);
 }
 
 // ---------- the serial console ----------
@@ -431,7 +422,7 @@ void help() {
 void report() {
   Serial.printf("wi-fi   %s%s  (%s)\n", ssid.empty() ? "(none)" : ssid.c_str(), pass.empty() ? "" : ", with a password",
                 WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString().c_str() : "not connected");
-  Serial.printf("relay   %s  (%s)\n", relay.ok ? relay.origin.c_str() : "(none)", net.up() ? "on it" : "not on it");
+  Serial.printf("relay   %s  (%s)\n", relay.ok ? relay.origin.c_str() : "(none)", wrist->up() ? "on it" : "not on it");
   const auto charging = M5.Power.isCharging();
   Serial.printf("battery %d%%%s\n", battery,
                 charging == m5::Power_Class::is_charging      ? " (charging)"
@@ -489,6 +480,7 @@ void readBattery(uint32_t now) {
   batteryAt = now;
   const int32_t level = M5.Power.getBatteryLevel();
   battery = level >= 0 && level <= 100 ? static_cast<int>(level) : -1;
+  if (wrist) wrist->setBattery(battery);
 }
 
 }  // namespace
@@ -513,12 +505,12 @@ void setup() {
   // The radio on before the key is made: with it on, esp_random() is true noise.
   WiFi.mode(WIFI_STA);
   // A new wristband at every boot: the key lives in RAM only, and the id is its hash.
-  bandKey = makeKey([] { return static_cast<uint32_t>(esp_random()); });
-  bandId = idFor(bandKey);
+  wrist = new Wrist(makeKey([] { return static_cast<uint32_t>(esp_random()); }));
   prefs.begin("otb", false);
   if (prefs.isKey("id")) prefs.remove("id");  // the id an older build kept for good is not kept any more
   loadSettings();
   readBattery(millis());
+  wrist->setBattery(battery);
 
   Serial.println("\nON THE BEAT wristband");
   help();
@@ -537,44 +529,17 @@ void loop() {
   console();
   readBattery(now);
   drain(now);
-
-  switch (button.update(M5.BtnA.isPressed(), now)) {
-    case Button::WAKE:
-      wakeUntil = now + WAKE_MS;
-      break;
-    case Button::HOLD:
-      quiet.held();
-      Serial.println("NOT NOW, from the wrist");
-      break;
-    default:
-      break;
-  }
-
-  switch (net.tick(now)) {
-    case Link::PING:
-      sendFrame(PING_FRAME);
-      break;
-    case Link::DROP:
-      // Marked closed only once the socket task has it; otherwise asked again next time round.
-      if (toSocket(OUT_DROP)) {
-        Serial.println("the relay went quiet; trying again");
-        net.closed(now);
-        quiet.closed();
-      }
-      break;
-    default:
-      break;
-  }
-  if (quiet.due(net.up())) {
-    sendFrame(HOLD_FRAME);
-    quiet.sent(now);
-  }
-  quiet.tick(now);
-  if (net.up() && batteryReport.due(battery, now)) {
+  // KEY1 is the face button, KEY2 the side one. The Wrist times the holds.
+  const bool a = M5.BtnA.isPressed(), b = M5.BtnB.isPressed();
+  if (a != keyA) { keyA = a; a ? wrist->keyDown(1, now) : wrist->keyUp(1, now); }
+  if (b != keyB) { keyB = b; b ? wrist->keyDown(2, now) : wrist->keyUp(2, now); }
+  wrist->setWifi(WiFi.status() == WL_CONNECTED);
+  wrist->tick(now);
+  for (const std::string& f : wrist->take()) sendFrame(f);
+  if (wrist->up() && batteryReport.due(battery, now)) {
     sendFrame(batteryFrame(battery));
     batteryReport.sent(battery, now);
   }
-
   draw(now);
   delay(10);
 }

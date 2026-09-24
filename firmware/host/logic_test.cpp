@@ -76,21 +76,6 @@ bool reads(const std::string& text) {
   return readFrame(text, f);
 }
 
-void button() {
-  Button b;
-  CHECK(b.update(false, 0) == Button::NONE);
-  CHECK(b.update(true, 100) == Button::NONE);
-  CHECK(b.update(true, 100 + HOLD_MS - 1) == Button::NONE);
-  CHECK(b.update(false, 100 + HOLD_MS - 1) == Button::WAKE);  // let go before HOLD_MS: a press
-  CHECK(b.update(true, 5000) == Button::NONE);
-  CHECK(b.update(true, 5000 + HOLD_MS) == Button::HOLD);  // held: NOT NOW, while still held
-  CHECK(b.update(true, 9000) == Button::NONE);            // once
-  CHECK(b.update(false, 9001) == Button::NONE);           // and letting go is not also a wake
-  // Across the millisecond counter wrapping, after 49 days on.
-  CHECK(b.update(true, 0xFFFFFE00u) == Button::NONE);
-  CHECK(b.update(true, 0xFFFFFE00u + HOLD_MS) == Button::HOLD);
-}
-
 void wrist() {
   // The table of cases (tests/fixtures/wrist-cases.json) runs through `logic_test wrist`.
   // Here, only what a table in milliseconds cannot reach: the counter wrapping after 49 days.
@@ -582,7 +567,6 @@ int main(int argc, char** argv) {
     while (std::getline(std::cin, line)) std::cout << answer(readCommand(line)) << "\n";
     return 0;
   }
-  button();
   wrist();
   link();
   quiet();
