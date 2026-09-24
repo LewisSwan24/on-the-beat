@@ -218,7 +218,8 @@ test('what the firmware says, the relay takes; what the relay says, the firmware
       const { light, words, ...got } = read[i];
       assert.deepEqual(got, {
         kind: s.kind, intent: s.intent ?? '', big: s.big ?? '', small: (s.small ?? '').toWellFormed(), code: s.code ?? '',
-        dim: !!s.dim, quiet: !!s.quiet, away: !!s.away, lit: ['hi', 'song', 'dance', 'meet'].includes(s.kind) && !!HUE[s.intent],
+        dim: !!s.dim, quiet: !!s.quiet, away: !!s.away, hasArmed: 'armed' in s, armed: s.armed ?? '', rev: s.rev ?? 0,
+        lit: ['hi', 'song', 'dance', 'meet'].includes(s.kind) && !!HUE[s.intent],
       }, text);
       assert.equal(light > 0, s.kind !== 'off', 'dark only when the relay says off: ' + text);
       if (s.kind === 'pairing') assert.equal(words.big, s.code);

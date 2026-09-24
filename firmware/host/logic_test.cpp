@@ -194,6 +194,19 @@ void frames() {
         p.secret == "00112233445566778899aabbccddeeff" && !p.hasShow);
   Frame a;
   CHECK(readFrame("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"battery\":40,\"away\":true}}", a) && a.show.away);
+  // What the wrist chooses from: what is armed (null is not the same as nothing said) and the rev.
+  s = parsed(R"j({"t":"show","show":{"kind":"off","battery":62,"armed":null,"rev":41}})j");
+  CHECK(s.hasArmed && s.armed.empty() && s.rev == 41);
+  s = parsed(R"j({"t":"show","show":{"kind":"hi","intent":"hi","armed":"hi","rev":9007199254740991}})j");
+  CHECK(s.hasArmed && s.armed == "hi" && s.rev == 9007199254740991LL);
+  s = parsed(R"j({"t":"show","show":{"kind":"pairing","code":"KXRT"}})j");
+  CHECK(!s.hasArmed && s.rev == 0);
+  s = parsed(R"j({"t":"show","show":{"armed":7,"rev":"3","kind":""}})j");
+  CHECK(!s.hasArmed && s.rev == 0 && s.kind == "off");
+  s = parsed(R"j({"t":"show","show":{"armed":"hi","rev":2.5}})j");
+  CHECK(s.rev == 0);
+  Frame no;
+  CHECK(readFrame(R"j({"t":"set","ok":false,"why":"changed"})j", no) && no.hasOk && !no.ok && no.why == "changed");
   // Not one whole object: refused.
   for (const char* bad : {"", "{", "}", "[]", "\"show\"", "{\"t\":}", "{\"t\":\"show\"", "{\"t\":\"show\"} x",
                           "{\"t\":\"sh\nw\"}", "{\"t\":\"\\x\"}", "{\"t\":\"\\u12\"}", "{t:1}", "{\"a\":01x}",
@@ -463,7 +476,9 @@ std::string answer(const Command& c) {
     const Words w = wordsFor(face, false, -1, Signal::LIVE);
     return "{\"kind\":" + quote(s.kind) + ",\"intent\":" + quote(s.intent) + ",\"big\":" + quote(s.big) +
            ",\"small\":" + quote(s.small) + ",\"code\":" + quote(s.code) + ",\"dim\":" + (s.dim ? "true" : "false") +
-           ",\"quiet\":" + (s.quiet ? "true" : "false") + ",\"away\":" + (s.away ? "true" : "false") + ",\"lit\":" + (lit(s) ? "true" : "false") +
+           ",\"quiet\":" + (s.quiet ? "true" : "false") + ",\"away\":" + (s.away ? "true" : "false") +
+           ",\"hasArmed\":" + (s.hasArmed ? "true" : "false") + ",\"armed\":" + quote(s.armed) +
+           ",\"rev\":" + std::to_string(s.rev) + ",\"lit\":" + (lit(s) ? "true" : "false") +
            ",\"light\":" + std::to_string(lightFor(face, false)) + ",\"words\":{\"big\":" + quote(w.big) +
            ",\"small\":" + quote(w.small) + "}}";
   }

@@ -104,10 +104,14 @@ struct Show {
   std::string intent, big, small, code;
   bool dim = false;
   bool quiet = false;
-  bool away = false;  // paired, but its person is not in a room
+  bool away = false;      // paired, but its person is not in a room
+  bool hasArmed = false;  // a show about the person says what is armed, even when that is nothing
+  std::string armed;      // hi | song | dance, or empty for none
+  int64_t rev = 0;        // the state it was made from: a choice names it back as its basis
   bool operator==(const Show& o) const {
     return kind == o.kind && intent == o.intent && big == o.big && small == o.small && code == o.code &&
-           dim == o.dim && quiet == o.quiet && away == o.away;
+           dim == o.dim && quiet == o.quiet && away == o.away && hasArmed == o.hasArmed && armed == o.armed &&
+           rev == o.rev;
   }
   bool operator!=(const Show& o) const { return !(*this == o); }
 };
@@ -234,6 +238,23 @@ class Reader {
     return false;
   }
 
+  /** null. */
+  bool null() { return literal("null"); }
+
+  /**
+   * A number, read. `whole` says whether it was a whole number small enough
+   * to keep, and only then is `out` set.
+   */
+  bool integer(int64_t& out, bool& whole) {
+    space();
+    const size_t from = i_;
+    if (!number()) return false;
+    const std::string text = s_.substr(from, i_ - from);
+    whole = text.find_first_of(".eE") == std::string::npos && text.size() <= 16;
+    if (whole) out = std::strtoll(text.c_str(), nullptr, 10);
+    return true;
+  }
+
   /** true or false; anything else is not a boolean. */
   bool boolean(bool& out) {
     if (literal("true")) { out = true; return true; }
@@ -324,13 +345,16 @@ class Reader {
 
 }  // namespace json
 
-/** A frame from the relay: its type, and the show or the reason it carries. */
+/** A frame from the relay: its type, and the show, the reason, the answer or the secret it carries. */
 struct Frame {
   std::string t;
   bool hasShow = false;
   Show show;
   std::string why;
-  std::string secret;  // {t:'paired'}: the pairing's secret, kept in RAM only
+  bool hasOk = false;      // {t:'set', ok:false, why}: the relay refused a choice
+  bool ok = true;
+  bool hasSecret = false;  // {t:'paired', secret}: given on YES, kept in RAM only
+  std::string secret;
 };
 
 /**
@@ -350,7 +374,16 @@ inline bool readFrame(const std::string& text, Frame& f) {
   const bool ok = r.object([&](const std::string& key) {
     if (key == "t") return text_(f.t, 32);
     if (key == "why") return text_(f.why, 64);
-    if (key == "secret") return text_(f.secret, 32);
+    if (key == "ok") {
+      if (!r.peek('t') && !r.peek('f')) return r.skip();
+      f.hasOk = true;
+      return r.boolean(f.ok);
+    }
+    if (key == "secret") {
+      if (!r.peek('"')) return r.skip();
+      f.hasSecret = true;
+      return text_(f.secret, 32);
+    }
     if (key != "show") return r.skip();
     if (!r.peek('{')) return r.skip();
     f.hasShow = true;
@@ -364,8 +397,27 @@ inline bool readFrame(const std::string& text, Frame& f) {
       if (k == "dim") return flag(s.dim);
       if (k == "quiet") return flag(s.quiet);
       if (k == "away") return flag(s.away);
+      if (k == "armed") {
+        // null says "nothing armed", which is not the same as not saying.
+        if (r.peek('n')) {
+          s.hasArmed = true;
+          s.armed.clear();
+          return r.null();
+        }
+        if (!r.peek('"')) return r.skip();
+        s.hasArmed = true;
+        return text_(s.armed, 16);
+      }
+      if (k == "rev") {
+        int64_t v = 0;
+        bool whole = false;
+        if (!r.integer(v, whole)) return r.skip();
+        s.rev = whole ? v : 0;
+        return true;
+      }
       return r.skip();
     });
+    if (s.kind.empty()) s.kind = "off";
     f.show = s;
     return read;
   });
