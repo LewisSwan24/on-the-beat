@@ -3,3 +3,5 @@ dist/
 *.log
 .env
 .env.*
+# Instructions for the next session, not product; it quotes him. See CLAUDE.md.
+CLAUDE.md
