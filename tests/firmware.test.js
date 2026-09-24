@@ -1,0 +1,202 @@
+// ON THE BEAT — the wristband's firmware, in front of the real relay.
+//
+// Everything in the firmware that decides something is in
+// firmware/src/band_logic.h, plain C++, so it is built here with this
+// machine's own compiler: it runs its own checks, then the frames it sends
+// go to a real relay, and every frame the relay sends back is read by it.
+// None of this needs a wristband. The hardware round it — screen, button,
+// Wi-Fi — is only built by PlatformIO. With no C++ compiler here these say so
+// and skip.
+
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomBytes } from 'node:crypto';
+import WebSocket from 'ws';
+import { createRelay, WS_PATH } from '../relay/server.js';
+import { HUE } from '../app/copy.js';
+import { codeFrom, pairUrl } from '../app/lib/pairing.js';
+
+const here = fileURLToPath(new URL('..', import.meta.url));
+const dir = mkdtempSync(join(tmpdir(), 'otb-fw-'));
+after(() => rmSync(dir, { recursive: true, force: true }));
+
+/** The logic, built by the first compiler this machine has, under the sanitizers where it can be. */
+function build() {
+  const out = join(dir, 'logic');
+  const args = ['-std=c++17', '-Wall', '-Wextra', '-Werror', '-O1', '-g', '-o', out, join(here, 'firmware', 'host', 'logic_test.cpp')];
+  for (const cxx of [process.env.CXX, 'c++', 'g++', 'clang++'].filter(Boolean)) {
+    for (const extra of [['-fsanitize=address,undefined', '-fno-sanitize-recover=all'], []]) {
+      const r = spawnSync(cxx, [...extra, ...args], { encoding: 'utf8' });
+      if (r.error) break;
+      if (r.status === 0) return out;
+      if (!extra.length) throw new Error(cxx + ' could not build the firmware logic:\n' + r.stderr);
+    }
+  }
+  return null;
+}
+
+let bin = null;
+let broken = null;
+try { bin = build(); } catch (e) { broken = e; }
+const skip = !bin && !broken && 'no C++ compiler on this machine';
+const env = { ...process.env, ASAN_OPTIONS: 'detect_leaks=0' };
+
+/** Commands to the firmware logic, one a line, and its one-line answers. */
+function speak(lines) {
+  if (broken) throw broken;
+  const r = spawnSync(bin, ['speak'], { input: lines.join('\n') + '\n', encoding: 'utf8', env });
+  assert.equal(r.status, 0, r.stderr);
+  const out = r.stdout.split('\n').slice(0, -1);
+  assert.equal(out.length, lines.length, r.stdout);
+  return out;
+}
+
+/** A socket, every frame it was sent, and a way to wait until the latest of a type fits. */
+function open(port, protocol) {
+  const ws = new WebSocket('ws://127.0.0.1:' + port + WS_PATH, protocol ? [protocol] : undefined);
+  const s = { ws, frames: [], last: {}, waiters: new Set() };
+  ws.on('message', (data) => {
+    const text = String(data);
+    s.frames.push(text);
+    const m = JSON.parse(text);
+    s.last[m.t] = m;
+    for (const w of [...s.waiters]) w();
+  });
+  s.send = (m) => ws.send(typeof m === 'string' ? m : JSON.stringify(m));
+  s.until = (t, fits = () => true, ms = 3000) => new Promise((resolve, reject) => {
+    const check = () => {
+      const m = s.last[t];
+      if (!m || !fits(m)) return;
+      clearTimeout(timer);
+      s.waiters.delete(check);
+      resolve(m);
+    };
+    const timer = setTimeout(() => { s.waiters.delete(check); reject(new Error('no ' + t + ' that fits; last ' + JSON.stringify(s.last[t]))); }, ms);
+    s.waiters.add(check);
+    check();
+  });
+  return new Promise((resolve, reject) => { ws.once('open', () => resolve(s)); ws.once('error', reject); });
+}
+
+async function phone(port, venue) {
+  const p = await open(port);
+  p.send({ t: 'join', venue, me: randomBytes(16).toString('hex') });
+  await p.until('view');
+  return p;
+}
+
+test('the wristband logic passes its own checks', { skip }, () => {
+  if (broken) throw broken;
+  const r = spawnSync(bin, [], { encoding: 'utf8', env });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /^ok: \d+ checks/);
+});
+
+test('the colours on the wrist are the colours on the phone', { skip }, () => {
+  const [hues] = speak(['hues']);
+  const phone = Object.fromEntries(Object.entries(HUE).map(([id, h]) => [id, { c: h.c.toUpperCase(), g: h.g.toUpperCase() }]));
+  assert.deepEqual(JSON.parse(hues), phone);
+});
+
+test('the code a wristband draws opens the app on its own four letters', { skip }, () => {
+  const [tunnel, lan, wrong] = speak(['relay https://abc-def.trycloudflare.com/', 'relay ws://192.168.1.20:8790', 'relay ftp://x.example']).map((l) => JSON.parse(l));
+  assert.deepEqual(tunnel, { ok: true, origin: 'https://abc-def.trycloudflare.com' }, 'the address npm run tunnel prints');
+  assert.deepEqual(lan, { ok: true, origin: 'http://192.168.1.20:8790' });
+  assert.equal(wrong.ok, false);
+  const [a, b] = speak(['pairurl ' + tunnel.origin + ' KXRT', 'pairurl ' + lan.origin + ' HMNP']);
+  assert.equal(a, pairUrl(tunnel.origin, 'KXRT'), 'the same address the stand-in draws');
+  assert.equal(codeFrom(a), 'KXRT', 'and the app reads its letters out of it');
+  assert.equal(codeFrom(b), 'HMNP');
+});
+
+// Accents, quotes, a backslash, a script the fonts cannot draw, and a guitar
+// the relay's sixteen-character cut splits in half.
+const PICK = 'Rós "Q" \\ 晴天 x🎸 Don’t';
+
+test('what the firmware says, the relay takes; what the relay says, the firmware reads as it was meant', { skip }, async () => {
+  const relay = await createRelay({ port: 0, host: '127.0.0.1', root: dir });
+  const socks = [];
+  try {
+    const [id] = speak(['id']);
+    assert.match(id, /^[a-f0-9]{32}$/, 'a fresh id is 128 random bits, in the form the relay takes');
+    const [hello, ping, low, hold] = speak(['hello ' + id + ' 62', 'ping', 'battery 12', 'hold']);
+
+    // It opens the socket the way arduinoWebSockets does: asking for its "arduino" subprotocol.
+    const band = await open(relay.port, 'arduino');
+    socks.push(band);
+    band.send(hello);
+    const { show: { code } } = await band.until('show', (m) => m.show.kind === 'pairing');
+
+    const ana = await phone(relay.port, 'firmware-room');
+    const ben = await phone(relay.port, 'firmware-room');
+    socks.push(ana, ben);
+    ana.send({ t: 'pair', code });
+    assert.equal((await ana.until('paired')).band, id, 'paired to the id the firmware made');
+    await band.until('show', (m) => m.show.kind === 'test');
+    await ana.until('view', (m) => m.view.me.wristband?.battery === 62 && m.view.me.wristband.live);
+
+    ana.send({ t: 'arm', intent: 'hi' });
+    relay.tickBands(Date.now() + 1000);
+    await band.until('show', (m) => m.show.kind === 'hi');
+    ana.send({ t: 'pick', track: PICK });
+    ana.send({ t: 'arm', intent: 'song' });
+    await band.until('show', (m) => m.show.kind === 'song');
+    ana.send({ t: 'arm', intent: 'dance' });
+    await band.until('show', (m) => m.show.kind === 'dance');
+
+    band.send(ping);
+    await band.until('pong');
+    band.send(low);
+    await ana.until('view', (m) => m.view.me.wristband?.battery === 12);
+    await band.until('show', (m) => m.show.kind === 'dance' && m.show.dim);
+
+    ana.send({ t: 'arm', intent: 'hi' });
+    ben.send({ t: 'arm', intent: 'hi' });
+    const toBen = (await ana.until('view', (m) => m.view.near.length === 1)).view.near[0].handle;
+    const toAna = (await ben.until('view', (m) => m.view.near.length === 1)).view.near[0].handle;
+    ana.send({ t: 'wave', handle: toBen });
+    ben.send({ t: 'wave', handle: toAna });
+    const meet = await band.until('show', (m) => m.show.kind === 'meet');
+    const [match] = (await ana.until('view', (m) => m.view.matches.length === 1)).view.matches;
+    assert.equal(meet.show.big, String(match.number), 'the meeting number on the wrist is the match');
+
+    band.send(hold);
+    await ana.until('view', (m) => m.view.me.invisible);
+    await ben.until('view', (m) => m.view.near.length === 0);
+    await band.until('show', (m) => m.show.kind === 'off' && m.show.quiet);
+
+    // The same id again, as after a Wi-Fi blip: the same wristband, still paired.
+    const back = await open(relay.port, 'arduino');
+    socks.push(back);
+    back.send(hello);
+    assert.equal((await back.until('show')).show.kind, 'off', 'still paired, still NOT NOW — not new letters');
+
+    // Every frame the relay sent the wristband, read back by the firmware.
+    const read = speak(band.frames.map((f) => 'show ' + f)).map((l) => JSON.parse(l));
+    const kinds = new Set();
+    band.frames.forEach((text, i) => {
+      const m = JSON.parse(text);
+      if (m.t !== 'show') { assert.equal(read[i], null, text); return; }
+      const s = m.show;
+      kinds.add(s.kind);
+      const { light, words, ...got } = read[i];
+      assert.deepEqual(got, {
+        kind: s.kind, intent: s.intent ?? '', big: s.big ?? '', small: (s.small ?? '').toWellFormed(), code: s.code ?? '',
+        dim: !!s.dim, quiet: !!s.quiet, lit: ['hi', 'song', 'dance', 'meet'].includes(s.kind) && !!HUE[s.intent],
+      }, text);
+      assert.equal(light > 0, s.kind !== 'off', 'dark only when the relay says off: ' + text);
+      if (s.kind === 'pairing') assert.equal(words.big, s.code);
+      if (['hi', 'dance', 'meet'].includes(s.kind)) assert.deepEqual(words, { big: s.big, small: s.small.toUpperCase() }, text);
+      if (s.kind === 'song') assert.deepEqual(words, { big: 'FIRST SONG?', small: 'ROS "Q" \\ X...' }, "the pick, in the letters the screen's font has");
+    });
+    assert.deepEqual([...kinds].sort(), ['dance', 'hi', 'meet', 'off', 'pairing', 'song', 'test'], 'every kind of show was read');
+  } finally {
+    for (const s of socks) s.ws.terminate();
+    await relay.close();
+  }
+});

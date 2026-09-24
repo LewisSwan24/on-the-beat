@@ -104,14 +104,16 @@ never becomes a match.
     to the night before.
   - `public/sw.js`: keeps the shell so the app opens in a venue with no
     signal. It never keeps the socket, the shows or the clips.
+- **`firmware/`** — the wristband itself, an M5StickC Plus on a strap, built
+  with PlatformIO. See The wristband's firmware, below.
 
 ## The wristband
 
 Revision 6 of the canvas puts a wristband beside the phone: an M5StickC on a
 strap that lights in the colour of the card you armed, so the phone can go
-back in a pocket. Until one is in hand, **`/band` is a stand-in** that speaks
-exactly the messages the firmware will — open it in a second browser, or on a
-second phone strapped to a wrist.
+back in a pocket. Its firmware is in `firmware/` (below), and **`/band` is a
+stand-in** that speaks exactly the same messages — open it in a second browser,
+or on a second phone strapped to a wrist, when there is no wristband to hand.
 
 - **Pairing.** A wristband nobody has claimed shows four letters from
   `ABCDEFGHJKMNPQRSTUVWXYZ` — no I, L or O — under a QR code of an address:
@@ -152,6 +154,50 @@ second phone strapped to a wrist.
 - **After a relay restart** everything is forgotten, and the phone can be back
   before its wristband. The phone's claim by id is held, and the wristband
   comes back already paired.
+
+## The wristband's firmware
+
+`firmware/` is a PlatformIO project for the M5StickC Plus and Plus2 (M5Unified
+tells them apart as it starts; the first M5StickC works too, drawn smaller). It
+speaks exactly what `/band` speaks, on the same clock: it says it is a wristband
+with an id it made once and keeps, shows whatever the relay tells it to, asks
+the relay every two seconds and takes six of silence as a dead socket. A press
+wakes it for three seconds; a one-second hold is NOT NOW.
+
+```
+cd firmware
+pio run -t upload       # build it and flash it over USB
+pio device monitor      # its console: ssid, pass, relay, show, forget
+```
+
+Tell it the venue's Wi-Fi and the relay at the console — `relay` takes the
+address `npm run tunnel` prints — or copy `src/secrets.example.h` to
+`src/secrets.h`, which git ignores, to build them in. What is typed is kept
+across restarts, which matters: a quick tunnel's address changes every run.
+
+- **Everything that decides anything is in `src/band_logic.h`**, plain C++ with
+  no hardware in it; `src/main.cpp` is only the screen, the button, the
+  battery, Wi-Fi and the socket. `npm test` builds that logic with the
+  machine's own compiler, under the address and undefined-behaviour sanitizers
+  where it can, and `tests/firmware.test.js` puts it in front of the real
+  relay: the frames it sends pair it, report its battery and make its person
+  invisible, and every frame the relay sends it is read back as the relay meant
+  it. With no C++ compiler those tests skip.
+- **It goes dark rather than lie.** A hold is dark at once, before the relay
+  has heard it, and is sent as soon as there is a relay to send it to. And a
+  relay out of reach for ten seconds is no longer believed: the person may have
+  gone invisible from their phone since, and a wrist left blue would say
+  otherwise. A press then says NO SIGNAL, and whether it is the Wi-Fi or the
+  relay.
+- **Its id is 128 random bits, not the chip's MAC.** A phone can claim a
+  wristband by id after a relay restart, so an id anyone could read off the air
+  would let them.
+- **The pairing code is as wide as the screen allows**, with four light modules
+  round it. A tunnel address is a version 4 code, and the canvas's 115 pixels
+  would make each module two pixels — too small to read off a screen this size.
+- **Its fonts are ASCII.** Curly quotes, dashes and Latin accents are folded to
+  it; a pick in a script the fonts cannot draw shows no second line rather than
+  boxes. The phone still shows it whole.
 
 ## Where this differs from the canvas, on purpose
 
@@ -224,15 +270,24 @@ everyone's lists, and a block cuts both directions and outlives leaving.
 
 Still open here: the clip bearer links below; the fact that the pairing code is a
 bearer token visible on the wristband's screen — first to type it pairs, so
-a paired wristband flashes white and can be unpaired.
+a paired wristband flashes white and can be unpaired; and the firmware's https
+connection, which is encrypted but does not check the relay's certificate unless
+`OTB_RELAY_CA` is built in, so on a hostile network something posing as the
+relay could drive what a wrist shows.
 
 ## What is not done
 
 - **Proximity.** Wristbands pair and light, but nothing measures who is near
   whom: every person is still `in this room`. Nearness wants ESP-NOW between
   wristbands, which wants the hardware.
-- **No firmware.** `/band` stands in for the M5StickC and speaks the same
-  messages; the device itself is not written.
+- **The firmware has not run on a wristband.** Its logic has run against the
+  real relay (above), and the whole firmware compiles and links for the ESP32
+  with the packages PlatformIO resolves for `platformio.ini` — espressif32
+  6.13.0 (Arduino-ESP32 2.0.17), M5Unified 0.2.23, M5GFX 0.2.30, WebSockets
+  2.7.3 — at about 1.2 MB of the 3 MB app partition. That build was a script
+  replaying PlatformIO's steps, not PlatformIO itself, and nothing has been
+  flashed or worn. Flashing one, then pairing it from a real phone, is the next
+  check.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was
@@ -247,4 +302,3 @@ a paired wristband flashes white and can be unpaired.
   MediaRecorder path and sent it; a second phone found it on the floor and
   loaded a valid WebM (148 KB). A real phone camera — and Safari's MP4
   recorder — is the next check.
-- **Nothing is committed.** This folder is not a git repository yet.
