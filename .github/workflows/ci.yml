@@ -1,0 +1,81 @@
+# ON THE BEAT — every push to main and every pull request:
+#
+#   test      npm test: the Vite build, then every test. The runner has a C++
+#             compiler, so the firmware's logic is built and held against the
+#             real relay here rather than skipped.
+#   firmware  the wristband's firmware, built by PlatformIO for both envs, the
+#             ESP32 (`m5stickc`) and the StickS3 (`m5sticks3`), and kept as
+#             downloads: each app on its own, and one image each that flashes
+#             whole at 0x0 (the ESP32's bootloader sits at 0x1000 inside it,
+#             the S3's at 0x0).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: firmware/platformio.ini
+      - name: Keep PlatformIO's toolchain and libraries between runs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            firmware/.pio/libdeps
+          key: platformio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+      - run: pip install platformio
+      - name: Build both wristbands
+        run: pio run -d firmware -e m5stickc -e m5sticks3
+      - name: One image each, to flash whole at 0x0
+        run: |
+          esptool=~/.platformio/packages/tool-esptoolpy/esptool.py
+          app0=~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
+          c=firmware/.pio/build/m5stickc
+          python $esptool --chip esp32 merge_bin \
+            -o "$c/otb-wristband-full.bin" --flash_mode dio --flash_freq 40m --flash_size 4MB \
+            0x1000 "$c/bootloader.bin" 0x8000 "$c/partitions.bin" 0xe000 $app0 0x10000 "$c/firmware.bin"
+          s=firmware/.pio/build/m5sticks3
+          python $esptool --chip esp32s3 merge_bin \
+            -o "$s/otb-wristband-s3-full.bin" --flash_mode keep --flash_freq keep --flash_size keep \
+            0x0 "$s/bootloader.bin" 0x8000 "$s/partitions.bin" 0xe000 $app0 0x10000 "$s/firmware.bin"
+          ls -l "$c"/*.bin "$s"/*.bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: otb-wristband-${{ github.sha }}
+          path: |
+            firmware/.pio/build/m5stickc/otb-wristband-full.bin
+            firmware/.pio/build/m5stickc/firmware.bin
+            firmware/.pio/build/m5sticks3/otb-wristband-s3-full.bin
+            firmware/.pio/build/m5sticks3/firmware.bin
+          if-no-files-found: error

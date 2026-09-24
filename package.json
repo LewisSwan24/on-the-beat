@@ -1,0 +1,26 @@
+{
+  "name": "on-the-beat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ON THE BEAT: get talking to a stranger at a live gig, then get out of the way.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "npm run build && node relay/server.js",
+    "relay": "node relay/server.js",
+    "test": "npm run build && node --test",
+    "tunnel": "cloudflared tunnel --url http://localhost:8790",
+    "icons": "node scripts/icons.mjs"
+  },
+  "dependencies": {
+    "jsqr": "file:vendor/jsqr-1.4.0.tgz",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.3.0"
+  }
+}

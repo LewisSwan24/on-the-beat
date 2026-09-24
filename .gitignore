@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+# Instructions for the next session, not product; it quotes him. See CLAUDE.md.
+CLAUDE.md
+# The wristband's build, and the Wi-Fi password someone built into it.
+firmware/.pio/
+firmware/src/secrets.h

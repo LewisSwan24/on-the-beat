@@ -1,0 +1,38 @@
+[
+  {
+    "id": "roundhouse-bruno-mars",
+    "act": "BRUNO MARS",
+    "venue": "The Roundhouse, Camden",
+    "doors": "19:00", "support": "20:00", "break": "20:45", "headline": "21:30", "end": "23:00",
+    "spots": [
+      "by the merch stand — it's the quietest corner",
+      "at the end of the long bar, by the water",
+      "by the cloakroom on the lower floor"
+    ],
+    "setlist": ["Locked Out of Heaven", "Treasure", "24K Magic", "Grenade", "That's What I Like", "Just the Way You Are"]
+  },
+  {
+    "id": "moth-club-kayo-lane",
+    "act": "KAYO LANE",
+    "venue": "Moth Club, Hackney",
+    "doors": "19:30", "support": "20:15", "break": "20:50", "headline": "21:00", "end": "22:45",
+    "spots": ["by the photo booth", "at the far end of the bar", "by the cloakroom"],
+    "setlist": []
+  },
+  {
+    "id": "electric-ballroom-the-long-weekend",
+    "act": "THE LONG WEEKEND",
+    "venue": "Electric Ballroom, Camden",
+    "doors": "19:00", "support": "20:00", "break": "20:40", "headline": "21:15", "end": "23:00",
+    "spots": ["by the merch table", "at the bar nearest the door", "by the cloakroom"],
+    "setlist": []
+  },
+  {
+    "id": "earth-sable-court",
+    "act": "SABLE COURT",
+    "venue": "EartH, Dalston",
+    "doors": "18:45", "support": "19:45", "break": "20:30", "headline": "21:00", "end": "22:40",
+    "spots": ["by the merch stand", "at the end of the upstairs bar", "by the cloakroom"],
+    "setlist": []
+  }
+]
