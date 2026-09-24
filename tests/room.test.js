@@ -242,3 +242,16 @@ test('a person made again never reuses a rev', () => {
   room.join('ana');
   assert.ok(room.viewFor('ana').me.rev > before);
 });
+
+test("a person's rev counts their own changes only: it says nothing about anyone else", () => {
+  const room = createRoom({ salt: 'test' });
+  room.join('ana');
+  const before = room.viewFor('ana').me.rev;
+  room.join('ben');
+  room.arm('ben', 'hi');
+  room.setInvisible('ben', true);
+  room.leave('ben');
+  room.join('cai');
+  room.arm('ana', 'song');
+  assert.equal(room.viewFor('ana').me.rev, before + 1, 'one change of her own is one step, whoever else came, went or changed');
+});

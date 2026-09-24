@@ -60,9 +60,11 @@ export function createRoom({
   const likes = new Set();    // 'a>b': a liked b's pick (FIRST SONG?)
   const dances = new Map();   // 'a>b' -> clip ref: a danced back to b (LET'S DANCE!)
   const matches = new Map();  // pairKey -> match
+  // id -> what the room keeps of someone who left tonight: their last rev, so a
+  // person made again never reuses one. Outlives leave(), as blocks do.
+  const tombs = new Map();
   const reports = [];
   let nextMatch = 1;
-  let nextRev = 0;            // one counter for the room, so a person made again never reuses a rev
 
   const handle = (viewer, target) =>
     createHash('sha256').update(salt + '|' + viewer + '|' + target).digest('hex').slice(0, 10);
@@ -84,7 +86,7 @@ export function createRoom({
       people.set(id, {
         id, name: '', contact: '', band: BANDS.includes(band) ? band : BANDS[0],
         armed: null, invisible: false, pick: null, clip: null, joinedAt: now(),
-        rev: ++nextRev, seq: 0, by: 'relay',
+        rev: (tombs.get(id)?.rev ?? 0) + 1, seq: 0, by: 'relay',
       });
     }
     return people.get(id);
@@ -92,15 +94,21 @@ export function createRoom({
 
   /** Leaving the room ends broadcasting. Matches, yeses and blocks stay for the night. */
   function leave(id) {
+    const p = people.get(id);
+    if (p) tombs.set(id, { rev: p.rev });
     people.delete(id);
   }
 
-  /** Every change to armed or invisible, from anywhere, moves rev; `by` says who. */
+  /**
+   * Every change to armed or invisible, from anywhere, moves rev; `by` says who.
+   * Each person counts only their own changes, so a rev says nothing about
+   * anyone else in the room.
+   */
   function changed(p, armed, invisible, by) {
     if (armed === p.armed && invisible === p.invisible) return;
     p.armed = armed;
     p.invisible = invisible;
-    p.rev = ++nextRev;
+    p.rev += 1;
     p.by = by;
   }
 
