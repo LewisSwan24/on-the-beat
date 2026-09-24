@@ -1,0 +1,307 @@
+{
+  "key": "000102030405060708090a0b0c0d0e0f",
+  "shows": {
+    "OFF": { "kind": "off", "battery": 62, "armed": null },
+    "HI": { "kind": "hi", "intent": "hi", "big": "HI :)", "small": "blue means hello", "dim": false, "armed": "hi" },
+    "SONG": { "kind": "song", "intent": "song", "big": "FIRST SONG?", "small": "Treasure", "dim": false, "armed": "song" },
+    "QUIET": { "kind": "off", "battery": 62, "quiet": true, "armed": null },
+    "MEET": { "kind": "meet", "intent": "song", "big": "27", "small": "MEET", "dim": false, "armed": "hi" },
+    "PAIRING": { "kind": "pairing", "code": "KXRT" },
+    "CHECK": { "kind": "check", "big": "27" },
+    "WAITING": { "kind": "waiting" },
+    "AWAY": { "kind": "off", "battery": 62, "away": true },
+    "TEST": { "kind": "test" }
+  },
+  "cases": [
+    {
+      "name": "the hello says v2 and carries the key, and the id is the key's hash",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }], "face": { "light": "LIGHT_OFF" } }
+      ]
+    },
+    {
+      "name": "a paired wristband says its secret in every hello, and forgets it when it is shown letters",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "10", "frame": { "t": "paired", "secret": "5ec2e75ec2e75ec2e75ec2e75ec2e75e" } },
+        { "at": "20", "link": "down" },
+        { "at": "30", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "secret": "5ec2e75ec2e75ec2e75ec2e75ec2e75e", "battery": 62 }] },
+        { "at": "40", "show": "PAIRING", "face": { "big": "KXRT", "code": "KXRT", "light": "LIGHT_PAIR" } },
+        { "at": "50", "link": "down" },
+        { "at": "60", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] }
+      ]
+    },
+    {
+      "name": "KEY1 let go at 1.0 s and 1.4 s is a press; at HOLD_MS it is NOT NOW, dark at once",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "OFF", "rev": 1, "face": { "light": "LIGHT_OFF" } },
+        { "at": "1000", "key1": "down" },
+        { "at": "1000+HOLD_MS-500", "key1": "up", "face": { "big": "READY", "small": "62%", "light": "LIGHT_AWAKE" } },
+        { "at": "10000", "key1": "down" },
+        { "at": "10000+HOLD_MS-100", "key1": "up", "face": { "big": "READY", "light": "LIGHT_AWAKE" } },
+        { "at": "20000", "key1": "down" },
+        { "at": "20000+HOLD_MS", "key1": "up", "sent": [{ "t": "hold" }], "face": { "big": "", "light": "LIGHT_OFF" } }
+      ]
+    },
+    {
+      "name": "held from BAR_MS, KEEP HOLDING and a bar; a dark face lights only to LIGHT_AWAKE, a card keeps its light",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "OFF", "rev": 1 },
+        { "at": "1000", "key1": "down", "face": { "small": "", "bar": -1, "light": "LIGHT_OFF" } },
+        { "at": "1000+BAR_MS-1", "face": { "small": "", "bar": -1, "light": "LIGHT_OFF" } },
+        { "at": "1000+BAR_MS", "face": { "big": "", "small": "KEEP HOLDING", "bar": 20, "light": "LIGHT_AWAKE" } },
+        { "at": "1000+HOLD_MS-1", "face": { "small": "KEEP HOLDING", "bar": 99 } },
+        { "at": "1000+HOLD_MS-1", "key1": "up", "face": { "big": "READY", "small": "62%", "bar": -1, "light": "LIGHT_AWAKE" } },
+        { "at": "5000", "show": "HI", "rev": 2 },
+        { "at": "6000", "key1": "down" },
+        { "at": "6000+BAR_MS", "face": { "big": "HI :)", "small": "KEEP HOLDING", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "6000+BAR_MS", "key1": "up", "face": { "small": "BLUE MEANS HELLO", "bar": -1 } }
+      ]
+    },
+    {
+      "name": "NOT NOW with no relay is dark, rides in the next hello, and a press then says NOT NOW",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "key1": "down" },
+        { "at": "HOLD_MS", "face": { "light": "LIGHT_OFF" } },
+        { "at": "HOLD_MS", "key1": "up", "face": { "light": "LIGHT_OFF" } },
+        { "at": "5000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "quiet": true, "battery": 62 }] },
+        { "at": "5100", "show": "QUIET", "rev": 2 },
+        { "at": "6000", "press": 1, "face": { "big": "NOT NOW", "small": "62%", "field": "black", "light": "LIGHT_AWAKE" } }
+      ]
+    },
+    {
+      "name": "the first KEY2 press only looks; no second press within CHOOSE_MS and the look is dropped",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2, "face": { "big": "HI :)", "small": "SIDE TO CHANGE", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "1100+CHOOSE_MS-1", "face": { "small": "SIDE TO CHANGE" } },
+        { "at": "1100+CHOOSE_MS", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "field": "hi" } }
+      ]
+    },
+    {
+      "name": "each press moves the preview after what is armed; COMMIT_MS later it is sent; a newer show saying so is SET",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2, "face": { "small": "SIDE TO CHANGE" } },
+        { "at": "2000", "press": 2, "face": { "big": "FIRST SONG?", "small": "SIDE: NEXT", "field": "black", "ink": "song", "light": "LIGHT_AWAKE" } },
+        { "at": "3000", "press": 2, "face": { "big": "LET'S DANCE!", "ink": "dance" } },
+        { "at": "4000", "press": 2, "face": { "big": "OFF", "small": "SIDE: NEXT", "ink": "text2" } },
+        { "at": "4100+COMMIT_MS-1", "face": { "big": "OFF", "small": "SIDE: NEXT" } },
+        { "at": "4100+COMMIT_MS", "sent": [{ "t": "set", "intent": null, "basis": 3 }], "face": { "big": "OFF", "small": "SENDING" } },
+        { "at": "7500", "show": "OFF", "rev": 4, "face": { "big": "READY", "small": "SET", "light": "LIGHT_AWAKE" } },
+        { "at": "7500+RESULT_MS", "face": { "big": "", "light": "LIGHT_OFF" } }
+      ]
+    },
+    {
+      "name": "a KEY2 hold at rest only looks; in a choice it sends at once; presses while sending are ignored",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "key2": "down" },
+        { "at": "1000+HOLD_MS", "face": { "big": "HI :)", "small": "SIDE TO CHANGE" } },
+        { "at": "1000+HOLD_MS", "key2": "up" },
+        { "at": "3000", "press": 2, "face": { "big": "FIRST SONG?" } },
+        { "at": "4000", "key2": "down" },
+        { "at": "4000+HOLD_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }], "face": { "big": "FIRST SONG?", "small": "SENDING" } },
+        { "at": "4000+HOLD_MS", "key2": "up" },
+        { "at": "4000+HOLD_MS+100", "press": 2, "face": { "small": "SENDING" } }
+      ]
+    },
+    {
+      "name": "a preview equal to what is armed sends nothing",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "OFF", "rev": 5 },
+        { "at": "1000", "press": 2, "face": { "big": "READY", "small": "SIDE TO CHANGE" } },
+        { "at": "2000", "press": 2, "face": { "big": "HI :)" } },
+        { "at": "2500", "press": 2, "face": { "big": "FIRST SONG?" } },
+        { "at": "3000", "press": 2, "face": { "big": "LET'S DANCE!" } },
+        { "at": "3500", "press": 2, "face": { "big": "OFF" } },
+        { "at": "3600+COMMIT_MS", "face": { "big": "READY", "small": "62%" } }
+      ]
+    },
+    {
+      "name": "from NOT NOW the first step is HI, only a KEY2 hold sends it, and two stray presses send nothing",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "QUIET", "rev": 6 },
+        { "at": "1000", "press": 2, "face": { "big": "NOT NOW", "small": "SIDE TO CHANGE", "light": "LIGHT_AWAKE" } },
+        { "at": "2000", "press": 2, "face": { "big": "HI :)", "small": "HOLD SIDE TO SHOW", "field": "black", "ink": "hi" } },
+        { "at": "2100+COMMIT_MS", "face": { "small": "HOLD SIDE TO SHOW" } },
+        { "at": "2100+CHOOSE_MS", "face": { "light": "LIGHT_OFF" } },
+        { "at": "10000", "press": 2, "face": { "big": "NOT NOW" } },
+        { "at": "11000", "press": 2, "face": { "big": "HI :)", "small": "HOLD SIDE TO SHOW" } },
+        { "at": "12000", "key2": "down" },
+        { "at": "12000+HOLD_MS", "sent": [{ "t": "set", "intent": "hi", "basis": 6 }], "face": { "big": "HI :)", "small": "SENDING" } },
+        { "at": "12000+HOLD_MS", "key2": "up" },
+        { "at": "14000", "show": "HI", "rev": 7, "face": { "big": "HI :)", "small": "SET", "field": "hi" } }
+      ]
+    },
+    {
+      "name": "KEY1 down two seconds into a choice freezes it: nothing is sent but the hold",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2, "face": { "big": "FIRST SONG?" } },
+        { "at": "4100", "key1": "down" },
+        { "at": "2100+COMMIT_MS", "face": { "big": "FIRST SONG?" } },
+        { "at": "4100+HOLD_MS", "sent": [{ "t": "hold" }], "face": { "light": "LIGHT_OFF" } },
+        { "at": "4100+HOLD_MS", "key1": "up", "face": { "light": "LIGHT_OFF" } }
+      ]
+    },
+    {
+      "name": "a KEY1 press during a choice cancels it",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2 },
+        { "at": "2500", "press": 1, "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "field": "hi" } },
+        { "at": "2100+COMMIT_MS", "face": { "small": "BLUE MEANS HELLO" } }
+      ]
+    },
+    {
+      "name": "a show with a new rev, or one not about the person, cancels a choice",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2, "face": { "big": "FIRST SONG?" } },
+        { "at": "2500", "show": "HI", "rev": 4, "face": { "small": "BLUE MEANS HELLO" } },
+        { "at": "2100+COMMIT_MS" },
+        { "at": "6000", "press": 2 },
+        { "at": "7000", "press": 2, "face": { "big": "FIRST SONG?" } },
+        { "at": "7500", "show": "PAIRING", "face": { "big": "KXRT", "light": "LIGHT_PAIR" } },
+        { "at": "7100+COMMIT_MS", "face": { "big": "KXRT" } }
+      ]
+    },
+    {
+      "name": "offline, LOOK says NO SIGNAL and presses change nothing",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "link": "down" },
+        { "at": "2000", "press": 2, "face": { "big": "NO SIGNAL", "small": "NO RELAY - 62%" } },
+        { "at": "3000", "press": 2, "face": { "big": "NO SIGNAL" } },
+        { "at": "3100+COMMIT_MS", "face": { "big": "NO SIGNAL" } },
+        { "at": "2100+CHOOSE_MS", "face": { "big": "HI :)" } },
+        { "at": "9000", "wifi": false },
+        { "at": "9500", "press": 2, "face": { "big": "NO SIGNAL", "small": "NO WI-FI - 62%" } }
+      ]
+    },
+    {
+      "name": "the relay refusing a stale basis is CHANGED; any other refusal is NOT SENT at once",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2 },
+        { "at": "2100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
+        { "at": "5500", "frame": { "t": "set", "ok": false, "why": "changed" }, "face": { "big": "HI :)", "small": "CHANGED", "field": "hi" } },
+        { "at": "5500+RESULT_MS", "face": { "small": "BLUE MEANS HELLO" } },
+        { "at": "10000", "press": 2 },
+        { "at": "11000", "press": 2 },
+        { "at": "11100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
+        { "at": "14500", "frame": { "t": "set", "ok": false, "why": "too fast" }, "face": { "small": "NOT SENT" } }
+      ]
+    },
+    {
+      "name": "nothing back in CONFIRM_MS is NOT SENT: the socket is dropped, and the next connection's show is the truth",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2 },
+        { "at": "2100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
+        { "at": "2100+COMMIT_MS+CONFIRM_MS-1", "face": { "small": "SENDING" } },
+        { "at": "2100+COMMIT_MS+CONFIRM_MS", "sent": ["DROP"], "face": { "big": "HI :)", "small": "NOT SENT" } },
+        { "at": "16000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "16100", "show": "SONG", "rev": 4, "face": { "big": "FIRST SONG?", "small": "NOT SENT", "field": "song" } },
+        { "at": "15100+RESULT_MS", "face": { "small": "TREASURE" } }
+      ]
+    },
+    {
+      "name": "NOT SENT leaving NOT NOW holds NOT NOW again, in the next hello",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "QUIET", "rev": 6 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2 },
+        { "at": "3000", "key2": "down" },
+        { "at": "3000+HOLD_MS", "sent": [{ "t": "set", "intent": "hi", "basis": 6 }] },
+        { "at": "3000+HOLD_MS", "key2": "up" },
+        { "at": "4500+CONFIRM_MS", "sent": ["DROP"], "face": { "big": "NOT NOW", "small": "NOT SENT", "light": "LIGHT_AWAKE" } },
+        { "at": "15000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "quiet": true, "battery": 62 }] }
+      ]
+    },
+    {
+      "name": "a KEY1 hold while sending is NOT NOW and drops the wait: no SET",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2 },
+        { "at": "2100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
+        { "at": "5200", "key1": "down" },
+        { "at": "5200+HOLD_MS", "sent": [{ "t": "hold" }], "face": { "light": "LIGHT_OFF" } },
+        { "at": "5200+HOLD_MS", "key1": "up" },
+        { "at": "7000", "show": "SONG", "rev": 4, "face": { "small": "", "light": "LIGHT_OFF" } }
+      ]
+    },
+    {
+      "name": "the check, waiting for its owner, and not in a room; KEY2 on them only wakes",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "CHECK", "face": { "big": "27", "small": "ON YOUR PHONE?", "field": "black", "ink": "white", "light": "LIGHT_PAIR" } },
+        { "at": "1000", "press": 2, "face": { "big": "27", "small": "ON YOUR PHONE?" } },
+        { "at": "2000", "show": "WAITING", "face": { "big": "OPEN YOUR PHONE", "small": "OR SWITCH ME OFF", "light": "LIGHT_AWAKE" } },
+        { "at": "3000", "show": "AWAY", "face": { "big": "OPEN YOUR PHONE", "small": "TO COME BACK", "light": "LIGHT_AWAKE" } },
+        { "at": "10000", "face": { "big": "", "light": "LIGHT_OFF" } },
+        { "at": "11000", "press": 1, "face": { "big": "OPEN YOUR PHONE", "small": "TO COME BACK", "light": "LIGHT_AWAKE" } },
+        { "at": "12000", "press": 2, "face": { "small": "TO COME BACK" } },
+        { "at": "13000", "show": "PAIRING", "face": { "big": "KXRT", "code": "KXRT", "light": "LIGHT_PAIR" } },
+        { "at": "14000", "show": "TEST", "face": { "field": "white", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "six seconds unheard drops the socket; ten more and the last show is not believed",
+      "keepAlive": false,
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "DEAF_MS", "face": { "big": "HI :)" } },
+        { "at": "DEAF_MS+1", "sent": ["DROP"], "face": { "big": "HI :)" } },
+        { "at": "DEAF_MS+1+STALE_MS", "face": { "big": "", "light": "LIGHT_OFF" } },
+        { "at": "DEAF_MS+1+STALE_MS", "press": 1, "face": { "big": "NO SIGNAL", "small": "NO RELAY - 62%" } },
+        { "at": "20000", "wifi": false },
+        { "at": "20100", "press": 1, "face": { "small": "NO WI-FI - 62%" } }
+      ]
+    },
+    {
+      "name": "LOOK replaces the meeting number while it lasts",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "face": { "big": "27", "small": "MEET", "field": "song" } },
+        { "at": "1000", "press": 2, "face": { "big": "HI :)", "small": "SIDE TO CHANGE", "field": "hi" } },
+        { "at": "1100+CHOOSE_MS", "face": { "big": "27", "small": "MEET" } }
+      ]
+    }
+  ]
+}
