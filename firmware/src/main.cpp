@@ -10,7 +10,8 @@
 // Everything that decides anything is in band_logic.h, which the tests build
 // and run on a laptop. This file is only the hardware round it: the screen,
 // the button, the battery, Wi-Fi, the socket, and a serial console to say
-// which Wi-Fi and which relay.
+// which Wi-Fi and which relay. The socket has a task of its own, so nothing
+// the network does can hold up the button or the screen.
 
 #include <M5Unified.h>
 #include <Preferences.h>
@@ -18,6 +19,9 @@
 #include <WiFi.h>
 
 #include <algorithm>
+#include <atomic>
+#include <cstring>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -91,72 +95,165 @@ void loadSettings() {
   relayText = setting("relay", OTB_RELAY);
 }
 
-// ---------- the socket ----------
+// ---------- the socket, on a task of its own ----------
+//
+// Connecting can block: five seconds for TCP, and up to two minutes for a TLS
+// handshake that a captive portal never finishes. On the loop, that would
+// freeze the button and the screen — a hold would not go dark, and a face the
+// relay can no longer vouch for would not either. So the socket lives on its
+// own task, and the two talk only through queues: the loop never waits on the
+// network, and only the socket task ever touches the socket.
 
+enum : uint8_t { EV_OPENED, EV_CLOSED, EV_TEXT, EV_HEARD };
+struct Event {
+  uint8_t kind;
+  int16_t battery;  // EV_OPENED: the battery the hello said
+  uint16_t length;  // EV_TEXT: its length; a frame longer than text[] is heard, not read
+  char text[480];
+};
+
+enum : uint8_t { OUT_SEND, OUT_DROP };
+struct Out {
+  uint8_t kind;
+  char text[124];
+};
+
+QueueHandle_t events = nullptr;  // socket task -> loop
+QueueHandle_t outbox = nullptr;  // loop -> socket task
+std::mutex relayLock;            // the loop writes `relay`; the socket task copies it under this
+std::atomic<bool> relayChanged{false};
+std::atomic<int> batteryNow{-1};
+
+void post(uint8_t kind, const uint8_t* text = nullptr, size_t length = 0, int level = -1) {
+  Event e;
+  e.kind = kind;
+  e.battery = static_cast<int16_t>(level);
+  e.length = static_cast<uint16_t>(std::min<size_t>(length, 0xFFFF));
+  if (text && length <= sizeof e.text) memcpy(e.text, text, length);
+  // Waits rather than drops: a show that never arrived would leave the wrist wrong until the next.
+  xQueueSend(events, &e, portMAX_DELAY);
+}
+
+/** Hands the socket task a frame to send, or the socket to drop. False if it could not take it. */
+bool toSocket(uint8_t kind, const std::string& text = "") {
+  Out o;
+  o.kind = kind;
+  const size_t n = std::min(text.size(), sizeof o.text - 1);
+  memcpy(o.text, text.data(), n);
+  o.text[n] = 0;
+  return xQueueSend(outbox, &o, 0) == pdTRUE;
+}
+
+// Runs on the socket task, inside socket_.loop().
 void onSocket(WStype_t type, uint8_t* payload, size_t length) {
-  const uint32_t now = millis();
   switch (type) {
-    case WStype_CONNECTED:
-      // Back after long enough that what it said was no longer shown: wait for it to say it again.
-      if (net.stale(now)) haveShow = false;
-      net.opened(now);
-      socket_.sendTXT(helloFrame(bandId, battery).c_str());
-      batteryReport.reset();
-      if (battery >= 0) batteryReport.sent(battery, now);
-      Serial.printf("on the relay: %s\n", relay.origin.c_str());
-      break;
-    case WStype_DISCONNECTED:
-      if (net.up()) Serial.println("lost the relay");
-      net.closed(now);
-      quiet.closed();
-      break;
-    case WStype_TEXT: {
-      net.heard(now);
-      Frame f;
-      if (!readFrame(std::string(reinterpret_cast<const char*>(payload), length), f)) break;
-      if (f.t == "show" && f.hasShow) {
-        last = f.show;
-        haveShow = true;
-        quiet.shown(last);
-      } else if (f.t == "error") {
-        Serial.printf("the relay says: %s\n", f.why.c_str());
-      }
+    case WStype_CONNECTED: {
+      // First on every connection, before anything the loop has queued.
+      const int level = batteryNow.load();
+      socket_.sendTXT(helloFrame(bandId, level).c_str());
+      post(EV_OPENED, nullptr, 0, level);
       break;
     }
+    case WStype_DISCONNECTED:
+      post(EV_CLOSED);
+      break;
+    case WStype_TEXT:
+      post(EV_TEXT, payload, length);
+      break;
     case WStype_PING:
     case WStype_PONG:
-      net.heard(now);
+      post(EV_HEARD);
       break;
     default:
       break;
   }
 }
 
-void dropRelay() {
-  socket_.disconnect();
-  net.closed(millis());
-  quiet.closed();
+void socketTask(void*) {
+  Relay mine;
+  for (;;) {
+    if (relayChanged.exchange(false)) {
+      socket_.disconnect();
+      {
+        std::lock_guard<std::mutex> hold(relayLock);
+        mine = relay;
+      }
+      if (mine.ok) {
+        if (mine.secure) {
+#ifdef OTB_RELAY_CA
+          socket_.beginSslWithCA(mine.host.c_str(), mine.port, WS_PATH, OTB_RELAY_CA);
+#else
+          // Encrypted, but the relay's certificate is not checked: set OTB_RELAY_CA in secrets.h for that.
+          socket_.beginSSL(mine.host.c_str(), mine.port, WS_PATH);
+#endif
+        } else {
+          socket_.begin(mine.host.c_str(), mine.port, WS_PATH);
+        }
+        socket_.onEvent(onSocket);
+        socket_.setReconnectInterval(RETRY_MS);
+      }
+    }
+    if (mine.ok && WiFi.status() == WL_CONNECTED) socket_.loop();
+    else if (socket_.isConnected()) socket_.disconnect();
+    Out o;
+    while (xQueueReceive(outbox, &o, 0) == pdTRUE) {
+      if (o.kind == OUT_DROP) socket_.disconnect();
+      else if (socket_.isConnected()) socket_.sendTXT(o.text);
+    }
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+}
+
+/** What the socket task has heard since the loop last looked. */
+void drain(uint32_t now) {
+  Event e;
+  while (xQueueReceive(events, &e, 0) == pdTRUE) {
+    switch (e.kind) {
+      case EV_OPENED:
+        // Back after long enough that what it said was no longer shown: wait for it to say it again.
+        if (net.stale(now)) haveShow = false;
+        net.opened(now);
+        batteryReport.reset();
+        if (e.battery >= 0) batteryReport.sent(e.battery, now);
+        Serial.printf("on the relay: %s\n", relay.origin.c_str());
+        break;
+      case EV_CLOSED:
+        if (net.up()) Serial.println("lost the relay");
+        net.closed(now);
+        quiet.closed();
+        break;
+      case EV_TEXT: {
+        net.heard(now);
+        Frame f;
+        if (e.length > sizeof e.text || !readFrame(std::string(e.text, e.length), f)) break;
+        if (f.t == "show" && f.hasShow) {
+          last = f.show;
+          haveShow = true;
+          quiet.shown(last);
+        } else if (f.t == "error") {
+          Serial.printf("the relay says: %s\n", f.why.c_str());
+        }
+        break;
+      }
+      case EV_HEARD:
+        net.heard(now);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 void startRelay() {
-  dropRelay();
-  relay = parseRelay(relayText);
-  if (!relay.ok) {
-    Serial.println("no relay yet. Type:  relay https://<the address npm run tunnel printed>");
-    return;
+  const Relay next = parseRelay(relayText);
+  {
+    std::lock_guard<std::mutex> hold(relayLock);
+    relay = next;
   }
-  if (relay.secure) {
-#ifdef OTB_RELAY_CA
-    socket_.beginSslWithCA(relay.host.c_str(), relay.port, WS_PATH, OTB_RELAY_CA);
-#else
-    // Encrypted, but the relay's certificate is not checked: set OTB_RELAY_CA in secrets.h for that.
-    socket_.beginSSL(relay.host.c_str(), relay.port, WS_PATH);
-#endif
-  } else {
-    socket_.begin(relay.host.c_str(), relay.port, WS_PATH);
-  }
-  socket_.onEvent(onSocket);
-  socket_.setReconnectInterval(RETRY_MS);
+  relayChanged = true;
+  net.closed(millis());
+  quiet.closed();
+  if (!relay.ok) Serial.println("no relay yet. Type:  relay https://<the address npm run tunnel printed>");
 }
 
 void startWifi() {
@@ -378,6 +475,7 @@ void readBattery(uint32_t now) {
   batteryAt = now;
   const int32_t level = M5.Power.getBatteryLevel();
   battery = level >= 0 && level <= 100 ? static_cast<int>(level) : -1;
+  batteryNow = battery;
 }
 
 }  // namespace
@@ -395,11 +493,16 @@ void setup() {
   WiFi.mode(WIFI_STA);
   prefs.begin("otb", false);
   loadSettings();
+  readBattery(millis());
 
   Serial.println("\nON THE BEAT wristband");
   help();
+  events = xQueueCreate(12, sizeof(Event));
+  outbox = xQueueCreate(8, sizeof(Out));
   startWifi();
   startRelay();
+  // On the core the Wi-Fi runs on, with the deep stack a TLS handshake wants.
+  xTaskCreatePinnedToCore(socketTask, "socket", 12288, nullptr, 1, nullptr, 0);
   report();
 }
 
@@ -408,6 +511,7 @@ void loop() {
   const uint32_t now = millis();
   console();
   readBattery(now);
+  drain(now);
 
   switch (button.update(M5.BtnA.isPressed(), now)) {
     case Button::WAKE:
@@ -421,27 +525,24 @@ void loop() {
       break;
   }
 
-  if (WiFi.status() == WL_CONNECTED && relay.ok) socket_.loop();
-  else if (net.up()) dropRelay();
-
   switch (net.tick(now)) {
     case Link::PING:
-      socket_.sendTXT(PING_FRAME);
+      toSocket(OUT_SEND, PING_FRAME);
       break;
     case Link::DROP:
-      Serial.println("the relay went quiet; trying again");
-      dropRelay();
+      // Marked closed only once the socket task has it; otherwise asked again next time round.
+      if (toSocket(OUT_DROP)) {
+        Serial.println("the relay went quiet; trying again");
+        net.closed(now);
+        quiet.closed();
+      }
       break;
     default:
       break;
   }
-  if (quiet.due(net.up())) {
-    socket_.sendTXT(HOLD_FRAME);
-    quiet.sent(now);
-  }
+  if (quiet.due(net.up()) && toSocket(OUT_SEND, HOLD_FRAME)) quiet.sent(now);
   quiet.tick(now);
-  if (net.up() && batteryReport.due(battery, now)) {
-    socket_.sendTXT(batteryFrame(battery).c_str());
+  if (net.up() && batteryReport.due(battery, now) && toSocket(OUT_SEND, batteryFrame(battery))) {
     batteryReport.sent(battery, now);
   }
 
