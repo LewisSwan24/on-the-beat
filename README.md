@@ -28,10 +28,11 @@ npm run tunnel       # an https address for real phones (cloudflared must be ins
 ```
 
 **CI.** Every push to `main` and every pull request runs `npm test` and builds
-the wristband's firmware with PlatformIO (`.github/workflows/ci.yml`). Each
-run keeps the firmware as a download: `firmware.bin`, and
-`otb-wristband-full.bin`, which carries the bootloader and partition table too
-and flashes whole at `0x0`.
+the wristband's firmware for both envs with PlatformIO
+(`.github/workflows/ci.yml`). Each run keeps the firmware as a download: each
+env's `firmware.bin`, and one image each that flashes whole at `0x0`,
+bootloader and partition table included — `otb-wristband-full.bin` for the
+M5StickC Plus, `otb-wristband-s3-full.bin` for the StickS3.
 
 **Phones need https.** The camera, the screen wake lock and the offline shell
 are all refused on plain http, so a phone on the LAN gets an app with no
@@ -319,9 +320,8 @@ relay could drive what a wrist shows.
   a card armed on the phone lit the wrist in its colour, and a hold on the
   wrist took the phone to the invisible screen. That is one band and one
   phone; two wrists meeting, and a night's worth of battery, are not tried.
-  CI builds the ESP32 firmware with PlatformIO on every push — about 1.2 MB
-  of the 3 MB app partition — and keeps the image to flash; it does not build
-  the StickS3 env.
+  CI builds both envs with PlatformIO on every push — the ESP32 image is about
+  1.2 MB of its 3 MB app partition — and keeps each image to flash.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was
