@@ -422,7 +422,11 @@ void report() {
   Serial.printf("wi-fi   %s%s  (%s)\n", ssid.empty() ? "(none)" : ssid.c_str(), pass.empty() ? "" : ", with a password",
                 WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString().c_str() : "not connected");
   Serial.printf("relay   %s  (%s)\n", relay.ok ? relay.origin.c_str() : "(none)", net.up() ? "on it" : "not on it");
-  Serial.printf("battery %d%%\n", battery);
+  const auto charging = M5.Power.isCharging();
+  Serial.printf("battery %d%%%s\n", battery,
+                charging == m5::Power_Class::is_charging      ? " (charging)"
+                : charging == m5::Power_Class::is_discharging ? " (not charging)"
+                                                              : "");
 }
 
 void run(const Command& c) {
@@ -485,6 +489,11 @@ void setup() {
   // M5Unified leaves Serial closed unless asked, and the console is the only
   // way to give the band its Wi-Fi and relay. Found on the first real band.
   cfg.serial_baudrate = 115200;
+  // M5Unified switches on the 5V output for the hat and Grove port by default.
+  // Nothing hangs off it here, and on the StickS3 the power chip does not charge
+  // the battery while that boost is on: plugged in, the band still ran down.
+  // Found on the first real band.
+  cfg.output_power = false;
   M5.begin(cfg);
   M5.Display.setRotation(0);
   if (M5.Display.width() > M5.Display.height()) M5.Display.setRotation(1);
