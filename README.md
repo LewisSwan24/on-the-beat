@@ -27,6 +27,12 @@ npm run dev          # Vite on :5178 for working on the app (run `npm run relay`
 npm run tunnel       # an https address for real phones (cloudflared must be installed)
 ```
 
+**CI.** Every push to `main` and every pull request runs `npm test` and builds
+the wristband's firmware with PlatformIO (`.github/workflows/ci.yml`). Each
+run keeps the firmware as a download: `firmware.bin`, and
+`otb-wristband-full.bin`, which carries the bootloader and partition table too
+and flashes whole at `0x0`.
+
 **Phones need https.** The camera, the screen wake lock and the offline shell
 are all refused on plain http, so a phone on the LAN gets an app with no
 camera. `npm start` and then `npm run tunnel` gives every phone the same https
@@ -188,7 +194,9 @@ across restarts, which matters: a quick tunnel's address changes every run.
   relay out of reach for ten seconds is no longer believed: the person may have
   gone invisible from their phone since, and a wrist left blue would say
   otherwise. A press then says NO SIGNAL, and whether it is the Wi-Fi or the
-  relay.
+  relay. The socket runs on a task of its own, so a connection that hangs — a
+  captive portal can hold a TLS handshake open for two minutes — never holds
+  up the button or the screen.
 - **Its id is 128 random bits, not the chip's MAC.** A phone can claim a
   wristband by id after a relay restart, so an id anyone could read off the air
   would let them.
@@ -281,13 +289,10 @@ relay could drive what a wrist shows.
   whom: every person is still `in this room`. Nearness wants ESP-NOW between
   wristbands, which wants the hardware.
 - **The firmware has not run on a wristband.** Its logic has run against the
-  real relay (above), and the whole firmware compiles and links for the ESP32
-  with the packages PlatformIO resolves for `platformio.ini` — espressif32
-  6.13.0 (Arduino-ESP32 2.0.17), M5Unified 0.2.23, M5GFX 0.2.30, WebSockets
-  2.7.3 — at about 1.2 MB of the 3 MB app partition. That build was a script
-  replaying PlatformIO's steps, not PlatformIO itself, and nothing has been
-  flashed or worn. Flashing one, then pairing it from a real phone, is the next
-  check.
+  real relay (above), and CI builds the whole firmware with PlatformIO on every
+  push — about 1.2 MB of the 3 MB app partition — and keeps the image to flash.
+  Nothing has been flashed or worn yet. Flashing one, then pairing it from a
+  real phone, is the next check.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was
