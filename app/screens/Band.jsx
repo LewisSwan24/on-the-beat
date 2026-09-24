@@ -32,10 +32,17 @@ export function BandFace({ show, awake, battery, scale = 2, pairAt = null }) {
           <span className="num">{s.big}</span>
         </span>
       ) : null}
+      {s.kind === 'check' ? (
+        <span className="words meet"><span className="small-w">ON YOUR PHONE?</span><span className="num">{s.big}</span></span>
+      ) : null}
+      {s.kind === 'waiting' ? (
+        <span className="words ready"><span className="big">OPEN YOUR PHONE</span><span className="small-w">OR SWITCH ME OFF</span></span>
+      ) : null}
       {s.kind === 'off' && awake ? (
         <span className="words ready">
-          <span className="big">READY</span>
-          {battery !== null && battery !== undefined ? <span className="small-w">{battery}%</span> : null}
+          <span className="big">{s.quiet ? 'NOT NOW' : s.away ? 'OPEN YOUR PHONE' : 'READY'}</span>
+          {s.away ? <span className="small-w">TO COME BACK</span>
+            : battery !== null && battery !== undefined ? <span className="small-w">{battery}%</span> : null}
         </span>
       ) : null}
     </div>
@@ -63,6 +70,8 @@ function faceLabel(s, awake, battery, pairAt) {
   if (s.kind === 'pairing') return 'Wristband showing its pairing letters ' + s.code.split('').join(' ') + (pairAt ? ', and a code to scan' : '');
   if (s.kind === 'test') return 'Wristband flashing white';
   if (s.kind === 'meet') return 'Wristband showing meeting number ' + s.big;
+  if (s.kind === 'check') return 'Wristband showing check number ' + s.big;
+  if (s.kind === 'waiting') return 'Wristband waiting: open your phone, or switch it off';
   if (s.big) return 'Wristband lit: ' + s.big + (s.small ? ', ' + s.small : '');
   if (awake) return 'Wristband ready, ' + (battery ?? '?') + '% battery';
   return 'Wristband dark';
@@ -124,6 +133,7 @@ export function BandStandIn() {
     const key = toHex(crypto.getRandomValues(new Uint8Array(16)));
     return { key, id: bandIdOf(key) };
   });
+  const secret = useRef('');   // given on YES; this page only, as the firmware keeps it in RAM
   const [battery, setBattery] = useState(62);
   const [show, setShow] = useState(null);
   const [live, setLive] = useState(false);
@@ -138,8 +148,17 @@ export function BandStandIn() {
     const open = () => {
       const sock = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/ws');
       ws.current = sock;
-      sock.onopen = () => { heard = Date.now(); setLive(true); sock.send(JSON.stringify({ t: 'wristband', id: band.id, key: band.key, v: 2, battery: batteryNow.current })); };
-      sock.onmessage = (e) => { heard = Date.now(); const m = JSON.parse(e.data); if (m.t === 'show') setShow(m.show); };
+      sock.onopen = () => {
+        heard = Date.now();
+        setLive(true);
+        sock.send(JSON.stringify({ t: 'wristband', id: band.id, key: band.key, v: 2, battery: batteryNow.current, ...(secret.current ? { secret: secret.current } : {}) }));
+      };
+      sock.onmessage = (e) => {
+        heard = Date.now();
+        const m = JSON.parse(e.data);
+        if (m.t === 'paired' && m.secret) secret.current = m.secret;
+        if (m.t === 'show') { if (m.show.kind === 'pairing') secret.current = ''; setShow(m.show); }
+      };
       sock.onclose = () => { setLive(false); if (!closed) retry = setTimeout(open, 1500); };
     };
     open();

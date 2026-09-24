@@ -51,6 +51,7 @@ WebSocketsClient socket_;
 M5Canvas face(&M5.Display);  // drawn off-screen, then pushed whole: no half-drawn frames on the wrist
 
 std::string bandKey, bandId, ssid, pass, relayText;
+std::string secret;  // given on YES; RAM only, so a reboot is a new wristband
 Relay relay;
 
 Button button;
@@ -101,7 +102,6 @@ void loadSettings() {
 enum : uint8_t { EV_OPENED, EV_CLOSED, EV_TEXT, EV_HEARD };
 struct Event {
   uint8_t kind;
-  int16_t battery;  // EV_OPENED: the battery the hello said
   uint16_t length;  // EV_TEXT: its length; a frame longer than text[] is heard, not read
   char text[480];
 };
@@ -109,19 +109,17 @@ struct Event {
 enum : uint8_t { OUT_SEND, OUT_DROP };
 struct Out {
   uint8_t kind;
-  char text[124];
+  char text[256];  // a hello with its key, secret and quiet is about 190 bytes
 };
 
 QueueHandle_t events = nullptr;  // socket task -> loop
 QueueHandle_t outbox = nullptr;  // loop -> socket task
 std::mutex relayLock;            // the loop writes `relay`; the socket task copies it under this
 std::atomic<bool> relayChanged{false};
-std::atomic<int> batteryNow{-1};
 
-void post(uint8_t kind, const uint8_t* text = nullptr, size_t length = 0, int level = -1) {
+void post(uint8_t kind, const uint8_t* text = nullptr, size_t length = 0) {
   Event e;
   e.kind = kind;
-  e.battery = static_cast<int16_t>(level);
   e.length = static_cast<uint16_t>(std::min<size_t>(length, 0xFFFF));
   if (text && length <= sizeof e.text) memcpy(e.text, text, length);
   // Waits rather than drops: a show that never arrived would leave the wrist wrong until the next.
@@ -138,16 +136,22 @@ bool toSocket(uint8_t kind, const std::string& text = "") {
   return xQueueSend(outbox, &o, 0) == pdTRUE;
 }
 
+std::vector<std::string> waitingOut;  // frames the outbox could not take yet, oldest first
+
+/** Sends a frame, in order after any the outbox could not take yet. */
+void sendFrame(const std::string& text) {
+  waitingOut.push_back(text);
+  while (!waitingOut.empty() && toSocket(OUT_SEND, waitingOut.front())) waitingOut.erase(waitingOut.begin());
+}
+
 // Runs on the socket task, inside socket_.loop().
 void onSocket(WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
-    case WStype_CONNECTED: {
-      // First on every connection, before anything the loop has queued.
-      const int level = batteryNow.load();
-      socket_.sendTXT(helloFrame(bandId, bandKey, level).c_str());
-      post(EV_OPENED, nullptr, 0, level);
+    case WStype_CONNECTED:
+      // Nothing queued for the last socket goes to this one. The loop sends the hello first.
+      xQueueReset(outbox);
+      post(EV_OPENED);
       break;
-    }
     case WStype_DISCONNECTED:
       post(EV_CLOSED);
       break;
@@ -203,15 +207,22 @@ void drain(uint32_t now) {
   Event e;
   while (xQueueReceive(events, &e, 0) == pdTRUE) {
     switch (e.kind) {
-      case EV_OPENED:
+      case EV_OPENED: {
         // Back after long enough that what it said was no longer shown: wait for it to say it again.
         if (net.stale(now)) haveShow = false;
         net.opened(now);
+        waitingOut.clear();
+        // A hold not yet heard rides on the hello: the relay applies it before anything else.
+        const bool holding = quiet.due(true);
+        sendFrame(helloFrame(bandId, bandKey, battery, secret, holding));
+        if (holding) quiet.sent(now);
         batteryReport.reset();
-        if (e.battery >= 0) batteryReport.sent(e.battery, now);
+        if (battery >= 0) batteryReport.sent(battery, now);
         Serial.printf("on the relay: %s\n", relay.origin.c_str());
         break;
+      }
       case EV_CLOSED:
+        waitingOut.clear();
         if (net.up()) Serial.println("lost the relay");
         net.closed(now);
         quiet.closed();
@@ -220,10 +231,13 @@ void drain(uint32_t now) {
         net.heard(now);
         Frame f;
         if (e.length > sizeof e.text || !readFrame(std::string(e.text, e.length), f)) break;
-        if (f.t == "show" && f.hasShow) {
+        if (f.t == "paired" && !f.secret.empty()) {
+          secret = f.secret;
+        } else if (f.t == "show" && f.hasShow) {
           last = f.show;
           haveShow = true;
           quiet.shown(last);
+          if (last.kind == "pairing") secret.clear();  // unpaired, or nobody came for it: a new pairing
         } else if (f.t == "error") {
           Serial.printf("the relay says: %s\n", f.why.c_str());
         }
@@ -383,6 +397,7 @@ void paint(const Face& f, const Words& w) {
   }
   face.fillScreen(BLACK);
   if (s.kind == "pairing") drawPairing(s.code, k);
+  else if (s.kind == "check") drawMeet(w, WHITE, k);
   else if (!w.big.empty()) drawWords(w, rgb565(TEXT_2), k);
 }
 
@@ -392,8 +407,9 @@ void draw(uint32_t now) {
   const Signal signal = WiFi.status() != WL_CONNECTED ? Signal::NO_WIFI : net.up() ? Signal::LIVE : Signal::NO_RELAY;
   const Words w = wordsFor(f, awake, battery, signal);
   const uint8_t light = lightFor(f, awake);
-  const std::string key = f.show.kind + '|' + f.show.intent + '|' + f.show.code + '|' + w.big + '|' + w.small + '|' +
-                          std::to_string(light) + '|' + relay.origin;
+  const std::string key = f.show.kind + '|' + f.show.intent + '|' + f.show.code + '|' + (f.show.away ? "a" : "") +
+                          (f.show.quiet ? "q" : "") + '|' + w.big + '|' + w.small + '|' + std::to_string(light) + '|' +
+                          relay.origin;
   if (key == drawn) return;
   drawn = key;
   paint(f, w);
@@ -473,7 +489,6 @@ void readBattery(uint32_t now) {
   batteryAt = now;
   const int32_t level = M5.Power.getBatteryLevel();
   battery = level >= 0 && level <= 100 ? static_cast<int>(level) : -1;
-  batteryNow = battery;
 }
 
 }  // namespace
@@ -537,7 +552,7 @@ void loop() {
 
   switch (net.tick(now)) {
     case Link::PING:
-      toSocket(OUT_SEND, PING_FRAME);
+      sendFrame(PING_FRAME);
       break;
     case Link::DROP:
       // Marked closed only once the socket task has it; otherwise asked again next time round.
@@ -550,9 +565,13 @@ void loop() {
     default:
       break;
   }
-  if (quiet.due(net.up()) && toSocket(OUT_SEND, HOLD_FRAME)) quiet.sent(now);
+  if (quiet.due(net.up())) {
+    sendFrame(HOLD_FRAME);
+    quiet.sent(now);
+  }
   quiet.tick(now);
-  if (net.up() && batteryReport.due(battery, now) && toSocket(OUT_SEND, batteryFrame(battery))) {
+  if (net.up() && batteryReport.due(battery, now)) {
+    sendFrame(batteryFrame(battery));
     batteryReport.sent(battery, now);
   }
 

@@ -189,6 +189,11 @@ void frames() {
   Frame f;
   CHECK(readFrame(R"j({"t":"pong"})j", f) && f.t == "pong" && !f.hasShow);
   CHECK(readFrame(R"j({"t":"error","why":"bad band"})j", f) && f.why == "bad band");
+  Frame p;
+  CHECK(readFrame("{\"t\":\"paired\",\"secret\":\"00112233445566778899aabbccddeeff\"}", p) && p.t == "paired" &&
+        p.secret == "00112233445566778899aabbccddeeff" && !p.hasShow);
+  Frame a;
+  CHECK(readFrame("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"battery\":40,\"away\":true}}", a) && a.show.away);
   // Not one whole object: refused.
   for (const char* bad : {"", "{", "}", "[]", "\"show\"", "{\"t\":}", "{\"t\":\"show\"", "{\"t\":\"show\"} x",
                           "{\"t\":\"sh\nw\"}", "{\"t\":\"\\x\"}", "{\"t\":\"\\u12\"}", "{t:1}", "{\"a\":01x}",
@@ -268,7 +273,7 @@ void face() {
 
   f = faceFor(&song, false, true);  // NOT NOW from the wrist: dark before the relay hears it
   CHECK(f.show.kind == "off" && f.show.quiet && !f.offline && lightFor(f, false) == LIGHT_OFF);
-  CHECK(wordsFor(f, true, 62, Signal::LIVE).big == "READY");
+  CHECK(wordsFor(f, true, 62, Signal::LIVE).big == "NOT NOW");
   f = faceFor(&song, true, true);  // and held with no relay in reach, a press says so
   CHECK(f.show.quiet && f.offline && wordsFor(f, true, 62, Signal::NO_WIFI).big == "NO SIGNAL");
   f = faceFor(&song, true, false);  // the relay out of reach: not believed
@@ -294,6 +299,22 @@ void face() {
   f = faceFor(&check, false, false);
   w = wordsFor(f, false, 62, Signal::LIVE);
   CHECK(w.big == "27" && w.small == "ON YOUR PHONE?" && lightFor(f, false) == LIGHT_PAIR);
+  Show waiting;
+  waiting.kind = "waiting";
+  f = faceFor(&waiting, false, false);
+  w = wordsFor(f, false, 62, Signal::LIVE);
+  CHECK(w.big == "OPEN YOUR PHONE" && w.small == "OR SWITCH ME OFF" && lightFor(f, false) == LIGHT_AWAKE);
+  Show away;
+  away.away = true;
+  f = faceFor(&away, false, false);
+  CHECK(wordsFor(f, false, 62, Signal::LIVE).big.empty() && lightFor(f, false) == LIGHT_OFF);
+  w = wordsFor(f, true, 62, Signal::LIVE);
+  CHECK(w.big == "OPEN YOUR PHONE" && w.small == "TO COME BACK" && lightFor(f, true) == LIGHT_AWAKE);
+  Show dark;
+  dark.quiet = true;
+  f = faceFor(&dark, false, false);
+  w = wordsFor(f, true, 62, Signal::LIVE);
+  CHECK(w.big == "NOT NOW" && w.small == "62%");
   Show test;
   test.kind = "test";
   CHECK(lightFor(faceFor(&test, false, false), false) == LIGHT_FULL);
@@ -442,7 +463,7 @@ std::string answer(const Command& c) {
     const Words w = wordsFor(face, false, -1, Signal::LIVE);
     return "{\"kind\":" + quote(s.kind) + ",\"intent\":" + quote(s.intent) + ",\"big\":" + quote(s.big) +
            ",\"small\":" + quote(s.small) + ",\"code\":" + quote(s.code) + ",\"dim\":" + (s.dim ? "true" : "false") +
-           ",\"quiet\":" + (s.quiet ? "true" : "false") + ",\"lit\":" + (lit(s) ? "true" : "false") +
+           ",\"quiet\":" + (s.quiet ? "true" : "false") + ",\"away\":" + (s.away ? "true" : "false") + ",\"lit\":" + (lit(s) ? "true" : "false") +
            ",\"light\":" + std::to_string(lightFor(face, false)) + ",\"words\":{\"big\":" + quote(w.big) +
            ",\"small\":" + quote(w.small) + "}}";
   }

@@ -100,13 +100,14 @@ inline Rgb glow(const Hue& hue, int x, int y, int w, int h) {
 
 /** One `show` from the relay: relay/band.js bandShow(), as it was sent. */
 struct Show {
-  std::string kind = "off";  // pairing | check | test | hi | song | dance | meet | off
+  std::string kind = "off";  // pairing | check | waiting | test | hi | song | dance | meet | off
   std::string intent, big, small, code;
   bool dim = false;
   bool quiet = false;
+  bool away = false;  // paired, but its person is not in a room
   bool operator==(const Show& o) const {
     return kind == o.kind && intent == o.intent && big == o.big && small == o.small && code == o.code &&
-           dim == o.dim && quiet == o.quiet;
+           dim == o.dim && quiet == o.quiet && away == o.away;
   }
   bool operator!=(const Show& o) const { return !(*this == o); }
 };
@@ -329,6 +330,7 @@ struct Frame {
   bool hasShow = false;
   Show show;
   std::string why;
+  std::string secret;  // {t:'paired'}: the pairing's secret, kept in RAM only
 };
 
 /**
@@ -348,6 +350,7 @@ inline bool readFrame(const std::string& text, Frame& f) {
   const bool ok = r.object([&](const std::string& key) {
     if (key == "t") return text_(f.t, 32);
     if (key == "why") return text_(f.why, 64);
+    if (key == "secret") return text_(f.secret, 32);
     if (key != "show") return r.skip();
     if (!r.peek('{')) return r.skip();
     f.hasShow = true;
@@ -360,6 +363,7 @@ inline bool readFrame(const std::string& text, Frame& f) {
       if (k == "code") return text_(s.code, 8);
       if (k == "dim") return flag(s.dim);
       if (k == "quiet") return flag(s.quiet);
+      if (k == "away") return flag(s.away);
       return r.skip();
     });
     f.show = s;
@@ -512,11 +516,16 @@ inline Words wordsFor(const Face& f, bool awake, int battery, Signal signal) {
   const std::string pct = battery >= 0 ? std::to_string(battery) + "%" : "";
   if (s.kind == "pairing") return {s.code, ""};
   if (s.kind == "check") return {s.big, "ON YOUR PHONE?"};
+  if (s.kind == "waiting") return {"OPEN YOUR PHONE", "OR SWITCH ME OFF"};
   if (lit(s)) return {fold(s.big), upper(fold(s.small))};
   if (s.kind != "off" || !awake) return {};
-  if (!f.offline) return {"READY", pct};
-  const std::string why = signal == Signal::NO_WIFI ? "NO WI-FI" : "NO RELAY";
-  return {"NO SIGNAL", pct.empty() ? why : why + " - " + pct};
+  if (f.offline) {
+    const std::string why = signal == Signal::NO_WIFI ? "NO WI-FI" : "NO RELAY";
+    return {"NO SIGNAL", pct.empty() ? why : why + " - " + pct};
+  }
+  if (s.quiet) return {"NOT NOW", pct};
+  if (s.away) return {"OPEN YOUR PHONE", "TO COME BACK"};
+  return {"READY", pct};
 }
 
 /** How bright the backlight is: black is off, not a black picture lit from behind. */
@@ -525,7 +534,7 @@ inline uint8_t lightFor(const Face& f, bool awake) {
   if (s.kind == "test") return LIGHT_FULL;
   if (lit(s)) return s.dim ? LIGHT_DIM : LIGHT_FULL;
   if (s.kind == "pairing" || s.kind == "check") return LIGHT_PAIR;
-  return awake ? LIGHT_AWAKE : LIGHT_OFF;
+  return s.kind == "waiting" || awake ? LIGHT_AWAKE : LIGHT_OFF;
 }
 
 // ---------- the pairing code ----------

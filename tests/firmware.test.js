@@ -198,10 +198,19 @@ test('what the firmware says, the relay takes; what the relay says, the firmware
     back.send(again);
     assert.equal((await back.until('show')).show.kind, 'off', 'still paired, still NOT NOW — not new letters');
 
-    // Every frame the relay sent the wristband, read back by the firmware.
-    const read = speak(band.frames.map((f) => 'show ' + f)).map((l) => JSON.parse(l));
+    // A wristband with a secret this relay never gave, as after a relay restart: it waits for its owner.
+    const [key2] = speak(['key']);
+    const [lost] = speak(['hello ' + key2 + ' 62 ' + randomBytes(16).toString('hex')]);
+    const waits = await open(relay.port, 'arduino');
+    socks.push(waits);
+    waits.send(lost);
+    await waits.until('show', (m) => m.show.kind === 'waiting');
+
+    // Every frame the relay sent the wristbands, read back by the firmware.
+    const frames = [...band.frames, ...waits.frames];
+    const read = speak(frames.map((f) => 'show ' + f)).map((l) => JSON.parse(l));
     const kinds = new Set();
-    band.frames.forEach((text, i) => {
+    frames.forEach((text, i) => {
       const m = JSON.parse(text);
       if (m.t !== 'show') { assert.equal(read[i], null, text); return; }
       const s = m.show;
@@ -209,15 +218,16 @@ test('what the firmware says, the relay takes; what the relay says, the firmware
       const { light, words, ...got } = read[i];
       assert.deepEqual(got, {
         kind: s.kind, intent: s.intent ?? '', big: s.big ?? '', small: (s.small ?? '').toWellFormed(), code: s.code ?? '',
-        dim: !!s.dim, quiet: !!s.quiet, lit: ['hi', 'song', 'dance', 'meet'].includes(s.kind) && !!HUE[s.intent],
+        dim: !!s.dim, quiet: !!s.quiet, away: !!s.away, lit: ['hi', 'song', 'dance', 'meet'].includes(s.kind) && !!HUE[s.intent],
       }, text);
       assert.equal(light > 0, s.kind !== 'off', 'dark only when the relay says off: ' + text);
       if (s.kind === 'pairing') assert.equal(words.big, s.code);
       if (s.kind === 'check') assert.deepEqual(words, { big: s.big, small: 'ON YOUR PHONE?' }, text);
+      if (s.kind === 'waiting') assert.deepEqual(words, { big: 'OPEN YOUR PHONE', small: 'OR SWITCH ME OFF' }, text);
       if (['hi', 'dance', 'meet'].includes(s.kind)) assert.deepEqual(words, { big: s.big, small: s.small.toUpperCase() }, text);
       if (s.kind === 'song') assert.deepEqual(words, { big: 'FIRST SONG?', small: 'ROS "Q" \\ X...' }, "the pick, in the letters the screen's font has");
     });
-    assert.deepEqual([...kinds].sort(), ['check', 'dance', 'hi', 'meet', 'off', 'pairing', 'song', 'test'], 'every kind of show was read');
+    assert.deepEqual([...kinds].sort(), ['check', 'dance', 'hi', 'meet', 'off', 'pairing', 'song', 'test', 'waiting'], 'every kind of show was read');
   } finally {
     for (const s of socks) s.ws.terminate();
     await relay.close();
