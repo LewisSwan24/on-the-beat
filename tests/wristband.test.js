@@ -186,3 +186,30 @@ test('every pair attempt counts toward the socket limit, right letters or wrong'
   assert.equal((await blocked).why, 'too many tries', 'the sixth, though its letters are right');
   close(ana);
 });
+
+// ---------- §0: the secret ----------
+
+test("a paired wristband's hello needs its secret; without it the new socket is refused and the live one survives", async () => {
+  const band = await wristband();
+  const ana = await phone('secret-room');
+  const { secret } = await pairBand(ana, band);
+  const bare = await hello({ t: 'wristband', id: band.id, key: band.key, v: 2 });
+  assert.deepEqual([bare.reply.why, bare.closed], ['bad band', 4001], 'the id and even the key are not enough');
+  const wrong = await hello({ t: 'wristband', id: band.id, key: band.key, v: 2, secret: newKey() });
+  assert.equal(wrong.reply.why, 'bad band');
+  ana.send({ t: 'arm', intent: 'dance' });
+  await band.until((s) => s.kind === 'dance');
+  const back = await wristband(62, { key: band.key, secret });
+  assert.equal(back.show.kind, 'dance', 'with it, the same wristband, still paired');
+  close(ana, back);
+});
+
+test('a claim needs the secret', async () => {
+  const band = await wristband();
+  const ana = await phone('claim-room');
+  const { band: id } = await pairBand(ana, band);
+  const bare = reply(ana, 'claim');
+  ana.send({ t: 'pair', band: id });
+  assert.deepEqual(await bare, { t: 'claim', ok: false, why: 'gone' });
+  close(ana, band);
+});

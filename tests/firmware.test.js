@@ -186,10 +186,16 @@ test('what the firmware says, the relay takes; what the relay says, the firmware
     await ben.until('view', (m) => m.view.near.length === 0);
     await band.until('show', (m) => m.show.kind === 'off' && m.show.quiet);
 
-    // The same id again, as after a Wi-Fi blip: the same wristband, still paired.
+    // The same wristband again, as after a Wi-Fi blip: with its secret, still paired.
+    const bare = await open(relay.port, 'arduino');
+    socks.push(bare);
+    bare.send(hello);
+    assert.equal((await bare.until('error')).why, 'bad band', 'without the secret the id is not enough');
+    const [again] = speak(['hello ' + key + ' 62 ' + secret]);
+    assert.equal(JSON.parse(again).secret, secret);
     const back = await open(relay.port, 'arduino');
     socks.push(back);
-    back.send(hello);
+    back.send(again);
     assert.equal((await back.until('show')).show.kind, 'off', 'still paired, still NOT NOW — not new letters');
 
     // Every frame the relay sent the wristband, read back by the firmware.

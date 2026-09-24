@@ -206,17 +206,17 @@ test('after a mutual yes both wristbands show the same number; unpairing hands o
   b2.ws.close();
 });
 
-test('a phone re-pairs by the id it was given; nobody else can use it', async () => {
+test('a phone re-claims by the id and the secret it was given; nobody else can use them', async () => {
   const band = await wristband();
   const ana = await phone('band-room-4');
-  const { band: id } = await pairBand(ana, band);
-  const again = reply(ana, 'paired');
-  ana.send({ t: 'pair', band: id });
-  assert.equal((await again).band, id, 'the phone that paired it can say so again');
+  const { band: id, secret } = await pairBand(ana, band);
+  const again = reply(ana, 'claim');
+  ana.send({ t: 'pair', band: id, secret });
+  assert.deepEqual(await again, { t: 'claim', ok: true, band: id }, 'the phone that paired it can say so again');
   const ben = await phone('band-room-4');
-  const no = reply(ben, 'error');
-  ben.send({ t: 'pair', band: id });
-  assert.equal((await no).why, 'no such wristband', 'a paired wristband is not taken by another phone');
+  const no = reply(ben, 'claim');
+  ben.send({ t: 'pair', band: id, secret });
+  assert.equal((await no).why, 'gone', 'a paired wristband is not taken by another phone, secret or not');
   close(ana, ben);
   band.ws.close();
 });
@@ -226,12 +226,13 @@ test('a phone back before its wristband holds the claim, and the wristband comes
   const ana = await phone('band-room-5');
   const key = newKey();
   const id = bandIdOf(key);
-  const held = reply(ana, 'paired');
-  ana.send({ t: 'pair', band: id, again: true });
-  assert.equal((await held).band, id);
+  const secret = newKey();
+  const held = reply(ana, 'claim');
+  ana.send({ t: 'pair', band: id, secret, again: true });
+  assert.deepEqual(await held, { t: 'claim', ok: false, why: 'waiting' });
   await ana.until((v) => v.me.wristband?.live === false);
   ana.send({ t: 'arm', intent: 'hi' });
-  const band = await wristband(40, { key });
+  const band = await wristband(40, { key, secret });
   await band.until((s) => s.kind === 'hi');
   await ana.until((v) => v.me.wristband?.live === true && v.me.wristband.battery === 40);
   assert.equal(ana.view.me.band, 'in this room', "the wristband does not take the place of where they are");
@@ -273,12 +274,12 @@ test('one socket may make only a few unproven pair attempts before it is refused
   relay.expire(Date.now() + 61_000);           // clear any tries the suite left on this bucket
   const ana = await phone('band-guess', { ip: '203.0.113.7' });
   for (let i = 0; i < 5; i += 1) {
-    const ok = reply(ana, 'paired');
-    ana.send({ t: 'pair', band: randomBytes(16).toString('hex') });
-    assert.ok((await ok).band, 'attempt ' + i + ' should be answered');
+    const ok = reply(ana, 'claim');
+    ana.send({ t: 'pair', band: randomBytes(16).toString('hex'), secret: newKey() });
+    assert.equal((await ok).why, 'waiting', 'attempt ' + i + ' should be answered');
   }
   const blocked = reply(ana, 'error');
-  ana.send({ t: 'pair', band: randomBytes(16).toString('hex') });
+  ana.send({ t: 'pair', band: randomBytes(16).toString('hex'), secret: newKey() });
   assert.equal((await blocked).why, 'too many tries', 'the sixth is refused');
   close(ana);
 });
@@ -289,15 +290,15 @@ test('a missed code is throttled on the same counter as an id-claim', async () =
   // Four id-claims, then a missed code, then one more claim: the sixth unproven
   // attempt is refused no matter which kind each one was.
   for (let i = 0; i < 4; i += 1) {
-    const ok = reply(ana, 'paired');
-    ana.send({ t: 'pair', band: randomBytes(16).toString('hex') });
+    const ok = reply(ana, 'claim');
+    ana.send({ t: 'pair', band: randomBytes(16).toString('hex'), secret: newKey() });
     await ok;
   }
   const miss = reply(ana, 'error');
   ana.send({ t: 'pair', code: 'ZZZZ' });
   assert.equal((await miss).why, 'no such wristband', 'a wrong code still answers honestly under the cap');
   const blocked = reply(ana, 'error');
-  ana.send({ t: 'pair', band: randomBytes(16).toString('hex') });
+  ana.send({ t: 'pair', band: randomBytes(16).toString('hex'), secret: newKey() });
   assert.equal((await blocked).why, 'too many tries');
   close(ana);
 });
@@ -310,8 +311,8 @@ test('id-claims with no wristband behind them are swept, so they cannot pile up'
   const phones = [];
   for (let i = 0; i < 3; i += 1) {
     const ph = await phone('band-phantom-' + i);
-    const ok = reply(ph, 'paired');
-    ph.send({ t: 'pair', band: randomBytes(16).toString('hex') });
+    const ok = reply(ph, 'claim');
+    ph.send({ t: 'pair', band: randomBytes(16).toString('hex'), secret: newKey() });
     await ok;
     phones.push(ph);
   }
@@ -345,7 +346,7 @@ test('the band table has a ceiling, and filling it never evicts a live wristband
       const me = randomBytes(16).toString('hex');
       ph.send(JSON.stringify({ t: 'join', venue: 'cap-room-' + i, me }));
       await new Promise((r) => setTimeout(r, 40));
-      ph.send(JSON.stringify({ t: 'pair', band: randomBytes(16).toString('hex') }));
+      ph.send(JSON.stringify({ t: 'pair', band: randomBytes(16).toString('hex'), secret: newKey() }));
       await new Promise((r) => setTimeout(r, 40));
     }
     assert.ok(small.bandCount() <= 3, 'the table never grew past its ceiling, saw ' + small.bandCount());
@@ -386,14 +387,14 @@ test('a relay closed with a phone still in the room leaves no timer behind', asy
 test('a new pairing flashes the wristband white once; claiming it again by id does not', async () => {
   const band = await wristband();
   const ana = await phone('band-room-7');
-  const { band: id } = await pairBand(ana, band);
+  const { band: id, secret } = await pairBand(ana, band);
   await band.until((s) => s.kind === 'test');
   await band.until((s) => s.kind === 'off');
   const kinds = [];
   band.ws.on('message', (data) => { const m = JSON.parse(String(data)); if (m.t === 'show') kinds.push(m.show.kind); });
-  const again = reply(ana, 'paired');
-  ana.send({ t: 'pair', band: id });
-  await again;
+  const again = reply(ana, 'claim');
+  ana.send({ t: 'pair', band: id, secret });
+  assert.equal((await again).ok, true);
   await new Promise((resolve) => setTimeout(resolve, 1300));
   assert.ok(!kinds.includes('test'), 'a re-claim flashed it: ' + kinds.join(','));
   close(ana);
@@ -502,7 +503,7 @@ test('malformed and hostile messages never take the relay down', async () => {
   const bad = [
     42, 'a string', null, [], true, 3.14,
     { t: 'pair', code: 12345 }, { t: 'pair', band: {} }, { t: 'pair' }, { t: 'pair', code: null },
-    { t: 'confirm' }, { t: 'confirm', yes: 'yes' },
+    { t: 'confirm' }, { t: 'confirm', yes: 'yes' }, { t: 'pair', band: 'x', secret: {} },
     { t: 'wave' }, { t: 'wave', handle: null }, { t: 'wave', handle: 123 }, { t: 'wave', handle: 'zzzzzzzzzz' },
     { t: 'like', handle: {} }, { t: 'unlike', handle: [] },
     { t: 'clip', mime: 'text/html', data: 'PGgxPg==' }, { t: 'clip' }, { t: 'clip', data: null, mime: null },

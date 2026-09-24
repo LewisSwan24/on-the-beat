@@ -98,9 +98,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   const toPerson = (r, me, m) => { for (const s of r.sockets) if (s.me === me) s.send(JSON.stringify(m)); };
 
   // ---------- wristbands ----------
-  // A wristband is not in a room until a phone pairs it. It gets four letters
-  // to show; the phone types them; from then on it shows what its person is
-  // doing, and its one button can make them invisible.
+  // A wristband makes a key at every boot, and its id is the key's hash; every
+  // hello proves the id with the key. It is not in a room until a phone pairs
+  // it: it shows four letters, the phone types them, the wristband shows a
+  // number and the phone confirms it. Then the relay gives both a secret, and
+  // a paired wristband is only ever reached with it.
 
   const bands = new Map();   // id -> { id, ws, battery, code, key, person, testUntil, lastShow }
   const codes = new Map();   // code -> band id, while it waits to be typed
@@ -193,9 +195,12 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // The key proves the id; a socket says hello once.
     const proven = v2 ? HEX32.test(id) && HEX32.test(key) && bandIdOf(key) === id : /^[a-f0-9]{16,64}$/.test(id);
     if (ws.band || !proven) { refuseBand(ws); return; }
+    const secret = HEX32.test(String(m.secret || '')) ? String(m.secret) : null;
     let b = bands.get(id);
     // A hello with no version never reaches a record made by one with, nor the other way round.
     if (b && b.old === v2) { refuseBand(ws); return; }
+    // A paired record is only reached with its secret. The live socket is left alone.
+    if (b?.person && secret !== b.secret) { refuseBand(ws); return; }
     if (!b) {
       if (bands.size >= maxBands && !evictBand(now())) { ws.send(JSON.stringify({ t: 'error', why: 'too many wristbands' })); return; }
       b = makeBand(id, ws);
@@ -251,26 +256,26 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     toPerson(r, me, { t: 'paired', band: b.id, secret: b.secret });
   }
 
-  /** After a reconnect, by the id only this phone was told when it paired. */
+  /** After a reconnect, by the id and the secret this phone was given. */
   function claim(ws, r, me, m) {
     const id = String(m.band || '');
-    let b = id ? bands.get(id) : null;
-    // A relay that restarted has forgotten every wristband, and the phone can
-    // be back before its wristband is: a bare id claims the band, and the
-    // wristband comes back already paired. Until one does, the claim is only
-    // a placeholder the sweep forgets. Unproven, so counted.
-    const wouldClaim = !b && /^[a-f0-9]{16,64}$/.test(id);
-    if (wouldClaim && tooMany(ws)) { ws.send(JSON.stringify({ t: 'error', why: 'too many tries' })); return; }
-    if (wouldClaim) {
-      attempt(ws);
-      if (bands.size >= maxBands && !evictBand(now())) { ws.send(JSON.stringify({ t: 'error', why: 'too many wristbands' })); return; }
-      b = makeBand(id, null);
-      bands.set(id, b);
+    const secret = String(m.secret || '');
+    const answer = (x) => ws.send(JSON.stringify({ t: 'claim', ...x }));
+    const b = bands.get(id);
+    const proven = HEX32.test(secret) && b?.secret === secret;
+    if (proven && b.key === r.key && b.person === me) {
+      // Its own wristband — or its own placeholder, still waiting for the wristband.
+      answer(b.everWs ? { ok: true, band: id } : { ok: false, why: 'waiting' });
+      return;
     }
-    const mine = b && b.key === r.key && b.person === me;
-    if (!b || (!mine && !wouldClaim)) { ws.send(JSON.stringify({ t: 'error', why: 'no such wristband' })); return; }
-    if (!mine) { b.key = r.key; b.person = me; }
-    ws.send(JSON.stringify({ t: 'paired', band: b.id }));
+    // Unproven from here, and counted: a claim is how the ids would be walked.
+    if (tooMany(ws)) { ws.send(JSON.stringify({ t: 'error', why: 'too many tries' })); return; }
+    attempt(ws);
+    if (b || !HEX32.test(id) || !HEX32.test(secret)) { answer({ ok: false, why: 'gone' }); return; }
+    // The phone is back before its wristband: a placeholder with that secret.
+    if (bands.size >= maxBands && !evictBand(now())) { ws.send(JSON.stringify({ t: 'error', why: 'too many wristbands' })); return; }
+    bands.set(id, Object.assign(makeBand(id, null), { key: r.key, person: me, secret }));
+    answer({ ok: false, why: 'waiting' });
   }
 
   /**
