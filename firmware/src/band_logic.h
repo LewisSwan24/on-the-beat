@@ -1,16 +1,15 @@
 // ON THE BEAT — the wristband's own logic, with no hardware in it.
 //
-// main.cpp is only the hardware round this file: the screen, the two buttons,
-// Wi-Fi and the socket. Everything that decides something is here, in plain
-// C++17, so it builds on a laptop as well as on the M5StickC.
+// main.cpp is only the hardware round this file: the screen, the two
+// buttons, Wi-Fi and the socket. Everything that decides something is here,
+// in plain C++17, so it builds on a laptop as well as on the wristband.
 // tests/firmware.test.js compiles it with the host's own compiler and holds it
 // against the real relay: the frames it sends are frames the relay takes, and
 // every frame the relay sends is read back the way the relay meant it.
 //
-// It speaks exactly what the stand-in at /band speaks (app/screens/Band.jsx),
-// on the same clock: a press wakes it for three seconds, a one-second hold is
-// NOT NOW, and it asks the relay every two seconds and takes six seconds of
-// silence as a dead socket.
+// Its Wrist is the same machine as the stand-in at /band (app/lib/wrist.js),
+// on the same named timings, and both are run against one table of cases
+// (tests/fixtures/wrist-cases.json).
 //
 // What it shows is never decided here. The relay decides that, in
 // relay/band.js, from the same view its person's phone is sent; this only
@@ -48,7 +47,7 @@ constexpr const char* WS_PATH = "/api/ws";
 constexpr uint8_t LIGHT_FULL = 255;   // a card, from across a dark room
 constexpr uint8_t LIGHT_DIM = 128;    // the relay says the battery is low: half, as the canvas has it
 constexpr uint8_t LIGHT_PAIR = 160;   // bright enough to scan, not so bright the camera blooms
-constexpr uint8_t LIGHT_AWAKE = 110;  // READY, for three seconds
+constexpr uint8_t LIGHT_AWAKE = 110;  // a woken face, and every face read up close
 constexpr uint8_t LIGHT_OFF = 0;
 
 // ---------- colour ----------

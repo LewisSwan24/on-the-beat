@@ -16,7 +16,6 @@ import { Camera, Floor } from './screens/Dance.jsx';
 import { Leaving, Match, Mate, Quiet, Tonight } from './screens/Met.jsx';
 import { Cta, Sheet } from './ui.jsx';
 
-/** Arriving on one of these arms its card, as the canvas does. */
 const ONBOARDING = new Set(['splash', 'promises', 'venue', 'name']);
 const EMPTY = { me: null, near: [], wall: [], floor: [], matches: [] };
 
@@ -392,8 +391,8 @@ export default function App() {
     title: 'How this works', sub: 'four promises. they hold all night.', close: 'Got it',
     rows: [
       ...PROMISES.map((p) => ({ icon: p.icon, label: p.main, sub: p.sub, fg: '#fff', onTap: () => {} })),
-      { icon: 'watch', label: 'Hold the button on your wristband for a second to go invisible.', fg: '#fff', onTap: () => {} },
-      { icon: 'battery_saver', label: 'Your wristband only lights up while you’re saying something.', fg: '#fff', onTap: () => {} },
+      { icon: 'watch', label: 'Hold the face button on your wristband to go invisible. Hold its side button to come back.', fg: '#fff', onTap: () => {} },
+      { icon: 'touch_app', label: 'Press the side button to see your card, and again to change it. Your phone follows.', fg: '#fff', onTap: () => {} },
     ],
   });
 

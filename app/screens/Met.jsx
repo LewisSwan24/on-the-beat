@@ -229,7 +229,7 @@ export function Quiet({ paired, onBackOn, onBlock, onReport, onLeft }) {
         <Icon name="visibility_off" size={40} color="#6E6D77" style={{ marginBottom: 8 }} />
         <span className="h1">You're invisible.</span>
         <span className="lede muted">Nothing is broadcasting.</span>
-        {paired ? <span className="lede muted">Your wristband is dark too.</span> : null}
+        {paired ? <span className="lede muted">Your wristband is dark too. Hold its side button to come back.</span> : null}
       </div>
       <div style={{ paddingBottom: 12 }}>
         <Cta plain onClick={onBackOn}>TURN BACK ON</Cta>

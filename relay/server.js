@@ -144,7 +144,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   // hello proves the id with the key. It is not in a room until a phone pairs
   // it: it shows four letters, the phone types them, the wristband shows a
   // number and the phone confirms it. Then the relay gives both a secret, and
-  // a paired wristband is only ever reached with it.
+  // a paired wristband is only ever reached with it. From then on it shows what
+  // its person is doing; its face button can make them invisible, and its side
+  // button can change their card (setFromBand).
 
   const bands = new Map();   // id -> { id, ws, battery, code, key, person, testUntil, lastShow }
   const codes = new Map();   // code -> band id, while it waits to be typed

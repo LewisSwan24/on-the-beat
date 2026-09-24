@@ -152,9 +152,14 @@ or on a second phone strapped to a wrist, when there is no wristband to hand.
   two-digit meeting number for fifteen minutes after a match (the same number
   on both wrists), and nothing at all under NOT NOW. Never a name, never
   anyone else's pick, never a contact. At 15% battery it dims itself.
-- **Its one button.** A press wakes it for three seconds. Held for a second it
-  is NOT NOW, and the phone follows to the invisible screen. That is also why
-  the pair screen says *press* its button, not *hold* it.
+- **Its two buttons.** The face button (KEY1): a press wakes it for six
+  seconds; held for 1.5 s it is NOT NOW — dark at once — and the phone
+  follows to the invisible screen. The side button (KEY2): a press shows
+  the card that is armed; each press after moves a preview — HI, SONG,
+  DANCE, OFF — and 3 s after the last one the choice goes to the relay,
+  which decides; the face says `SET`, `CHANGED` or `NOT SENT`.
+  Coming back from NOT NOW takes holding the side button. The pair screen
+  says to *press* its face button, not to hold it.
 - **A phone coming back does not undo the wrist.** On every reconnect the
   phone re-says its standing facts marked `again`, and the relay never lets
   those turn a person visible who went invisible from the wrist.
@@ -169,9 +174,9 @@ tells them apart as it starts; the first M5StickC works too, drawn smaller),
 and for the M5StickS3, an ESP32-S3 that no ESP32 image boots on, so it is an
 env of its own: `pio run -e m5sticks3`. The code is the same for all of them. It
 speaks exactly what `/band` speaks, on the same clock: it says it is a wristband
-with an id it made once and keeps, shows whatever the relay tells it to, asks
-the relay every two seconds and takes six of silence as a dead socket. A press
-wakes it for three seconds; a one-second hold is NOT NOW.
+with an id that is the hash of a key it makes at every boot, shows whatever the
+relay tells it to, asks the relay every two seconds and takes six of silence as
+a dead socket. Its two buttons work as above.
 
 ```
 cd firmware
