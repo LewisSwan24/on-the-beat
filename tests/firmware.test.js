@@ -51,7 +51,7 @@ function speak(lines) {
   if (broken) throw broken;
   const r = spawnSync(bin, ['speak'], { input: lines.join('\n') + '\n', encoding: 'utf8', env });
   assert.equal(r.status, 0, r.stderr);
-  const out = r.stdout.split('\n').slice(0, -1);
+  const out = r.stdout.split(/\r?\n/).slice(0, -1);
   assert.equal(out.length, lines.length, r.stdout);
   return out;
 }
