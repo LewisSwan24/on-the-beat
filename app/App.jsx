@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HUE, PROMISES, matchName, someone } from './copy.js';
 import { battery, buzz, toBase64 } from './lib/device.js';
+import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
 import { connect } from './lib/net.js';
 import { phaseLine, phaseOf } from './lib/phase.js';
 import * as store from './lib/store.js';
@@ -12,11 +13,10 @@ import { PAIR_SAY, codeFrom } from './lib/pairing.js';
 import { Name, Promises, Splash, Venue } from './screens/Onboard.jsx';
 import { Pick, Wall } from './screens/Song.jsx';
 import { Camera, Floor } from './screens/Dance.jsx';
-import { Match, Mate, Quiet, Tonight } from './screens/Met.jsx';
+import { Leaving, Match, Mate, Quiet, Tonight } from './screens/Met.jsx';
 import { Cta, Sheet } from './ui.jsx';
 
 /** Arriving on one of these arms its card, as the canvas does. */
-const INTENT_OF = { beacon: 'hi', near: 'hi', pick: 'song', wall: 'song', camera: 'dance', floor: 'dance' };
 const ONBOARDING = new Set(['splash', 'promises', 'venue', 'name']);
 const EMPTY = { me: null, near: [], wall: [], floor: [], matches: [] };
 
@@ -57,7 +57,6 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [now, setNow] = useState(() => new Date());
   const [ci, setCi] = useState(0);
-  const [armed, setArmed] = useState(null);
   const [pickText, setPickText] = useState(night?.state?.pick || '');
   const [matchId, setMatchId] = useState(null);
   const [backTo, setBackTo] = useState(null);
@@ -79,6 +78,12 @@ export default function App() {
   const toastTimer = useRef(null);
 
   const invisible = !!night?.state?.invisible;
+  // What this phone last knew, kept with the night and drawn at once; the relay's next view decides (§3).
+  const armed = night?.state?.armed ?? null;
+  const seqRef = useRef(night?.state?.seq ?? 0);   // the last seq this phone sent or followed
+  const asked = useRef(-1);                         // the seq of this phone's own last tap
+  const refused = useRef(-1);                       // the seq of its last showing tap refused `changed`
+  useEffect(() => { seqRef.current = night?.state?.seq ?? 0; }, [night?.me]);
   const pick = night?.state?.pick || '';
   const phase = show ? phaseOf(show, now) : 'DOORS';
   const line = show ? phaseLine(show, now) : '';
@@ -96,10 +101,10 @@ export default function App() {
   }, [band?.live, !!band]);
   const bandShown = band ? { ...band, offline: !band.live && bandAwaySince !== null && now - bandAwaySince >= 120_000 } : null;
 
-  const say = useCallback((msg) => {
+  const say = useCallback((text, action = null) => {
     clearTimeout(toastTimer.current);
-    setToast(msg);
-    toastTimer.current = setTimeout(() => setToast(null), 2600);
+    setToast({ text, action });
+    toastTimer.current = setTimeout(() => setToast(null), action ? 5000 : 2600);
   }, []);
   const closeSheet = useCallback(() => setSheet(null), []);
 
@@ -139,11 +144,15 @@ export default function App() {
       onMessage: (m) => onRelay.current?.(m),
     });
     net.current = n;
-    n.say('profile', { t: 'profile', name: s.name, contact: s.contact });
-    n.say('arm', { t: 'arm', intent: null });
-    if (night.state?.invisible) n.say('invisible', { t: 'invisible', on: true });
-    if (night.state?.pick) n.say('pick', { t: 'pick', track: night.state.pick });
-    if (night.state?.wristband) n.keep('pair', { t: 'pair', band: night.state.wristband, secret: night.state.bandSecret || '' });
+    // A page load says nothing new (§3): what this phone holds is kept, and re-said only as again copies.
+    const st = night.state || {};
+    const seq = st.seq ?? 0;
+    n.keep('profile', { t: 'profile', name: s.name, contact: s.contact });
+    n.keep('invisible', { t: 'invisible', on: !!st.invisible, seq });
+    n.keep('arm', { t: 'arm', intent: st.armed ?? null, seq });
+    if (st.pick) n.keep('pick', { t: 'pick', track: st.pick });
+    if (st.wristband) n.keep('pair', { t: 'pair', band: st.wristband, secret: st.bandSecret || '' });
+    if (night.leaving) n.keep('leave', { t: 'leave' });
     return () => { n.close(); net.current = null; setView(EMPTY); };
     // Only a new room, or a new night, makes a new connection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,6 +207,14 @@ export default function App() {
   const onRelay = useRef(null);
   onRelay.current = (m) => {
     if (m.t === 'error' && m.why === 'clip refused') say("that didn't go. they may have left, or gone quiet.");
+    if (m.t === 'refused' && m.why === 'changed') refused.current = m.seq;
+    if (m.t === 'left') {
+      net.current?.forget('leave');
+      const key = store.tonightKey();
+      update((prev) => (prev.nights[key] ? { ...prev, nights: { ...prev.nights, [key]: { ...prev.nights[key], left: true, leaving: false, state: {} } } } : prev));
+      setStack([]);
+      setScreen('venue');
+    }
     const pairFailed = (words) => {
       setPairPending(false);
       setPairCode(null);
@@ -245,36 +262,58 @@ export default function App() {
   }, [view]);
   useEffect(() => { seen.current = null; }, [night?.me]);
 
-  // The wristband's button made them invisible. The phone follows, and says so from now on.
+  // The relay decides (§3): a view that passes rule 4 sets the cards, the screen and what is re-said.
   useEffect(() => {
-    if (!view.me?.invisible || invisible) return;
-    setArmed(null);
-    net.current?.say('arm', { t: 'arm', intent: null });
-    net.current?.say('invisible', { t: 'invisible', on: true });
-    setNightState({ invisible: true });
-    setStack([]);
-    setSheet(null);
-    setScreen('quiet');
+    if (!view.me) return;
+    const f = follow({ armed, invisible, seq: seqRef.current, asked: asked.current, refused: refused.current, screen }, view);
+    if (!f) return;
+    seqRef.current = f.seq;
+    net.current?.keep('arm', f.said.arm);
+    net.current?.keep('invisible', f.said.invisible);
+    if (f.armed !== armed || f.invisible !== invisible || f.seq !== (night?.state?.seq ?? 0)) {
+      setNightState({ armed: f.armed, invisible: f.invisible, seq: f.seq });
+    }
+    if (f.events.includes('hi') && !store.hasEvent(s, 'hi')) update((prev) => store.addEvent(prev, 'hi', 'started saying hi'));
+    if (f.clearStack) { setStack([]); setSheet(null); }
+    if (f.screen !== screen && !ONBOARDING.has(screen) && screen !== 'leaving') setScreen(f.screen);
+    if (f.toast) say(f.toast.text, f.toast.unpair ? { label: 'NOT YOU? UNPAIR', onTap: unpair } : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view.me?.invisible]);
+  }, [view]);
 
   // ---------- what this phone is doing ----------
 
+  // A tap (§2 rules 4 and 5): a new seq, and the rev it was chosen from when it shows the person.
+  const tap = useCallback((t, value) => {
+    const seq = nextSeq(seqRef.current, Date.now());
+    seqRef.current = seq;
+    asked.current = seq;
+    net.current?.say(t, tapMessage(t, value, seq, view.me?.rev));
+    return seq;
+  }, [view.me?.rev]);
+  // Showing someone needs the relay now. Offline, only what hides is queued:
+  // NOT NOW, and a card turned off.
+  const cannotShow = useCallback(() => {
+    if (net.current?.live() && Number.isInteger(view.me?.rev)) return false;
+    say('Not connected — try again');
+    return true;
+  }, [view.me?.rev, say]);
+
   const arm = useCallback((intent) => {
-    setArmed(intent);
-    net.current?.say('arm', { t: 'arm', intent });
-    if (intent) {
-      setNightState({ invisible: false });
-      net.current?.say('invisible', { t: 'invisible', on: false });
-      if (intent === 'hi' && !store.hasEvent(s, 'hi')) update((prev) => store.addEvent(prev, 'hi', 'started saying hi'));
-    }
-  }, [s, setNightState, update]);
+    if (intent && cannotShow()) return false;   // arm(null) hides: queued offline
+    const seq = tap('arm', intent);
+    // Arming makes them visible on the relay; the kept NOT NOW follows without being sent.
+    if (intent) net.current?.keep('invisible', { t: 'invisible', on: false, seq });
+    setNightState({ armed: intent, ...(intent ? { invisible: false } : {}), seq });
+    if (intent === 'hi' && !store.hasEvent(s, 'hi')) update((prev) => store.addEvent(prev, 'hi', 'started saying hi'));
+    return true;
+  }, [s, setNightState, update, tap, cannotShow]);
 
   const go = useCallback((to, { replace = false } = {}) => {
+    const intent = INTENT_OF[to];
+    // Nothing moves when the card could not be armed.
+    if (intent && armed !== intent && !arm(intent)) return;
     setSheet(null);
     if (!replace) setStack((st) => (to === screen ? st : [...st, screen].slice(-12)));
-    const intent = INTENT_OF[to];
-    if (intent && armed !== intent) arm(intent);
     if (to !== 'camera') setBackTo(null);
     setScreen(to);
   }, [screen, armed, arm]);
@@ -303,18 +342,18 @@ export default function App() {
   }, [screen, back]);
 
   const notNow = () => {
-    setArmed(null);
-    net.current?.say('arm', { t: 'arm', intent: null });
-    net.current?.say('invisible', { t: 'invisible', on: true });
-    setNightState({ invisible: true });
+    const seq = tap('invisible', true);   // queued when offline, and re-said
+    net.current?.keep('arm', { t: 'arm', intent: null, seq });
+    setNightState({ armed: null, invisible: true, seq });
     setStack([]);
     setSheet(null);
     setScreen('quiet');
   };
 
   const backOn = () => {
-    net.current?.say('invisible', { t: 'invisible', on: false });
-    setNightState({ invisible: false });
+    if (cannotShow()) return;
+    const seq = tap('invisible', false);
+    setNightState({ invisible: false, seq });
     setStack([]);
     setScreen('home');
   };
@@ -430,14 +469,14 @@ export default function App() {
     ],
   });
 
+  // "I've left" is carried until the relay answers (§2): the room line stays open, and the leave is re-said.
   const leftVenue = () => {
-    if (paired) { net.current?.send({ t: 'unpair' }); net.current?.forget('pair'); }
-    net.current?.send({ t: 'leave' });
     const key = store.tonightKey();
-    update((prev) => (prev.nights[key] ? { ...prev, nights: { ...prev.nights, [key]: { ...prev.nights[key], left: true, state: {} } } } : prev));
-    setArmed(null);
+    update((prev) => (prev.nights[key] ? { ...prev, nights: { ...prev.nights, [key]: { ...prev.nights[key], leaving: true } } } : prev));
+    net.current?.say('leave', { t: 'leave' });
     setStack([]);
-    setScreen('venue');
+    setSheet(null);
+    setScreen('leaving');
   };
 
   const quietBlock = () => setSheet({
@@ -454,9 +493,9 @@ export default function App() {
     ],
   });
 
-  // The beacon costs the screen. Ask once a night, when it is low.
+  // Ask once a night, when the battery that matters is low: once paired, the wristband's, wherever the phone is (a card can be armed from the wrist); otherwise the phone's, on the beacon.
   useEffect(() => {
-    if (screen !== 'beacon' || night?.state?.batteryAsked) return;
+    if (night?.state?.batteryAsked) return;
     if (paired) {
       // Paired, the battery that matters is the one on the wrist.
       const level = view.me?.wristband?.battery;
@@ -472,6 +511,7 @@ export default function App() {
       });
       return;
     }
+    if (screen !== 'beacon') return;
     battery().then((b) => {
       if (!b || b.charging || b.level > 0.15) return;
       setNightState({ batteryAsked: true });
@@ -490,6 +530,7 @@ export default function App() {
   const afterSplash = useCallback(() => {
     if (!s.promisesSeen) setScreen('promises');
     else if (!night?.show || night.left) setScreen('venue');
+    else if (night.leaving) setScreen('leaving');
     else if (!s.name) setScreen('name');
     else setScreen(night.state?.invisible ? 'quiet' : 'home');
   }, [s.promisesSeen, s.name, night]);
@@ -595,6 +636,7 @@ export default function App() {
     case 'quiet':
       body = <Quiet paired={paired} onBackOn={backOn} onBlock={quietBlock} onReport={quietReport} onLeft={leftVenue} />;
       break;
+    case 'leaving': body = <Leaving offline={status !== 'live'} />; break;
     default: body = null;
   }
   if (!body) body = <div className="scr"><Cta plain onClick={() => setScreen('home')}>BACK TO TONIGHT</Cta></div>;
@@ -609,7 +651,12 @@ export default function App() {
         ) : <div className="tail" />}
       </div>
       {checkSheet || sheet ? <Sheet sheet={checkSheet || sheet} onClose={checkSheet ? () => answerCheck(false) : closeSheet} screenRef={stageRef} /> : null}
-      {toast ? <div className="toast" role="status" aria-live="polite">{toast}</div> : null}
+      {toast ? (
+        <div className="toast" role="status" aria-live="polite">
+          {toast.text}
+          {toast.action ? <button type="button" className="act" onClick={() => { setToast(null); toast.action.onTap(); }}>{toast.action.label}</button> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

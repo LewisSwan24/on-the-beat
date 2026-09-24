@@ -283,6 +283,7 @@ h1 { margin: 0; font-weight: 400; }
 .srow:hover { background: rgba(255,255,255,.03); }
 .srow:disabled { opacity: .5; }
 .toast { position: absolute; left: 24px; right: 24px; bottom: 120px; z-index: 35; border: 1px solid var(--line); border-radius: 16px; background: rgba(8,8,10,.94); padding: 13px 16px; font: var(--body); color: #fff; animation: ob-fadeup var(--base) var(--ease); text-wrap: pretty; }
+.toast .act { display: block; margin-top: 8px; padding: 0; border: 0; background: none; color: var(--stop); font: 700 13px/1.2 var(--sans); letter-spacing: .06em; cursor: pointer; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ---------- the wristband: 135 x 240, drawn at scale --u ---------- */

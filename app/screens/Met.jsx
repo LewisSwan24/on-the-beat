@@ -245,3 +245,16 @@ export function Quiet({ paired, onBackOn, onBlock, onReport, onLeft }) {
     </div>
   );
 }
+
+/** "I've left", carried until the relay has heard it (spec §2). */
+export function Leaving({ offline }) {
+  return (
+    <div className="scr tall">
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
+        <Icon name="logout" size={40} color="#6E6D77" style={{ marginBottom: 8 }} />
+        <span className="h1">Leaving…</span>
+        <span className="lede muted">{offline ? 'You’ll be taken out as soon as there’s signal.' : 'Taking you out of the room.'}</span>
+      </div>
+    </div>
+  );
+}

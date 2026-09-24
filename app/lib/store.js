@@ -52,7 +52,7 @@ export function startNight(s, show) {
     events: [...(was?.events || []), { at: Date.now(), kind: 'arrived', text: 'arrived at ' + placeOf(show) }],
     matches: was?.matches || {},
   };
-  return { ...s, nights: { ...s.nights, [key]: { ...night, left: false } } };
+  return { ...s, nights: { ...s.nights, [key]: { ...night, left: false, leaving: false } } };
 }
 
 /** "The Roundhouse, Camden" -> "the roundhouse" */
