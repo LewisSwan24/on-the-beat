@@ -235,8 +235,8 @@ class Reader {
 
   /** true or false; anything else is not a boolean. */
   bool boolean(bool& out) {
-    if (word("true")) { out = true; return true; }
-    if (word("false")) { out = false; return true; }
+    if (literal("true")) { out = true; return true; }
+    if (literal("false")) { out = false; return true; }
     return false;
   }
 
@@ -257,7 +257,7 @@ class Reader {
       return eat(']');
     }
     if (c == 't' || c == 'f') { bool b; return boolean(b); }
-    if (c == 'n') return word("null");
+    if (c == 'n') return literal("null");
     return number();
   }
 
@@ -274,7 +274,7 @@ class Reader {
   }
 
  private:
-  bool word(const char* w) {
+  bool literal(const char* w) {
     space();
     size_t n = 0;
     while (w[n]) {
@@ -756,11 +756,11 @@ inline bool validId(const std::string& id) {
  * anyone could read off the air or guess would let them.
  */
 inline std::string makeId(const std::function<uint32_t()>& random32) {
-  static const char HEX[] = "0123456789abcdef";
+  static const char DIGITS[] = "0123456789abcdef";
   std::string id;
   for (int w = 0; w < 4; ++w) {
     const uint32_t v = random32();
-    for (int k = 28; k >= 0; k -= 4) id += HEX[(v >> k) & 0xF];
+    for (int k = 28; k >= 0; k -= 4) id += DIGITS[(v >> k) & 0xF];
   }
   return id;
 }

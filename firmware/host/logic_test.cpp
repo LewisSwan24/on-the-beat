@@ -13,6 +13,37 @@
 #include <random>
 #include <string>
 
+// On the wristband, Arduino.h comes first and defines these as macros, so a
+// name in band_logic.h that matches one breaks the device build (HEX did).
+// Defined here too, the laptop build breaks the same way.
+#define PI 3.14159
+#define HALF_PI 1.5708
+#define TWO_PI 6.28319
+#define DEG_TO_RAD 0.0174533
+#define RAD_TO_DEG 57.2958
+#define EULER 2.71828
+#define SERIAL 0x0
+#define DISPLAY 0x1
+#define LSBFIRST 0
+#define MSBFIRST 1
+#define RISING 0x01
+#define FALLING 0x02
+#define CHANGE 0x03
+#define DEFAULT 1
+#define EXTERNAL 0
+#define DEC 10
+#define HEX 16
+#define OCT 8
+#define BIN 2
+#define constrain(amt, low, high) ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
+#define radians(deg) ((deg) * DEG_TO_RAD)
+#define degrees(rad) ((rad) * RAD_TO_DEG)
+#define sq(x) ((x) * (x))
+#define lowByte(w) ((uint8_t)((w) & 0xff))
+#define highByte(w) ((uint8_t)((w) >> 8))
+#define bit(b) (1UL << (b))
+#define word(...) makeWord(__VA_ARGS__)
+
 #include "../src/band_logic.h"
 
 using namespace otb;

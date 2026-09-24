@@ -281,10 +281,13 @@ relay could drive what a wrist shows.
   whom: every person is still `in this room`. Nearness wants ESP-NOW between
   wristbands, which wants the hardware.
 - **The firmware has not run on a wristband.** Its logic has run against the
-  real relay (above), and `main.cpp` has been type-checked, but only against
-  stand-ins for the M5Unified and WebSockets headers: it has not yet been built
-  by PlatformIO, flashed, or worn. Building it, then pairing one from a real
-  phone, is the next check.
+  real relay (above), and the whole firmware compiles and links for the ESP32
+  with the packages PlatformIO resolves for `platformio.ini` — espressif32
+  6.13.0 (Arduino-ESP32 2.0.17), M5Unified 0.2.23, M5GFX 0.2.30, WebSockets
+  2.7.3 — at about 1.2 MB of the 3 MB app partition. That build was a script
+  replaying PlatformIO's steps, not PlatformIO itself, and nothing has been
+  flashed or worn. Flashing one, then pairing it from a real phone, is the next
+  check.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was
