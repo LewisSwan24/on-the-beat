@@ -178,3 +178,124 @@ test('a wristband waiting for its owner gets fresh letters at 06:00', async () =
   await band.until((s) => s.kind === 'pairing');
   close(band);
 });
+
+// ---------- joining: quiet, and NOT NOW remembered ----------
+
+test('a join with quiet makes a new person invisible; for someone already here it is ignored', async () => {
+  await relayWith();
+  const ben = await phone('quiet-join');
+  const ana = await phone('quiet-join', { quiet: true });
+  assert.equal(ana.view.me.invisible, true);
+  assert.equal(ana.view.me.by, 'relay');
+  ana.send({ t: 'arm', intent: 'hi' });
+  await ben.until((v) => v.near.length === 1);
+  const again = new WebSocket('ws://127.0.0.1:' + current.port + WS_PATH);
+  await new Promise((r) => again.once('open', r));
+  again.send(JSON.stringify({ t: 'join', venue: 'quiet-join', me: ana.me, quiet: true }));
+  await pause(200);
+  assert.equal(ben.view.near.length, 1, 'an old NOT NOW on a second join does not hide them');
+  again.close();
+  close(ana, ben);
+});
+
+test('someone who left under NOT NOW and is made again by a join without quiet is still invisible', async () => {
+  await relayWith({ graceMs: 50 });
+  const ben = await phone('tomb-room');   // keeps the room from being let go
+  const ana = await phone('tomb-room');
+  ana.send({ t: 'invisible', on: true });
+  await ana.until((v) => v.me.invisible);
+  ana.ws.close();
+  await pause(200);                       // past the grace: out of the room
+  const back = await phone('tomb-room', { me: ana.me });
+  assert.equal(back.view.me.invisible, true);
+  assert.equal(back.view.me.fresh, true);
+  close(ben, back);
+});
+
+// ---------- rules 3 to 5: phones re-saying facts ----------
+
+test('an unseen again NOT NOW is applied', async () => {
+  await relayWith();
+  const ana = await phone('again-quiet');
+  const ben = await phone('again-quiet');
+  ana.send({ t: 'arm', intent: 'hi', seq: 10 });
+  await ben.until((v) => v.near.length === 1);
+  ana.send({ t: 'invisible', on: true, seq: 11, again: true });
+  await ben.until((v) => v.near.length === 0);
+  close(ana, ben);
+});
+
+test('an again card is never applied, however new', async () => {
+  await relayWith();
+  const ana = await phone('again-card');
+  ana.send({ t: 'arm', intent: 'hi', seq: 50, again: true });
+  ana.send({ t: 'invisible', on: false, seq: 51, again: true });
+  await pause(200);
+  assert.equal(ana.view.me.armed, null);
+  close(ana);
+});
+
+test('an again fact the relay already saw is not applied: the wrist chose SAY HI while the phone was in a pocket', async () => {
+  await relayWith();
+  const band = await wristband();
+  const ana = await phone('pocket');
+  await pairBand(ana, band);
+  ana.send({ t: 'arm', intent: null, seq: 100 });
+  const { rev } = await band.until((s) => s.kind === 'off' && Number.isInteger(s.rev));
+  band.send({ t: 'set', intent: 'hi', basis: rev });
+  await ana.until((v) => v.me.armed === 'hi');
+  // The phone wakes and re-says what it last knew, NOT NOW included, at its old seq.
+  ana.send({ t: 'invisible', on: true, seq: 100, again: true });
+  ana.send({ t: 'arm', intent: null, seq: 100, again: true });
+  await pause(200);
+  assert.equal(ana.view.me.armed, 'hi', 'SAY HI stays');
+  assert.equal(ana.view.me.invisible, false);
+  close(ana, band);
+});
+
+test('the seq is acknowledged even when the message is not applied', async () => {
+  await relayWith();
+  const ana = await phone('seq-ack');
+  const { rev } = ana.view.me;
+  ana.send({ t: 'invisible', on: false, seq: 777, again: true });   // an again copy that shows: never applied
+  const v = await ana.until((x) => x.me.seq === 777);
+  assert.equal(v.me.rev, rev, 'nothing changed');
+  close(ana);
+});
+
+test('a seq that is not a number drops the frame', async () => {
+  await relayWith();
+  const ana = await phone('seq-bad');
+  ana.send({ t: 'arm', intent: 'hi' });
+  await ana.until((v) => v.me.armed === 'hi');
+  ana.send({ t: 'invisible', on: true, seq: 'soon' });
+  await pause(200);
+  assert.equal(ana.view.me.invisible, false);
+  close(ana);
+});
+
+test('a phone card named from an old rev, arriving after a wrist NOT NOW, is refused changed', async () => {
+  await relayWith();
+  const band = await wristband();
+  const ana = await phone('basis-room');
+  await pairBand(ana, band);
+  const { me: { rev } } = await ana.until((v) => Number.isInteger(v.me.rev));
+  band.send({ t: 'hold' });
+  await ana.until((v) => v.me.invisible);
+  const refused = reply(ana, 'refused');
+  ana.send({ t: 'arm', intent: 'hi', seq: 200, basis: rev });
+  assert.deepEqual(await refused, { t: 'refused', why: 'changed', seq: 200 });
+  await pause(100);
+  assert.equal(ana.view.me.invisible, true, 'still NOT NOW');
+  close(ana, band);
+});
+
+test('a phone message with no basis is taken as it always was', async () => {
+  await relayWith();
+  const ana = await phone('no-basis');
+  ana.send({ t: 'invisible', on: true });
+  await ana.until((v) => v.me.invisible);
+  ana.send({ t: 'arm', intent: 'dance' });
+  await ana.until((v) => v.me.armed === 'dance' && !v.me.invisible && v.me.by === 'phone');
+  close(ana);
+});

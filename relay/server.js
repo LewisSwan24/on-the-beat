@@ -421,7 +421,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       ws.me = me;
       stopGrace(ws.r, me);
       ws.r.heard.set(me, now());
-      ws.r.room.join(me, { band: m.band });
+      // `quiet` counts only if this join makes the person.
+      ws.r.room.join(me, { band: m.band, quiet: m.quiet === true });
       ws.r.sockets.add(ws);
       push(ws.r);
       return;
@@ -432,13 +433,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     switch (m.t) {
       case 'profile': room.setProfile(me, { name: m.name, contact: m.contact }); break;
       case 'band': room.setBand(me, m.band); break;
-      // A fact the phone says again after reconnecting never undoes NOT NOW:
-      // the wristband may have made them invisible while the phone was away.
       case 'arm':
-        if (!(m.again && m.intent && room.viewFor(me)?.me.invisible)) room.arm(me, m.intent);
-        break;
       case 'invisible':
-        if (!(m.again && !m.on && room.viewFor(me)?.me.invisible)) room.setInvisible(me, m.on);
+        // Rules 3 to 5 are in room.fromPhone(). A seq that is there but not a number drops the frame.
+        if ('seq' in m && !Number.isFinite(m.seq)) return;
+        if (room.fromPhone(me, m) === 'changed') ws.send(JSON.stringify({ t: 'refused', why: 'changed', seq: Number.isFinite(m.seq) ? m.seq : 0 }));
         break;
       case 'pair':
         if (m.code !== undefined && m.code !== null) pairByCode(ws, r, me, m);

@@ -65,7 +65,8 @@ export function createRoom({
   const dances = new Map();   // 'a>b' -> clip ref: a danced back to b (LET'S DANCE!)
   const matches = new Map();  // pairKey -> match
   // id -> what the room keeps of someone who left tonight: their last rev, so a
-  // person made again never reuses one. Outlives leave(), as blocks do.
+  // person made again never reuses one, and whether they were NOT NOW, so they
+  // come back as they left. Outlives leave(), as blocks do.
   const tombs = new Map();
   const reports = [];
   let nextMatch = 1;
@@ -85,21 +86,27 @@ export function createRoom({
   /** Is b showing anything to a right now? */
   const shows = (a, b) => canSee(a, b) && !people.get(b).invisible;
 
-  function join(id, { band = BANDS[0] } = {}) {
+  /**
+   * In the room. A person made here starts invisible if they left invisible
+   * tonight, or if their phone joined holding NOT NOW (`quiet`); for someone
+   * already here, `quiet` is ignored, so an old NOT NOW cannot undo a newer
+   * change from the wrist.
+   */
+  function join(id, { band = BANDS[0], quiet = false } = {}) {
     if (!people.has(id)) {
       people.set(id, {
         id, name: '', contact: '', band: BANDS.includes(band) ? band : BANDS[0],
-        armed: null, invisible: false, pick: null, clip: null, joinedAt: now(),
+        armed: null, invisible: !!quiet || !!tombs.get(id)?.invisible, pick: null, clip: null, joinedAt: now(),
         rev: tombs.has(id) ? tombs.get(id).rev + 1 : firstRev(), seq: 0, by: 'relay',
       });
     }
     return people.get(id);
   }
 
-  /** Leaving the room ends broadcasting. Matches, yeses and blocks stay for the night. */
+  /** Leaving the room ends broadcasting. Matches, yeses, blocks and NOT NOW stay for the night. */
   function leave(id) {
     const p = people.get(id);
-    if (p) tombs.set(id, { rev: p.rev });
+    if (p) tombs.set(id, { rev: p.rev, invisible: p.invisible });
     people.delete(id);
   }
 
@@ -144,6 +151,30 @@ export function createRoom({
     const p = people.get(id);
     if (!p) return;
     changed(p, on ? null : p.armed, !!on, by);
+  }
+
+  /**
+   * An arm or an invisible from a phone. Its seq is noted whether or not it is
+   * applied (rule 4). A copy said `again` after a reconnect is applied only if
+   * the relay never saw it and it hides the person (rule 3). A change that
+   * shows the person and names the rev it was chosen from is refused if that
+   * rev has moved (rule 5). Returns 'changed' for that refusal, else null.
+   */
+  function fromPhone(id, m) {
+    const p = people.get(id);
+    if (!p) return null;
+    const seq = Number.isFinite(m.seq) ? m.seq : 0;
+    const news = seq > p.seq;
+    p.seq = Math.max(p.seq, seq);
+    const hides = m.t === 'invisible' ? !!m.on : !INTENTS.includes(m.intent);
+    if (m.again) {
+      if (!news || !hides) return null;
+    } else if (!hides && Number.isInteger(m.basis) && m.basis !== p.rev) {
+      return 'changed';
+    }
+    if (m.t === 'invisible') setInvisible(id, m.on, 'phone');
+    else arm(id, m.intent, 'phone');
+    return null;
   }
 
   function pick(id, track) {
@@ -316,7 +347,7 @@ export function createRoom({
   }
 
   return {
-    join, leave, setBand, setProfile, arm, setInvisible, pick, postClip,
+    join, leave, setBand, setProfile, arm, setInvisible, fromPhone, pick, postClip,
     wave, like, unlike, danceBack, block, report, keep, viewFor,
     /** For the relay: who is here, so it knows whose view to push. */
     ids: () => [...people.keys()],
