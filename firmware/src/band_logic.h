@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -28,8 +29,13 @@
 
 namespace otb {
 
-constexpr uint32_t HOLD_MS = 1000;            // held this long: NOT NOW
-constexpr uint32_t WAKE_MS = 3000;            // a press shows what it is doing for this long
+constexpr uint32_t WAKE_MS = 6000;            // a KEY1 press shows the face this long
+constexpr uint32_t HOLD_MS = 1500;            // held this long: NOT NOW on KEY1, "send now" on KEY2
+constexpr uint32_t BAR_MS = 300;              // a KEY1 hold shows KEEP HOLDING from here
+constexpr uint32_t CHOOSE_MS = 6000;          // longest wait for the next KEY2 press before a choice is dropped
+constexpr uint32_t COMMIT_MS = 3000;          // after the last KEY2 step, the choice is sent (not from NOT NOW)
+constexpr uint32_t CONFIRM_MS = 10000;        // longest wait for the relay to show a sent choice
+constexpr uint32_t RESULT_MS = 3000;          // SET / NOT SENT / CHANGED stays on the face this long
 constexpr uint32_t PING_EVERY_MS = 2000;      // ask the relay this often...
 constexpr uint32_t DEAF_MS = 6000;            // ...and take this much silence as a dead socket
 constexpr uint32_t RETRY_MS = 1500;           // between tries to reach the relay
@@ -930,6 +936,324 @@ inline std::string batteryFrame(int level) { return "{\"t\":\"battery\",\"level\
 
 constexpr const char* HOLD_FRAME = "{\"t\":\"hold\"}";
 constexpr const char* PING_FRAME = "{\"t\":\"ping\"}";
+
+// ---------- the wrist: both buttons, the chooser, and the line to the relay ----------
+//
+// The same machine as app/lib/wrist.js, line for line, and held to the same
+// table of cases (tests/fixtures/wrist-cases.json). It takes key downs and
+// ups, the link coming and going, the relay's frames and the time, and gives
+// back the frames to send and the screen to draw. main.cpp only feeds it.
+
+/** The words each card shows, as relay/band.js bandShow() sends them. A preview draws these. */
+inline const char* cardWords(const std::string& intent) {
+  if (intent == "hi") return "HI :)";
+  if (intent == "song") return "FIRST SONG?";
+  if (intent == "dance") return "LET'S DANCE!";
+  return "";
+}
+
+/** What the screen shows: two lines on one field, the backlight, the KEEP HOLDING bar, and letters to draw with their QR. */
+struct Screen {
+  std::string big, small;
+  std::string field = "black";  // black | white | hi | song | dance
+  std::string ink = "text2";    // ink | text2 | white | hi | song | dance
+  uint8_t light = LIGHT_OFF;
+  int bar = -1;                 // 0..99 while KEY1 is held past BAR_MS; -1 otherwise
+  std::string code;             // the pairing letters
+};
+
+class Wrist {
+ public:
+  explicit Wrist(const std::string& key) : key_(key), id_(idFor(key)) {}
+
+  const std::string& id() const { return id_; }
+  const std::string& secret() const { return secret_; }
+  bool up() const { return link_.up(); }
+
+  void setBattery(int level) { battery_ = level >= 0 && level <= 100 ? level : -1; }
+  void setWifi(bool on) { wifi_ = on; }
+  /** The relay answered a ping, or anything else was heard. */
+  void heard(uint32_t now) { link_.heard(now); }
+
+  /** Everything to send since the last take: frame text, or "DROP" to drop the socket. */
+  std::vector<std::string> take() {
+    std::vector<std::string> o;
+    o.swap(out_);
+    return o;
+  }
+
+  void keyDown(int k, uint32_t now) {
+    Key& s = k == 1 ? k1_ : k2_;
+    if (s.down) return;
+    s.down = true;
+    s.since = now;
+    s.fired = false;
+    // Any KEY1 press-down freezes a choice at once: no commit can fire.
+    if (k == 1 && (mode_ == LOOK || mode_ == CHOOSING)) frozen_ = true;
+  }
+
+  void keyUp(int k, uint32_t now) {
+    Key& s = k == 1 ? k1_ : k2_;
+    if (!s.down) return;
+    s.down = false;
+    if (s.fired) return;
+    if (k == 2) {
+      step(now);
+      return;
+    }
+    if (frozen_) rest();
+    wakeUntil_ = now + WAKE_MS;
+  }
+
+  void linkUp(uint32_t now) {
+    if (link_.stale(now)) haveShow_ = false;
+    link_.opened(now);
+    // A hold not yet heard rides on the hello: the relay applies it before anything else.
+    const bool quiet = quiet_.dark();
+    if (quiet) quiet_.sent(now);
+    out_.push_back(helloFrame(id_, key_, battery_, secret_, quiet));
+  }
+
+  void linkDown(uint32_t now) { closed(now); }
+
+  void frame(const std::string& text, uint32_t now) {
+    link_.heard(now);
+    Frame f;
+    if (!readFrame(text, f)) return;
+    if (f.t == "paired" && f.hasSecret) {
+      secret_ = f.secret;
+      return;
+    }
+    if (f.t == "set" && f.hasOk && !f.ok) {
+      if (mode_ == SENDING) result(now, f.why == "changed" ? "CHANGED" : "NOT SENT");
+      return;
+    }
+    if (f.t != "show" || !f.hasShow) return;
+    show_ = f.show;
+    haveShow_ = true;
+    if (show_.kind == "pairing") secret_.clear();  // unpaired, or nobody came for it: a new pairing
+    quiet_.shown(show_);
+    if (mode_ == LOOK || mode_ == CHOOSING) {
+      // A show not about the person, or one whose rev moved, cancels the choice.
+      if (!personal() || show_.rev != basis_) rest();
+    } else if (mode_ == SENDING && personal() && show_.rev > basis_ && show_.armed == choice_ && !show_.quiet) {
+      result(now, "SET");
+    }
+  }
+
+  void tick(uint32_t now) {
+    switch (link_.tick(now)) {
+      case Link::DROP:
+        out_.push_back("DROP");
+        closed(now);
+        break;
+      case Link::PING:
+        out_.push_back(PING_FRAME);
+        break;
+      default:
+        break;
+    }
+    if (k1_.down && !k1_.fired && now - k1_.since >= HOLD_MS) {
+      k1_.fired = true;
+      hold(now);
+    }
+    if (k2_.down && !k2_.fired && now - k2_.since >= HOLD_MS) {
+      k2_.fired = true;
+      sideHeld(now);
+    }
+    if (quiet_.due(link_.up())) {
+      out_.push_back(HOLD_FRAME);
+      quiet_.sent(now);
+    }
+    quiet_.tick(now);
+    if (mode_ == LOOK && now - stepAt_ >= CHOOSE_MS) {
+      rest();
+    } else if (mode_ == CHOOSING && !frozen_) {
+      if (!fromQuiet_ && now - stepAt_ >= COMMIT_MS) commit(now);
+      else if (fromQuiet_ && now - stepAt_ >= CHOOSE_MS) rest();
+    } else if (mode_ == SENDING && now - sentAt_ >= CONFIRM_MS) {
+      result(now, "NOT SENT");
+      // Drop the socket: a set stuck in it can no longer land, and the next hello's show is the truth.
+      if (link_.up()) {
+        out_.push_back("DROP");
+        closed(now);
+      }
+      // Hiding may arrive late; showing may not. Leaving NOT NOW failed, so hold it again.
+      if (fromQuiet_) quiet_.held();
+    } else if (mode_ == RESULT && static_cast<int32_t>(now - resultUntil_) >= 0) {
+      rest();
+    }
+  }
+
+  Screen face(uint32_t now) const {
+    Screen f;
+    if (mode_ == LOOK) {
+      const std::string cur = current();
+      if (!link_.up()) f = noSignal();
+      else if (cur == "notnow") f = words("NOT NOW", "SIDE TO CHANGE", "black", "text2", LIGHT_AWAKE);
+      else if (cur == "off") f = words("READY", "SIDE TO CHANGE", "black", "text2", LIGHT_AWAKE);
+      else f = words(cardWords(cur), "SIDE TO CHANGE", cur, "ink", LIGHT_FULL);
+    } else if (mode_ == CHOOSING || mode_ == SENDING) {
+      const char* small = mode_ == SENDING ? "SENDING" : fromQuiet_ ? "HOLD SIDE TO SHOW" : "SIDE: NEXT";
+      f = preview_ == "off" ? words("OFF", small, "black", "text2", LIGHT_AWAKE)
+                            : words(cardWords(preview_), small, "black", preview_, LIGHT_AWAKE);
+    } else {
+      f = restFace(now, static_cast<int32_t>(wakeUntil_ - now) > 0 || mode_ == RESULT);
+      if (mode_ == RESULT) f.small = word_;
+    }
+    if (k1_.down && !k1_.fired && now - k1_.since >= BAR_MS) {
+      f.small = "KEEP HOLDING";
+      f.bar = std::min<int>(99, static_cast<int>((now - k1_.since) * 100 / HOLD_MS));
+      if (f.light < LIGHT_AWAKE) f.light = LIGHT_AWAKE;
+    }
+    return f;
+  }
+
+ private:
+  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT };
+  struct Key {
+    bool down = false;
+    bool fired = false;
+    uint32_t since = 0;
+  };
+
+  static Screen words(const std::string& big, const std::string& small, const std::string& field, const std::string& ink,
+                      uint8_t light) {
+    Screen s;
+    s.big = big;
+    s.small = small;
+    s.field = field;
+    s.ink = ink;
+    s.light = light;
+    return s;
+  }
+
+  bool personal() const { return haveShow_ && show_.hasArmed; }
+
+  /** NOT NOW (a hold not yet shown, or the relay's quiet), else what is armed, else "off". */
+  std::string current() const {
+    if (quiet_.dark() || (haveShow_ && show_.quiet)) return "notnow";
+    return haveShow_ && !show_.armed.empty() ? show_.armed : "off";
+  }
+
+  std::string pct() const { return battery_ >= 0 ? std::to_string(battery_) + "%" : ""; }
+
+  Screen noSignal() const {
+    const std::string why = wifi_ ? "NO RELAY" : "NO WI-FI";
+    return words("NO SIGNAL", pct().empty() ? why : why + " - " + pct(), "black", "text2", LIGHT_AWAKE);
+  }
+
+  /** The face at rest: faceFor(), wordsFor() and lightFor(), as the relay's show has it. */
+  Screen restFace(uint32_t now, bool awake) const {
+    const Face f = faceFor(haveShow_ ? &show_ : nullptr, link_.stale(now), quiet_.dark());
+    const Signal signal = !wifi_ ? Signal::NO_WIFI : link_.up() ? Signal::LIVE : Signal::NO_RELAY;
+    const Words w = wordsFor(f, awake, battery_, signal);
+    const Show& s = f.show;
+    Screen out;
+    out.big = w.big;
+    out.small = w.small;
+    out.light = lightFor(f, awake);
+    out.field = s.kind == "test" ? "white" : lit(s) ? s.intent : "black";
+    out.ink = s.kind == "test" || lit(s) ? "ink" : s.kind == "pairing" || s.kind == "check" ? "white" : "text2";
+    if (s.kind == "pairing") out.code = s.code;
+    return out;
+  }
+
+  void rest() {
+    mode_ = REST;
+    frozen_ = false;
+    preview_.clear();
+    word_.clear();
+  }
+
+  void closed(uint32_t now) {
+    link_.closed(now);
+    quiet_.closed();
+  }
+
+  void hold(uint32_t now) {
+    quiet_.held();
+    rest();
+    wakeUntil_ = now;
+  }
+
+  void result(uint32_t now, const char* w) {
+    mode_ = RESULT;
+    word_ = w;
+    resultUntil_ = now + RESULT_MS;
+    preview_.clear();
+    frozen_ = false;
+  }
+
+  void commit(uint32_t now) {
+    if (frozen_) return;
+    // "In force" is checked again: a preview equal to what is armed sends nothing.
+    if (preview_ == current() || !link_.up()) {
+      rest();
+      return;
+    }
+    choice_ = preview_ == "off" ? "" : preview_;
+    out_.push_back("{\"t\":\"set\",\"intent\":" + (choice_.empty() ? std::string("null") : "\"" + choice_ + "\"") +
+                   ",\"basis\":" + std::to_string(basis_) + "}");
+    mode_ = SENDING;
+    sentAt_ = now;
+  }
+
+  static std::string after(const std::string& card) {
+    if (card == "hi") return "song";
+    if (card == "song") return "dance";
+    if (card == "dance") return "off";
+    return "hi";
+  }
+
+  /** A KEY2 press let go before HOLD_MS. */
+  void step(uint32_t now) {
+    if (k1_.down || frozen_ || mode_ == SENDING) return;
+    if (mode_ == RESULT) rest();
+    if (mode_ == REST) {
+      wakeUntil_ = now + WAKE_MS;
+      if (!personal()) return;  // not about the person: KEY2 only wakes
+      mode_ = LOOK;
+      stepAt_ = now;
+      basis_ = show_.rev;
+      return;
+    }
+    if (!link_.up()) return;  // offline, KEY2 changes nothing
+    if (mode_ == LOOK) {
+      const std::string cur = current();
+      fromQuiet_ = cur == "notnow";
+      preview_ = fromQuiet_ ? "hi" : after(cur);
+      mode_ = CHOOSING;
+      stepAt_ = now;
+      return;
+    }
+    preview_ = after(preview_);
+    stepAt_ = now;
+  }
+
+  /** KEY2 held for HOLD_MS: send now in a choice; with no preview yet, only wake. */
+  void sideHeld(uint32_t now) {
+    if (k1_.down || frozen_) return;
+    if (mode_ == CHOOSING) commit(now);
+    else if (mode_ == LOOK) stepAt_ = now;
+    else if (mode_ == REST || mode_ == RESULT) step(now);
+  }
+
+  std::string key_, id_, secret_;
+  int battery_ = -1;
+  bool wifi_ = true;
+  Link link_;
+  Quiet quiet_;
+  Show show_;
+  bool haveShow_ = false;
+  Key k1_, k2_;
+  Mode mode_ = REST;
+  std::string preview_, choice_, word_;
+  bool fromQuiet_ = false, frozen_ = false;
+  uint32_t wakeUntil_ = 0, stepAt_ = 0, sentAt_ = 0, resultUntil_ = 0;
+  int64_t basis_ = 0;
+  std::vector<std::string> out_;
+};
 
 // ---------- the serial console ----------
 

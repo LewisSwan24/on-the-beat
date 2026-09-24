@@ -20,6 +20,8 @@ import WebSocket from 'ws';
 import { createRelay, WS_PATH } from '../relay/server.js';
 import { HUE } from '../app/copy.js';
 import { codeFrom, pairUrl } from '../app/lib/pairing.js';
+import { CONSTS } from '../app/lib/wrist.js';
+import { TABLE, lines, check } from './wrist-table.js';
 
 const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).digest('hex').slice(0, 32);
 
@@ -234,3 +236,19 @@ test('what the firmware says, the relay takes; what the relay says, the firmware
     await relay.close();
   }
 });
+
+test('the firmware and the stand-in keep the same constants, by name', { skip }, () => {
+  const [consts] = speak(['consts']);
+  assert.deepEqual(JSON.parse(consts), CONSTS);
+});
+
+// The stand-in's table of cases (tests/wrist.test.js), run through band_logic.h's Wrist.
+for (const c of TABLE.cases) {
+  test('band_logic.h: ' + c.name, { skip }, () => {
+    if (broken) throw broken;
+    const protocol = lines(c, CONSTS);
+    const r = spawnSync(bin, ['wrist'], { input: protocol.map((p) => p.line).join('\n') + '\n', encoding: 'utf8', env });
+    assert.equal(r.status, 0, r.stderr);
+    check(c, protocol, r.stdout.split(/\r?\n/).slice(0, -1).map((l) => JSON.parse(l)), CONSTS);
+  });
+}
