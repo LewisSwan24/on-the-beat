@@ -19,6 +19,7 @@ import { bandShow, cleanCode, newCode } from './band.js';
 
 export const WS_PATH = '/api/ws';
 export const PAIR_CHECK_MS = 60_000;          // a pending pairing waits this long for YES
+export const BAND_ALONE_MS = 60 * 60_000;     // a wristband alone holds its person, or waits for its owner, this long
 const MAX_FRAME = 1_600_000;          // a five-second clip, base64, with room to spare
 const CLIP_MAX = 1_200_000;           // bytes of video per clip
 const ROOM_CLIPS_MAX = 60_000_000;    // all clips in one room; the oldest go first
@@ -29,7 +30,6 @@ const BAND_GRACE_MS = 60_000;         // a wristband that drops keeps its letter
 const TRIES_MS = 60_000;              // the window pairing attempts are counted in
 const SOCKET_TRIES = 5;               // pairing attempts one socket may make in it
 const ADDRESS_TRIES = 20;             // pairing attempts one address may make in it, over every socket
-const CLAIM_GRACE_MS = 45_000;        // an id-claim no wristband ever answers is swept after this
 const HEX32 = /^[a-f0-9]{32}$/;
 
 const TYPES = {
@@ -54,8 +54,16 @@ export function loadShows(file) {
   }
 }
 
+/**
+ * The relay: the app, and one socket per phone and per wristband.
+ *
+ * The clock and the waits are options so tests can drive them: `clock` reads
+ * the time, `pairCheckMs` is how long a pairing waits for YES, and
+ * `bandAloneMs` how long a wristband alone holds its person or waits for its
+ * owner.
+ */
 export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile, maxBands = 5_000, maxRooms = 5_000,
-  clock = Date.now, pairCheckMs = PAIR_CHECK_MS } = {}) {
+  clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS } = {}) {
   const now = () => clock();
   const here = fileURLToPath(new URL('..', import.meta.url));
   const dist = root ?? join(here, 'dist');
@@ -106,13 +114,19 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
 
   const bands = new Map();   // id -> { id, ws, battery, code, key, person, testUntil, lastShow }
   const codes = new Map();   // code -> band id, while it waits to be typed
+  const gone = new Map();    // id -> when: paired records and placeholders forgotten tonight
 
   const bandOf = (key, person) => [...bands.values()].find((b) => b.key === key && b.person === person) || null;
   const pendingOf = (key, person) => [...bands.values()].find((b) => b.pending?.key === key && b.pending.person === person) || null;
+  const clampBattery = (v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
 
   const makeBand = (id, ws) => ({ id, ws, battery: null, code: null, key: null, person: null,
     testUntil: 0, lastShow: null, everWs: !!ws, goneAt: 0, claimedAt: now(), old: false,
-    secret: null, pending: null });   // pending: { key, person, number, until } while a pairing waits for YES
+    secret: null, pending: null,      // pending: { key, person, number, until } while a pairing waits for YES
+    waiting: false,     // after a relay restart: said hello with a secret, and waits for its owner
+    waitingAt: 0,
+    quiet: false,       // a hold with nobody in a room to hide, kept until they are
+  });
 
   // How long a record has been dead weight: a live wristband is never that, a
   // real paired band whose wristband has connected at least once is kept, and
@@ -137,14 +151,14 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   function showBand(b, now = clock()) {
     if (!b.ws) return;
     const view = b.key ? rooms.get(b.key)?.room.viewFor(b.person) ?? null : null;
-    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, testUntil: b.testUntil, now }) });
+    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, waiting: b.waiting, testUntil: b.testUntil, now }) });
     if (text !== b.lastShow) { b.lastShow = text; b.ws.send(text); }
   }
 
   /** Nobody's, and nobody is pairing it: fresh letters while it is worn; forgotten when it is not. */
   function freshLetters(b) {
     codes.delete(b.code);
-    Object.assign(b, { code: null, key: null, person: null, secret: null, pending: null });
+    Object.assign(b, { code: null, key: null, person: null, secret: null, pending: null, waiting: false, quiet: false });
     if (b.ws) {
       b.code = newCode(new Set(codes.keys()));
       codes.set(b.code, b.id);
@@ -171,13 +185,25 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     showBand(b);
   }
 
+  function forget(id, at) {
+    gone.set(id, at);
+    if (gone.size > maxBands) gone.delete(gone.keys().next().value);
+  }
+
+  /** NOT NOW from the wrist. With nobody in a room to hide, it is kept until they are. */
+  function holdOn(b) {
+    const room = b.key ? rooms.get(b.key)?.room : null;
+    if (b.person && room?.has(b.person)) room.setInvisible(b.person, true);
+    else if (b.waiting) b.quiet = true;
+  }
+
   function handleBand(ws, m) {
     const b = bands.get(ws.band);
     // Only from the wristband's current socket: a set stuck in a replaced one must not land.
     if (!b || b.ws !== ws) return;
-    if (m.t === 'battery') b.battery = Math.max(0, Math.min(100, Math.round(Number(m.level) || 0)));
-    // Held for a second: NOT NOW, from the wrist. The phone follows.
-    if (m.t === 'hold' && b.person) rooms.get(b.key)?.room.setInvisible(b.person, true);
+    if (m.t === 'battery') b.battery = clampBattery(m.level);
+    // Held: NOT NOW, from the wrist. The phone follows.
+    if (m.t === 'hold') holdOn(b);
     const r = b.key ? rooms.get(b.key) : null;
     if (r) push(r); else showBand(b);
   }
@@ -200,11 +226,21 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // A hello with no version never reaches a record made by one with, nor the other way round.
     if (b && b.old === v2) { refuseBand(ws); return; }
     // A paired record is only reached with its secret. The live socket is left alone.
-    if (b?.person && secret !== b.secret) { refuseBand(ws); return; }
+    if (b?.person && b.everWs && secret !== b.secret) { refuseBand(ws); return; }
+    if (b?.person && !b.everWs && secret !== b.secret) {
+      // A phone was back first and holds a placeholder, but not with this wristband's secret.
+      const r = rooms.get(b.key);
+      if (r) toPerson(r, b.person, { t: 'claim', ok: false, why: 'gone' });
+      bands.delete(id);
+      b = null;
+      if (r) push(r);
+    }
     if (!b) {
       if (bands.size >= maxBands && !evictBand(now())) { ws.send(JSON.stringify({ t: 'error', why: 'too many wristbands' })); return; }
       b = makeBand(id, ws);
       b.old = !v2;
+      // A secret the relay does not know: it restarted, and this wristband waits for its owner.
+      if (secret) Object.assign(b, { waiting: true, secret, waitingAt: now() });
       bands.set(id, b);
     }
     // Replaced, not cut off: it may still be closing, and its frames are dropped from here on.
@@ -213,9 +249,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     b.everWs = true;
     b.lastShow = null;
     ws.band = id;
-    if (!b.person && !b.code) unpairBand(b);
-    if (m.battery !== undefined) handleBand(ws, { t: 'battery', level: m.battery });
-    else showBand(b);
+    if (m.battery !== undefined) b.battery = clampBattery(m.battery);
+    if (!b.person && !b.code && !b.pending && !b.waiting) freshLetters(b);
+    if (m.quiet === true) holdOn(b);
+    const r = b.key ? rooms.get(b.key) : null;
+    if (r) push(r); else showBand(b);
   }
 
   function checkNumber() {
@@ -268,11 +306,22 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       answer(b.everWs ? { ok: true, band: id } : { ok: false, why: 'waiting' });
       return;
     }
+    if (proven && b.waiting) {
+      // After a relay restart the wristband was back first, and this is its owner.
+      const old = bandOf(r.key, me);
+      if (old) unpairBand(old);
+      Object.assign(b, { waiting: false, key: r.key, person: me });
+      if (b.quiet) r.room.setInvisible(me, true);
+      b.quiet = false;
+      answer({ ok: true, band: id });
+      return;
+    }
     // Unproven from here, and counted: a claim is how the ids would be walked.
     if (tooMany(ws)) { ws.send(JSON.stringify({ t: 'error', why: 'too many tries' })); return; }
     attempt(ws);
-    if (b || !HEX32.test(id) || !HEX32.test(secret)) { answer({ ok: false, why: 'gone' }); return; }
-    // The phone is back before its wristband: a placeholder with that secret.
+    if (b || gone.has(id) || !HEX32.test(id) || !HEX32.test(secret)) { answer({ ok: false, why: 'gone' }); return; }
+    // The phone is back before its wristband: a placeholder with that secret, one per person.
+    for (const p of [...bands.values()]) if (!p.everWs && p.key === r.key && p.person === me) bands.delete(p.id);
     if (bands.size >= maxBands && !evictBand(now())) { ws.send(JSON.stringify({ t: 'error', why: 'too many wristbands' })); return; }
     bands.set(id, Object.assign(makeBand(id, null), { key: r.key, person: me, secret }));
     answer({ ok: false, why: 'waiting' });
@@ -502,10 +551,13 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
 
   function expire(at) {
     for (const b of [...bands.values()]) {
+      // Nobody came for a wristband waiting after a restart: it is new to the relay again.
+      if (b.waiting && at - b.waitingAt >= bandAloneMs) { freshLetters(b); showBand(b, at); continue; }
       if (b.ws) continue;
       const idle = at - (b.goneAt || b.claimedAt || at);
-      const dead = (!b.person && idle >= BAND_GRACE_MS) || (b.person && !b.everWs && idle >= CLAIM_GRACE_MS);
+      const dead = b.person ? idle >= bandAloneMs : idle >= BAND_GRACE_MS;
       if (!dead) continue;
+      if (b.person) forget(b.id, at);   // a paired wristband away for the hour, or a placeholder nobody answered
       codes.delete(b.code);
       bands.delete(b.id);
     }

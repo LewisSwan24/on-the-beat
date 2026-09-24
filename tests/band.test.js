@@ -58,3 +58,9 @@ test('a pairing code is four letters nobody can misread, and never one already w
 test('while a pairing waits for YES the wrist shows the check number, before anything else', () => {
   assert.deepEqual(bandShow({ view: view({ armed: 'hi' }), code: 'KXRT', check: 27, testUntil: T + 1, now: T }), { kind: 'check', big: '27' });
 });
+
+test('waiting for its owner, and a person not in a room, are shows of their own', () => {
+  assert.deepEqual(bandShow({ view: null, waiting: true, now: T }), { kind: 'waiting' });
+  assert.deepEqual(bandShow({ view: null, battery: 40, now: T }), { kind: 'off', battery: 40, away: true });
+  assert.equal(bandShow({ view: null, code: 'KXRT', waiting: true, now: T }).kind, 'pairing', 'letters come first');
+});

@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import WebSocket from 'ws';
-import { createRelay, WS_PATH, bandIdOf, venueKey } from '../relay/server.js';
+import { createRelay, WS_PATH, BAND_ALONE_MS, bandIdOf, venueKey } from '../relay/server.js';
 import { helpers, newKey } from './relay-harness.js';
 
 let relay;
@@ -317,7 +317,7 @@ test('id-claims with no wristband behind them are swept, so they cannot pile up'
     phones.push(ph);
   }
   assert.ok(relay.bandCount() >= before + 3, 'three placeholders now exist, saw ' + relay.bandCount() + ' vs ' + before);
-  relay.expire(Date.now() + 46_000);           // past CLAIM_GRACE_MS
+  relay.expire(Date.now() + BAND_ALONE_MS + 1_000);   // a placeholder is kept for the hour
   assert.ok(relay.bandCount() <= before, 'and every unanswered placeholder is gone, saw ' + relay.bandCount());
   close(...phones);
 });

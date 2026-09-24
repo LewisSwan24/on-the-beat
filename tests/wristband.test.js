@@ -3,10 +3,11 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createRelay, bandIdOf, PAIR_CHECK_MS } from '../relay/server.js';
+import { createRelay, bandIdOf, BAND_ALONE_MS, PAIR_CHECK_MS } from '../relay/server.js';
 import { helpers, newKey, pause } from './relay-harness.js';
 
 let relay;
@@ -212,4 +213,88 @@ test('a claim needs the secret', async () => {
   ana.send({ t: 'pair', band: id });
   assert.deepEqual(await bare, { t: 'claim', ok: false, why: 'gone' });
   close(ana, band);
+});
+
+// ---------- §0: after a relay restart ----------
+
+test('a restarted relay keeps a paired wristband waiting for its owner, and the claim pairs it', async () => {
+  const secret = newKey();
+  const band = await wristband(62, { secret });
+  assert.deepEqual(band.show, { kind: 'waiting' }, 'no letters, no code to scan');
+  const ana = await phone('restart-room');
+  const ok = reply(ana, 'claim');
+  ana.send({ t: 'pair', band: band.id, secret, again: true });
+  assert.deepEqual(await ok, { t: 'claim', ok: true, band: band.id });
+  await band.until((s) => s.kind === 'off' && !s.away);
+  close(ana, band);
+});
+
+test('a hold while it waits, or in the hello, is applied at the claim', async () => {
+  for (const how of ['hold', 'hello']) {
+    const secret = newKey();
+    const band = await wristband(62, { secret, quiet: how === 'hello' });
+    if (how === 'hold') band.send({ t: 'hold' });
+    await pause(50);
+    const ana = await phone('restart-quiet-' + how);
+    ana.send({ t: 'pair', band: band.id, secret });
+    await ana.until((v) => v.me.invisible);
+    close(ana, band);
+  }
+});
+
+test('nobody claims it for BAND_ALONE_MS: it shows fresh letters', async () => {
+  const band = await wristband(62, { secret: newKey() });
+  relay.expire(Date.now() + BAND_ALONE_MS - 60_000);
+  await pause(50);
+  assert.equal(band.show.kind, 'waiting', 'not yet');
+  relay.expire(Date.now() + BAND_ALONE_MS + 1_000);
+  await band.until((s) => s.kind === 'pairing');
+  close(band);
+});
+
+test('the phone back first: a placeholder is kept, and the wristband\'s secret decides', async () => {
+  const key = newKey();
+  const secret = newKey();
+  const ana = await phone('first-room');
+  const waiting = reply(ana, 'claim');
+  ana.send({ t: 'pair', band: bandIdOf(key), secret, again: true });
+  assert.deepEqual(await waiting, { t: 'claim', ok: false, why: 'waiting' });
+  const band = await wristband(62, { key, secret });
+  assert.equal(band.show.kind, 'off', 'the same secret: paired');
+  await ana.until((v) => v.me.wristband?.live);
+
+  const key2 = newKey();
+  const ben = await phone('first-room');
+  ben.send({ t: 'pair', band: bandIdOf(key2), secret: newKey() });
+  await ben.until((v) => v.me.wristband?.live === false);
+  const told = reply(ben, 'claim');
+  const other = await wristband(62, { key: key2, secret: newKey() });
+  assert.deepEqual(await told, { t: 'claim', ok: false, why: 'gone' }, 'a different secret: its claimer is told');
+  assert.equal(other.show.kind, 'waiting', 'and the wristband waits for its own owner');
+  close(ana, ben, band, other);
+});
+
+test('one placeholder per person', async () => {
+  const ana = await phone('one-room');
+  const count = relay.bandCount();
+  for (let i = 0; i < 3; i += 1) {
+    const w = reply(ana, 'claim');
+    ana.send({ t: 'pair', band: randomBytes(16).toString('hex'), secret: newKey() });
+    await w;
+  }
+  assert.equal(relay.bandCount(), count + 1);
+  close(ana);
+});
+
+test('a paired wristband away for BAND_ALONE_MS is forgotten, and the next claim is told gone', async () => {
+  const band = await wristband();
+  const ana = await phone('away-room');
+  const { band: id, secret } = await pairBand(ana, band);
+  band.ws.close();
+  await ana.until((v) => v.me.wristband?.live === false);
+  relay.expire(Date.now() + BAND_ALONE_MS + 1_000);
+  const told = reply(ana, 'claim');
+  ana.send({ t: 'pair', band: id, secret, again: true });
+  assert.deepEqual(await told, { t: 'claim', ok: false, why: 'gone' });
+  close(ana);
 });
