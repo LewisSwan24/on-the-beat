@@ -1,0 +1,18 @@
+#!/bin/sh
+# Refuse to push this personal repository into the team's.
+# The two are separate on purpose; see README.md.
+remote_name="$1"
+remote_url="$2"
+
+case "$remote_url" in
+  *cimi2232*)
+    echo "pre-push: REFUSED." >&2
+    echo "  remote '$remote_name' is $remote_url" >&2
+    echo "  That is the DECO3500 team repository. This repository is personal" >&2
+    echo "  and must never be pushed there. Remove the remote or fix the URL." >&2
+    exit 1
+    ;;
+esac
+
+echo "pre-push: pushing to '$remote_name' -> $remote_url"
+exit 0
