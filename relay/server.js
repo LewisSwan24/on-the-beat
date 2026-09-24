@@ -193,7 +193,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   /** NOT NOW from the wrist. With nobody in a room to hide, it is kept until they are. */
   function holdOn(b) {
     const room = b.key ? rooms.get(b.key)?.room : null;
-    if (b.person && room?.has(b.person)) room.setInvisible(b.person, true);
+    if (b.person && room?.has(b.person)) room.setInvisible(b.person, true, 'band');
     else if (b.waiting) b.quiet = true;
   }
 
@@ -311,7 +311,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       const old = bandOf(r.key, me);
       if (old) unpairBand(old);
       Object.assign(b, { waiting: false, key: r.key, person: me });
-      if (b.quiet) r.room.setInvisible(me, true);
+      if (b.quiet) r.room.setInvisible(me, true, 'band');
       b.quiet = false;
       answer({ ok: true, band: id });
       return;

@@ -162,7 +162,7 @@ test("holding the wristband's button is NOT NOW, and a phone coming back does no
   ana.send({ t: 'arm', intent: 'hi' });
   await ben.until((v) => v.near.length === 1);
   band.send({ t: 'hold' });
-  await ana.until((v) => v.me.invisible);
+  await ana.until((v) => v.me.invisible && v.me.by === 'band');
   await ben.until((v) => v.near.length === 0);
   await band.until((s) => s.kind === 'off' && s.quiet);
   // The phone says again what it was doing, as it does after any reconnect.

@@ -62,6 +62,7 @@ export function createRoom({
   const matches = new Map();  // pairKey -> match
   const reports = [];
   let nextMatch = 1;
+  let nextRev = 0;            // one counter for the room, so a person made again never reuses a rev
 
   const handle = (viewer, target) =>
     createHash('sha256').update(salt + '|' + viewer + '|' + target).digest('hex').slice(0, 10);
@@ -83,6 +84,7 @@ export function createRoom({
       people.set(id, {
         id, name: '', contact: '', band: BANDS.includes(band) ? band : BANDS[0],
         armed: null, invisible: false, pick: null, clip: null, joinedAt: now(),
+        rev: ++nextRev, seq: 0, by: 'relay',
       });
     }
     return people.get(id);
@@ -91,6 +93,15 @@ export function createRoom({
   /** Leaving the room ends broadcasting. Matches, yeses and blocks stay for the night. */
   function leave(id) {
     people.delete(id);
+  }
+
+  /** Every change to armed or invisible, from anywhere, moves rev; `by` says who. */
+  function changed(p, armed, invisible, by) {
+    if (armed === p.armed && invisible === p.invisible) return;
+    p.armed = armed;
+    p.invisible = invisible;
+    p.rev = ++nextRev;
+    p.by = by;
   }
 
   function setBand(id, band) {
@@ -109,19 +120,18 @@ export function createRoom({
   }
 
   /** Arming one intent disarms the others: a card that arms is a switch, not a checkbox. */
-  function arm(id, intent) {
+  function arm(id, intent, by = 'phone') {
     const p = people.get(id);
     if (!p) return;
-    p.armed = INTENTS.includes(intent) ? intent : null;
-    if (p.armed) p.invisible = false;
+    const armed = INTENTS.includes(intent) ? intent : null;
+    changed(p, armed, armed ? false : p.invisible, by);
   }
 
   /** NOT NOW. Disarms everything and stays off until the person turns it back on. */
-  function setInvisible(id, on) {
+  function setInvisible(id, on, by = 'phone') {
     const p = people.get(id);
     if (!p) return;
-    p.invisible = !!on;
-    if (p.invisible) p.armed = null;
+    changed(p, on ? null : p.armed, !!on, by);
   }
 
   function pick(id, track) {
@@ -261,7 +271,10 @@ export function createRoom({
     const others = quiet ? [] : [...people.values()].filter((p) => shows(id, p.id));
     const row = (p) => ({ handle: handle(id, p.id), band: p.band });
     return {
-      me: { armed: me.armed, invisible: me.invisible, pick: me.pick, band: me.band, name: me.name, clip: me.clip?.ref ?? null },
+      me: {
+        armed: me.armed, invisible: me.invisible, pick: me.pick, band: me.band, name: me.name, clip: me.clip?.ref ?? null,
+        rev: me.rev, seq: me.seq, by: me.by, fresh: me.by === 'relay',
+      },
       // SAY HI: who is showing blue, as a band and at most a pick — and whether they waved at you.
       near: others.filter((p) => p.armed === 'hi').map((p) => ({
         ...row(p), pick: p.pick, waved: waves.has(id + '>' + p.id), wavedAtYou: waves.has(p.id + '>' + id),
@@ -296,6 +309,8 @@ export function createRoom({
     /** For the relay: who is here, so it knows whose view to push. */
     ids: () => [...people.keys()],
     has: (id) => people.has(id),
+    /** The rev a wristband's `set` must name (rule 1), or null for someone not here. */
+    revOf: (id) => people.get(id)?.rev ?? null,
     reports: () => reports.slice(),
     size: () => people.size,
   };

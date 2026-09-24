@@ -237,7 +237,7 @@ test('a hold while it waits, or in the hello, is applied at the claim', async ()
     await pause(50);
     const ana = await phone('restart-quiet-' + how);
     ana.send({ t: 'pair', band: band.id, secret });
-    await ana.until((v) => v.me.invisible);
+    await ana.until((v) => v.me.invisible && v.me.by === 'band');
     close(ana, band);
   }
 });

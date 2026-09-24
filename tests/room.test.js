@@ -209,3 +209,36 @@ test('a report is kept for the venue team with the band, never a position — ab
   assert.deepEqual([r1.from, r1.about, r1.band, r1.why], ['ana', 'ben', 'by the stage', 'followed me']);
   assert.deepEqual([r2.about, r2.band], [null, 'near the bar']);
 });
+
+// ---------- who changed it, and when (spec §2) ----------
+
+test('every change to armed or invisible moves rev and says who made it; nothing else does', () => {
+  const room = createRoom({ salt: 'test' });
+  room.join('ana');
+  const first = room.viewFor('ana').me;
+  assert.deepEqual([first.seq, first.by, first.fresh], [0, 'relay', true], 'made by the relay, and fresh');
+  room.arm('ana', 'hi', 'band');
+  const armed = room.viewFor('ana').me;
+  assert.ok(armed.rev > first.rev);
+  assert.deepEqual([armed.by, armed.fresh], ['band', false]);
+  room.arm('ana', 'hi', 'phone');
+  assert.deepEqual([room.viewFor('ana').me.rev, room.viewFor('ana').me.by], [armed.rev, 'band'], 'no change: no new rev, and by stays');
+  room.setProfile('ana', { name: 'Ana' });
+  room.pick('ana', 'Treasure');
+  assert.equal(room.viewFor('ana').me.rev, armed.rev, 'a name or a pick is not what a choice is made from');
+  room.setInvisible('ana', true);
+  const quiet = room.viewFor('ana').me;
+  assert.deepEqual([quiet.rev > armed.rev, quiet.by, quiet.armed, quiet.invisible], [true, 'phone', null, true]);
+  assert.equal(room.revOf('ana'), quiet.rev);
+  assert.equal(room.revOf('nobody'), null);
+});
+
+test('a person made again never reuses a rev', () => {
+  const room = createRoom({ salt: 'test' });
+  room.join('ana');
+  room.arm('ana', 'hi');
+  const before = room.viewFor('ana').me.rev;
+  room.leave('ana');
+  room.join('ana');
+  assert.ok(room.viewFor('ana').me.rev > before);
+});
