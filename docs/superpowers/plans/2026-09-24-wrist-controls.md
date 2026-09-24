@@ -3302,7 +3302,7 @@ and the toast render:
 
 with, in `app/styles.css` after `.toast`: `.toast .act { display: block; margin-top: 8px; padding: 0; border: 0; background: none; color: var(--stop); font: 700 13px/1.2 var(--sans); letter-spacing: .06em; cursor: pointer; }`.
 
-- [ ] **Step 3: Taps carry seq and basis; offline only NOT NOW goes.** Replace `arm`, `notNow` and `backOn`:
+- [ ] **Step 3: Taps carry seq and basis; offline only what hides goes.** Replace `arm`, `notNow` and `backOn`. The owner decided on 24 Sep 2026 that a card turned off offline is queued like NOT NOW: it hides, and hiding may arrive late.
 
 ```jsx
   // A tap (§2 rules 4 and 5): a new seq, and the rev it was chosen from when it shows the person.
@@ -3313,7 +3313,8 @@ with, in `app/styles.css` after `.toast`: `.toast .act { display: block; margin-
     net.current?.say(t, tapMessage(t, value, seq, view.me?.rev));
     return seq;
   }, [view.me?.rev]);
-  // Showing someone needs the relay now: offline, only NOT NOW is queued.
+  // Showing someone needs the relay now. Offline, only what hides is queued:
+  // NOT NOW, and a card turned off.
   const cannotShow = useCallback(() => {
     if (net.current?.live() && Number.isInteger(view.me?.rev)) return false;
     say('Not connected — try again');
@@ -3321,7 +3322,7 @@ with, in `app/styles.css` after `.toast`: `.toast .act { display: block; margin-
   }, [view.me?.rev, say]);
 
   const arm = useCallback((intent) => {
-    if (cannotShow()) return false;
+    if (intent && cannotShow()) return false;   // arm(null) hides: queued offline
     const seq = tap('arm', intent);
     // Arming makes them visible on the relay; the kept NOT NOW follows without being sent.
     if (intent) net.current?.keep('invisible', { t: 'invisible', on: false, seq });
@@ -3429,7 +3430,7 @@ In `app/lib/store.js`, `startNight`'s last line keeps a new night clear of an ol
 - [ ] **Step 7: Build, and check in a browser.** `npm start` in the background; the app seeded as `Rae` (`CLAUDE.md`), a second seeded browser tab as another person at the same venue, and `/band`:
   - Arm SAY HI; reload the page: the card is still SAY HI at once, and the relay log / the second tab shows no `arm null` (the second tab keeps seeing Rae in WHO'S NEAR).
   - Pair `/band` through the check. With the Task 9 stand-in there is no SIDE button yet, so use its hold: hold → the phone goes to the quiet screen; tap TURN BACK ON → home.
-  - Offline: stop the relay; tap a card → *Not connected — try again*; tap NOT NOW → quiet screen; start the relay → the second tab never sees Rae.
+  - Offline: stop the relay; tap a card → *Not connected — try again*; with a card armed, tap it off → it goes off at once and the relay takes it when it is back; tap NOT NOW → quiet screen; start the relay → the second tab never sees Rae.
   - I've left the venue: *Leaving…*; the stand-in shows new letters; the app lands on the venue list.
   Stop the relay by its port.
 
@@ -5436,7 +5437,8 @@ machine's.
   a dead socket cannot show someone who has since gone NOT NOW. The phone
   follows every view (`app/lib/follow.js`) and says when the wrist changed
   something — *Armed from your wristband: SAY HI*, with `NOT YOU? UNPAIR` — or
-  when its own tap did not land. Offline it queues only NOT NOW.
+  when its own tap did not land. Offline it queues only what hides: NOT NOW,
+  and a card turned off.
 - **A wristband keeps its person in the room** for up to an hour after a phone
   of theirs was last heard, or until 06:00 at the venue, whichever is first,
   so the phone can stay locked. With no phone and no live wristband, the
@@ -5532,7 +5534,7 @@ Follow `CLAUDE.md`'s "Verifying the phone in a browser" for seeding. Start the r
 - [ ] **Step 5: Reload after a wrist change.** Pair again; choose FIRST SONG? on the wrist; reload Rae's page: the card is FIRST SONG? at once, and the second phone never sees her card go off.
 - [ ] **Step 6: A reconnect.** Close the stand-in's socket from `javascript_tool` (not the page): its face keeps the card for ten seconds, then goes dark; it reconnects with its secret and shows the card again, still paired.
 - [ ] **Step 7: A relay restart with the phone closed.** Close Rae's tab; stop the relay by its port and start it again: the stand-in shows `OPEN YOUR PHONE` / `OR SWITCH ME OFF`. Hold its face button 1.5 s. Open Rae's tab: she lands on the quiet screen — the hold survived — and the stand-in is paired, dark.
-- [ ] **Step 8: Offline and leaving.** Stop the relay; on Rae's phone tap a card → *Not connected — try again*; tap NOT NOW → the quiet screen. Start the relay: the second phone never sees her. Tap *I've left the venue* → *Leaving…*, then the venue list; the stand-in shows new letters.
+- [ ] **Step 8: Offline and leaving.** Stop the relay; on Rae's phone tap a card → *Not connected — try again*; with a card armed, tap it off → off at once, and after the relay is back the second phone confirms it is off; tap NOT NOW → the quiet screen. Start the relay: the second phone never sees her. Tap *I've left the venue* → *Leaving…*, then the venue list; the stand-in shows new letters.
 - [ ] **Step 9: Stop everything.** Stop the relay by its port (`Get-NetTCPConnection -LocalPort 8790` → `Stop-Process`); reset the pane (`resize_window` preset `desktop`).
 
 ### Task 26: Proof on the real band

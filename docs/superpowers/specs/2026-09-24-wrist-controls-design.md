@@ -358,9 +358,10 @@ last `seq` with the night, draws them at once, and puts them in net.js's `said`
 as kept facts — sent only as `again` copies, in the order of §2 — never in the
 queue. The first view that passes rule 4 then sets the cards.
 
-**Offline, it queues only NOT NOW.** Arming a card or coming back visible
-while offline says *Not connected — try again*, as the wrist does; NOT NOW is
-queued and re-said.
+**Offline, it queues only what hides.** Arming a card or coming back visible
+while offline says *Not connected — try again*, as the wrist does; NOT NOW and
+a card turned off are queued and re-said (the owner, 24 Sep 2026: a card off
+hides, and hiding may arrive late).
 
 **Following.** `app/lib/follow.js` is pure: given the phone's `armed`,
 `invisible`, last `seq`, the current `screen` and `stack`, and a view, it
