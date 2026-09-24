@@ -219,8 +219,15 @@ across restarts, which matters: a quick tunnel's address changes every run.
   found that M5Unified 0.2.23 leaves `Serial` closed unless asked, which left
   the console deaf on every model; `setup()` now asks.
 - **Wi-Fi is 2.4 GHz with a password, or open.** Networks behind a web login
-  page, like a campus guest network, or a university login, like eduroam, do
-  not work: a phone's hotspot on 2.4 GHz does.
+  page, like a campus guest network, a university login, like eduroam, or
+  OWE ("enhanced open") do not work: a phone's hotspot on 2.4 GHz does. On
+  the Android phone it was tried with, "Extend compatibility" moved the hotspot
+  to 2.4 GHz only once the hotspot was switched off and on, and "turn off
+  hotspot automatically" would have switched it off before the band ever
+  joined. The name must match exactly, spaces and all.
+- **The console has no line editing.** Keys go to the band as they are typed,
+  and a backspace or an arrow is kept as a character: a mistyped line is sent
+  as it is and then typed again, which replaces it.
 - **Its fonts are ASCII.** Curly quotes, dashes and Latin accents are folded to
   it; a pick in a script the fonts cannot draw shows no second line rather than
   boxes. The phone still shows it whole.
@@ -306,13 +313,15 @@ relay could drive what a wrist shows.
 - **Proximity.** Wristbands pair and light, but nothing measures who is near
   whom: every person is still `in this room`. Nearness wants ESP-NOW between
   wristbands, which wants the hardware.
-- **The firmware has run on one wristband, not yet on Wi-Fi.** Its logic has
-  run against the real relay (above), and CI builds the ESP32 firmware with
-  PlatformIO on every push — about 1.2 MB of the 3 MB app partition — and
-  keeps the image to flash. On a StickS3 the screen, the button, the battery
-  and the console have been seen working. Joining Wi-Fi, reaching the relay
-  and pairing from a real phone are the next check. CI does not build the
-  StickS3 env.
+- **The firmware has run on one wristband.** A StickS3 joined a phone's
+  hotspot, reached the relay through a quick tunnel, and was paired by
+  scanning its code from a real Android phone: the phone showed its battery,
+  a card armed on the phone lit the wrist in its colour, and a hold on the
+  wrist took the phone to the invisible screen. That is one band and one
+  phone; two wrists meeting, and a night's worth of battery, are not tried.
+  CI builds the ESP32 firmware with PlatformIO on every push — about 1.2 MB
+  of the 3 MB app partition — and keeps the image to flash; it does not build
+  the StickS3 env.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was
