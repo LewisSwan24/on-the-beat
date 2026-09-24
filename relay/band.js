@@ -23,10 +23,12 @@ const short = (s, n) => {
  * @param {object|null} p.view    the paired person's viewFor(), or null when they are not in a room
  * @param {number|null} p.battery the wristband's own battery, percent
  * @param {string|null} p.code    set while the wristband is unpaired: the four letters to show
+ * @param {number|null} p.check   set while a pairing waits for YES: the number the phone asks about
  * @param {number} p.testUntil    TEST THE LIGHT runs until this time
  * @param {number} p.now
  */
-export function bandShow({ view = null, battery = null, code = null, testUntil = 0, now = Date.now() }) {
+export function bandShow({ view = null, battery = null, code = null, check = null, testUntil = 0, now = Date.now() }) {
+  if (check) return { kind: 'check', big: String(check) };
   if (code) return { kind: 'pairing', code };
   if (testUntil > now) return { kind: 'test' };
   const dim = battery !== null && battery <= DIM_AT;

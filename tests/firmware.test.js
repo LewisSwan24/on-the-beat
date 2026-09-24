@@ -148,7 +148,11 @@ test('what the firmware says, the relay takes; what the relay says, the firmware
     const ben = await phone(relay.port, 'firmware-room');
     socks.push(ana, ben);
     ana.send({ t: 'pair', code });
-    assert.equal((await ana.until('paired')).band, id, 'paired to the id the firmware made');
+    const { show: { big } } = await band.until('show', (m) => m.show.kind === 'check');
+    assert.equal(Number(big), (await ana.until('view', (m) => m.view.me.check)).view.me.check, 'the number on the wrist is the one the phone asks about');
+    ana.send({ t: 'confirm', yes: true });
+    const { band: pairedId, secret } = await ana.until('paired');
+    assert.equal(pairedId, id, 'paired to the id the firmware made from its key');
     await band.until('show', (m) => m.show.kind === 'test');
     await ana.until('view', (m) => m.view.me.wristband?.battery === 62 && m.view.me.wristband.live);
 
@@ -203,10 +207,11 @@ test('what the firmware says, the relay takes; what the relay says, the firmware
       }, text);
       assert.equal(light > 0, s.kind !== 'off', 'dark only when the relay says off: ' + text);
       if (s.kind === 'pairing') assert.equal(words.big, s.code);
+      if (s.kind === 'check') assert.deepEqual(words, { big: s.big, small: 'ON YOUR PHONE?' }, text);
       if (['hi', 'dance', 'meet'].includes(s.kind)) assert.deepEqual(words, { big: s.big, small: s.small.toUpperCase() }, text);
       if (s.kind === 'song') assert.deepEqual(words, { big: 'FIRST SONG?', small: 'ROS "Q" \\ X...' }, "the pick, in the letters the screen's font has");
     });
-    assert.deepEqual([...kinds].sort(), ['dance', 'hi', 'meet', 'off', 'pairing', 'song', 'test'], 'every kind of show was read');
+    assert.deepEqual([...kinds].sort(), ['check', 'dance', 'hi', 'meet', 'off', 'pairing', 'song', 'test'], 'every kind of show was read');
   } finally {
     for (const s of socks) s.ws.terminate();
     await relay.close();

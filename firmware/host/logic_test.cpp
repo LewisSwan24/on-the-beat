@@ -288,6 +288,12 @@ void face() {
   pairing.code = "KXRT";
   f = faceFor(&pairing, false, false);
   CHECK(wordsFor(f, false, 62, Signal::LIVE).big == "KXRT" && lightFor(f, false) == LIGHT_PAIR);
+  Show check;
+  check.kind = "check";
+  check.big = "27";
+  f = faceFor(&check, false, false);
+  w = wordsFor(f, false, 62, Signal::LIVE);
+  CHECK(w.big == "27" && w.small == "ON YOUR PHONE?" && lightFor(f, false) == LIGHT_PAIR);
   Show test;
   test.kind = "test";
   CHECK(lightFor(faceFor(&test, false, false), false) == LIGHT_FULL);

@@ -12,12 +12,13 @@ import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, isAbsolute, join, normalize, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { createRoom, SPOTS } from './room.js';
 import { bandShow, cleanCode, newCode } from './band.js';
 
 export const WS_PATH = '/api/ws';
+export const PAIR_CHECK_MS = 60_000;          // a pending pairing waits this long for YES
 const MAX_FRAME = 1_600_000;          // a five-second clip, base64, with room to spare
 const CLIP_MAX = 1_200_000;           // bytes of video per clip
 const ROOM_CLIPS_MAX = 60_000_000;    // all clips in one room; the oldest go first
@@ -25,9 +26,9 @@ const GRACE_MS = 120_000;             // a locked screen is not leaving
 const CLIP_TTL_MS = 3_600_000;        // "it loops on the floor for an hour"
 const PING_MS = 15_000;
 const BAND_GRACE_MS = 60_000;         // a wristband that drops keeps its letters this long
-const TRIES_MS = 60_000;              // the window wrong codes are counted in
-const SOCKET_TRIES = 5;               // wrong codes one socket may send in it
-const ADDRESS_TRIES = 20;             // wrong codes one address may send in it, over every socket
+const TRIES_MS = 60_000;              // the window pairing attempts are counted in
+const SOCKET_TRIES = 5;               // pairing attempts one socket may make in it
+const ADDRESS_TRIES = 20;             // pairing attempts one address may make in it, over every socket
 const CLAIM_GRACE_MS = 45_000;        // an id-claim no wristband ever answers is swept after this
 const HEX32 = /^[a-f0-9]{32}$/;
 
@@ -53,7 +54,9 @@ export function loadShows(file) {
   }
 }
 
-export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile, maxBands = 5_000, maxRooms = 5_000 } = {}) {
+export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile, maxBands = 5_000, maxRooms = 5_000,
+  clock = Date.now, pairCheckMs = PAIR_CHECK_MS } = {}) {
+  const now = () => clock();
   const here = fileURLToPath(new URL('..', import.meta.url));
   const dist = root ?? join(here, 'dist');
   const shows = loadShows(showsFile ?? process.env.SHOWS ?? join(here, 'relay', 'shows.json'));
@@ -84,11 +87,15 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       const b = bandOf(r.key, ws.me);
       // Its own field: me.band is where in the room they are.
       view.me.wristband = b ? { battery: b.battery, live: !!b.ws } : null;
+      // A pairing waiting for YES belongs to the person, not the socket: every phone of theirs is asked.
+      view.me.check = pendingOf(r.key, ws.me)?.pending.number ?? null;
       const text = JSON.stringify({ t: 'view', view });
       if (text !== ws.lastView) { ws.lastView = text; ws.send(text); }
     }
-    for (const b of bands.values()) if (b.key === r.key) showBand(b);
+    for (const b of bands.values()) if (b.key === r.key || b.pending?.key === r.key) showBand(b);
   }
+
+  const toPerson = (r, me, m) => { for (const s of r.sockets) if (s.me === me) s.send(JSON.stringify(m)); };
 
   // ---------- wristbands ----------
   // A wristband is not in a room until a phone pairs it. It gets four letters
@@ -99,9 +106,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   const codes = new Map();   // code -> band id, while it waits to be typed
 
   const bandOf = (key, person) => [...bands.values()].find((b) => b.key === key && b.person === person) || null;
+  const pendingOf = (key, person) => [...bands.values()].find((b) => b.pending?.key === key && b.pending.person === person) || null;
 
   const makeBand = (id, ws) => ({ id, ws, battery: null, code: null, key: null, person: null,
-    testUntil: 0, lastShow: null, everWs: !!ws, goneAt: 0, claimedAt: Date.now(), old: false });
+    testUntil: 0, lastShow: null, everWs: !!ws, goneAt: 0, claimedAt: now(), old: false,
+    secret: null, pending: null });   // pending: { key, person, number, until } while a pairing waits for YES
 
   // How long a record has been dead weight: a live wristband is never that, a
   // real paired band whose wristband has connected at least once is kept, and
@@ -123,17 +132,17 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     return true;
   }
 
-  function showBand(b, now = Date.now()) {
+  function showBand(b, now = clock()) {
     if (!b.ws) return;
     const view = b.key ? rooms.get(b.key)?.room.viewFor(b.person) ?? null : null;
-    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, testUntil: b.testUntil, now }) });
+    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, testUntil: b.testUntil, now }) });
     if (text !== b.lastShow) { b.lastShow = text; b.ws.send(text); }
   }
 
-  function unpairBand(b) {
-    const r = b.key ? rooms.get(b.key) : null;
-    b.key = null;
-    b.person = null;
+  /** Nobody's, and nobody is pairing it: fresh letters while it is worn; forgotten when it is not. */
+  function freshLetters(b) {
+    codes.delete(b.code);
+    Object.assign(b, { code: null, key: null, person: null, secret: null, pending: null });
     if (b.ws) {
       b.code = newCode(new Set(codes.keys()));
       codes.set(b.code, b.id);
@@ -141,6 +150,21 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       // Nobody is wearing it. If it comes back, it comes back new.
       bands.delete(b.id);
     }
+  }
+
+  function unpairBand(b) {
+    const r = b.key ? rooms.get(b.key) : null;
+    freshLetters(b);
+    if (r) push(r);
+    showBand(b);
+  }
+
+  /** A pairing that did not end in YES. `why` is told to the person's phones: 'timeout', or null when they said NO themselves. */
+  function dropPending(b, why) {
+    const r = rooms.get(b.pending.key);
+    const person = b.pending.person;
+    freshLetters(b);
+    if (r && why) toPerson(r, person, { t: 'check', ok: false, why });
     if (r) push(r);
     showBand(b);
   }
@@ -173,7 +197,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // A hello with no version never reaches a record made by one with, nor the other way round.
     if (b && b.old === v2) { refuseBand(ws); return; }
     if (!b) {
-      if (bands.size >= maxBands && !evictBand(Date.now())) { ws.send(JSON.stringify({ t: 'error', why: 'too many wristbands' })); return; }
+      if (bands.size >= maxBands && !evictBand(now())) { ws.send(JSON.stringify({ t: 'error', why: 'too many wristbands' })); return; }
       b = makeBand(id, ws);
       b.old = !v2;
       bands.set(id, b);
@@ -187,6 +211,66 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (!b.person && !b.code) unpairBand(b);
     if (m.battery !== undefined) handleBand(ws, { t: 'battery', level: m.battery });
     else showBand(b);
+  }
+
+  function checkNumber() {
+    // Two digits, like a meeting number, and not one another pairing is showing.
+    const taken = new Set([...bands.values()].filter((b) => b.pending).map((b) => b.pending.number));
+    let n = 10 + randomInt(90);
+    for (let i = 0; i < 90 && taken.has(n); i += 1) n = n === 99 ? 10 : n + 1;
+    return n;
+  }
+
+  /** By the four letters. Nothing pairs yet: the wristband that was reached shows a number, and the phone is asked. */
+  function pairByCode(ws, r, me, m) {
+    const error = (why) => ws.send(JSON.stringify({ t: 'error', why }));
+    if (tooMany(ws)) { error('too many tries'); return; }
+    attempt(ws);   // every attempt counts, right or wrong
+    const b = bands.get(codes.get(cleanCode(m.code)));
+    if (!b) { error('no such wristband'); return; }
+    if (b.old) { error('old firmware'); return; }
+    if (b.pending) { error('busy'); return; }
+    const mine = pendingOf(r.key, me);
+    if (mine) dropPending(mine, null);   // one pending per person: the newest letters win
+    b.pending = { key: r.key, person: me, number: checkNumber(), until: now() + pairCheckMs };
+    showBand(b);
+  }
+
+  function confirm(r, me, m) {
+    const b = pendingOf(r.key, me);
+    if (!b) return;
+    if (m.yes !== true) { dropPending(b, null); return; }
+    if (!b.ws) { dropPending(b, 'timeout'); return; }   // nothing on the wrist to give a secret to
+    const old = bandOf(r.key, me);
+    if (old) unpairBand(old);
+    codes.delete(b.code);
+    Object.assign(b, { pending: null, code: null, key: r.key, person: me, secret: randomBytes(16).toString('hex') });
+    // Paired: it flashes white once, so the right wrist knows it was the one.
+    b.testUntil = now() + 900;
+    b.ws.send(JSON.stringify({ t: 'paired', secret: b.secret }));
+    toPerson(r, me, { t: 'paired', band: b.id, secret: b.secret });
+  }
+
+  /** After a reconnect, by the id only this phone was told when it paired. */
+  function claim(ws, r, me, m) {
+    const id = String(m.band || '');
+    let b = id ? bands.get(id) : null;
+    // A relay that restarted has forgotten every wristband, and the phone can
+    // be back before its wristband is: a bare id claims the band, and the
+    // wristband comes back already paired. Until one does, the claim is only
+    // a placeholder the sweep forgets. Unproven, so counted.
+    const wouldClaim = !b && /^[a-f0-9]{16,64}$/.test(id);
+    if (wouldClaim && tooMany(ws)) { ws.send(JSON.stringify({ t: 'error', why: 'too many tries' })); return; }
+    if (wouldClaim) {
+      attempt(ws);
+      if (bands.size >= maxBands && !evictBand(now())) { ws.send(JSON.stringify({ t: 'error', why: 'too many wristbands' })); return; }
+      b = makeBand(id, null);
+      bands.set(id, b);
+    }
+    const mine = b && b.key === r.key && b.person === me;
+    if (!b || (!mine && !wouldClaim)) { ws.send(JSON.stringify({ t: 'error', why: 'no such wristband' })); return; }
+    if (!mine) { b.key = r.key; b.person = me; }
+    ws.send(JSON.stringify({ t: 'paired', band: b.id }));
   }
 
   /**
@@ -209,7 +293,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       total -= c.buf.length;
     }
     const ref = randomBytes(12).toString('hex');
-    r.clips.set(ref, { mime: String(mime).split(';')[0], buf, by: id, slot, at: Date.now() });
+    r.clips.set(ref, { mime: String(mime).split(';')[0], buf, by: id, slot, at: now() });
     return ref;
   }
 
@@ -247,48 +331,15 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       case 'invisible':
         if (!(m.again && !m.on && room.viewFor(me)?.me.invisible)) room.setInvisible(me, m.on);
         break;
-      case 'pair': {
-        // By the four letters on the wristband — or, after a reconnect, by the
-        // id only this phone was told when it paired.
-        const id = m.code ? codes.get(cleanCode(m.code)) : String(m.band || '');
-        let b = id ? bands.get(id) : null;
-        // A relay that restarted has forgotten every wristband, and the phone can
-        // be back before its wristband is: a bare id claims the band, and the
-        // wristband comes back already paired. Until one does, the claim is only
-        // a placeholder the sweep forgets.
-        const wouldClaim = !b && !m.code && /^[a-f0-9]{16,64}$/.test(id);
-        // Unproven: a code that matched nothing, or a claim with no wristband
-        // behind it yet. Both are how the four-letter space would be walked, so
-        // both are counted and throttled — a real code hit, or a reconnect to a
-        // band that already exists, is neither.
-        const unproven = (!!m.code && !b) || wouldClaim;
-        if (unproven && tooMany(ws)) { ws.send(JSON.stringify({ t: 'error', why: 'too many tries' })); return; }
-        if (unproven) wrongCode(ws);
-        if (wouldClaim) {
-          if (bands.size >= maxBands && !evictBand(Date.now())) { ws.send(JSON.stringify({ t: 'error', why: 'too many wristbands' })); return; }
-          b = makeBand(id, null);
-          bands.set(id, b);
-        }
-        const mine = b && b.key === r.key && b.person === me;
-        if (b?.old) { ws.send(JSON.stringify({ t: 'error', why: 'old firmware' })); return; }
-        if (!b || (!b.code && !mine && !wouldClaim)) { ws.send(JSON.stringify({ t: 'error', why: 'no such wristband' })); return; }
-        if (!mine) {
-          const old = bandOf(r.key, me);
-          if (old) unpairBand(old);
-          codes.delete(b.code);
-          b.code = null;
-          b.key = r.key;
-          b.person = me;
-          // Paired: it flashes white once, so the right wrist knows it was the one.
-          b.testUntil = Date.now() + 900;
-        }
-        ws.send(JSON.stringify({ t: 'paired', band: b.id }));
+      case 'pair':
+        if (m.code !== undefined && m.code !== null) pairByCode(ws, r, me, m);
+        else claim(ws, r, me, m);
         break;
-      }
+      case 'confirm': confirm(r, me, m); break;
       case 'unpair': { const b = bandOf(r.key, me); if (b) unpairBand(b); break; }
       case 'testLight': {
         const b = bandOf(r.key, me);
-        if (b) { b.testUntil = Date.now() + 2000; showBand(b); }
+        if (b) { b.testUntil = now() + 2000; showBand(b); }
         break;
       }
       case 'pick': room.pick(me, m.track); break;
@@ -372,11 +423,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     return cf && (a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1') ? String(cf).slice(0, 64) : a;
   }
   const recent = (list, now) => list.filter((t) => now - t < TRIES_MS);
-  function tooMany(ws, now = Date.now()) {
+  function tooMany(ws, now = clock()) {
     ws.fails = recent(ws.fails, now);
     return ws.fails.length >= SOCKET_TRIES || recent(tries.get(ws.addr) || [], now).length >= ADDRESS_TRIES;
   }
-  function wrongCode(ws, now = Date.now()) {
+  function attempt(ws, now = clock()) {
     ws.fails.push(now);
     tries.set(ws.addr, [...recent(tries.get(ws.addr) || [], now), now]);
   }
@@ -398,7 +449,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       const band = ws.band && bands.get(ws.band);
       if (band && band.ws === ws) {
         band.ws = null;
-        band.goneAt = Date.now();
+        band.goneAt = now();
         // A wristband nobody has claimed keeps its letters for a minute, so a
         // dropped connection does not change the code someone is typing. The
         // sweep forgets it after that.
@@ -428,8 +479,13 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   }, PING_MS);
 
   // An hour on the floor, then gone — from the floor and from memory.
-  const sweep = setInterval(() => expire(Date.now()), 60_000);
-  const lights = setInterval(() => { for (const b of bands.values()) showBand(b); }, 1000);
+  const sweep = setInterval(() => expire(now()), 60_000);
+  // A pairing check that timed out, and every wristband's face, once a second.
+  function tickBands(at = now()) {
+    for (const b of [...bands.values()]) if (b.pending && at >= b.pending.until) dropPending(b, 'timeout');
+    for (const b of bands.values()) showBand(b, at);
+  }
+  const lights = setInterval(() => tickBands(), 1000);
   // A venue with nobody in it, nobody in its grace window, no clip still loading
   // and no wristband still worn holds nothing — so it is let go, or a long-lived
   // relay would keep a room object for every venue anyone ever typed.
@@ -471,8 +527,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       rooms,
       /** For tests: run the sweep — clips, dropped wristbands, old wrong codes — as if the clock read `at`. */
       expire,
-      /** For tests: redraw every wristband as if the clock read `now`. */
-      tickBands: (now) => { for (const b of bands.values()) showBand(b, now); },
+      /** For tests: time out pairing checks and redraw every wristband as if the clock read `at`. */
+      tickBands,
       /** For tests: how many wristband records the relay is holding. */
       bandCount: () => bands.size,
       /** For tests: how many venue rooms the relay is holding. */

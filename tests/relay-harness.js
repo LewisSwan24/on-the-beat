@@ -90,11 +90,16 @@ export function helpers(port) {
     p.ws.on('message', on);
   });
 
-  /** Pair a phone and a wristband by its letters. */
+  /** Pair a phone and a wristband all the way: the letters, the number on the wrist, YES. */
   async function pairBand(p, band) {
-    const paired = reply(p, 'paired');
     p.send({ t: 'pair', code: band.show.code });
-    return paired;
+    const { me: { check } } = await p.until((v) => v.me.check);
+    await band.until((s) => s.kind === 'check' && s.big === String(check));
+    const paired = reply(p, 'paired');
+    p.send({ t: 'confirm', yes: true });
+    const m = await paired;
+    await band.until((s, bb) => bb.secret === m.secret);
+    return m;
   }
 
   /**

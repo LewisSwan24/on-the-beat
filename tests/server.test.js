@@ -134,10 +134,13 @@ test('a wristband pairs by its four letters, then shows what its person is doing
   assert.match(code, /^[A-HJKMNP-Z]{4}$/);
   const ana = await phone('band-room-1');
   const wrong = reply(ana, 'error');
-  ana.send({ t: 'pair', code: 'ZZZZ' === band.show.code ? 'YYYY' : 'ZZZZ' });
+  ana.send({ t: 'pair', code: 'ZZZZ' === code ? 'YYYY' : 'ZZZZ' });
   assert.equal((await wrong).why, 'no such wristband');
+  ana.send({ t: 'pair', code: code.toLowerCase() });
+  const { me: { check } } = await ana.until((v) => v.me.check);
+  await band.until((s) => s.kind === 'check' && s.big === String(check));
   const paired = reply(ana, 'paired');
-  ana.send({ t: 'pair', code: band.show.code.toLowerCase() });
+  ana.send({ t: 'confirm', yes: true });
   assert.equal((await paired).band, band.id);
   await band.until((s) => s.kind === 'off');
   await ana.until((v) => v.me.wristband?.battery === 62 && v.me.wristband.live);
@@ -155,7 +158,7 @@ test("holding the wristband's button is NOT NOW, and a phone coming back does no
   const band = await wristband();
   const ana = await phone('band-room-2');
   const ben = await phone('band-room-2');
-  ana.send({ t: 'pair', code: band.show.code });
+  await pairBand(ana, band);
   ana.send({ t: 'arm', intent: 'hi' });
   await ben.until((v) => v.near.length === 1);
   band.send({ t: 'hold' });
@@ -177,8 +180,8 @@ test('after a mutual yes both wristbands show the same number; unpairing hands o
   const [b1, b2] = [await wristband(), await wristband()];
   const ana = await phone('band-room-3');
   const ben = await phone('band-room-3');
-  ana.send({ t: 'pair', code: b1.show.code });
-  ben.send({ t: 'pair', code: b2.show.code });
+  await pairBand(ana, b1);
+  await pairBand(ben, b2);
   ana.send({ t: 'arm', intent: 'hi' });
   ben.send({ t: 'arm', intent: 'hi' });
   const h1 = (await ana.until((v) => v.near.length === 1)).near[0].handle;
@@ -206,9 +209,7 @@ test('after a mutual yes both wristbands show the same number; unpairing hands o
 test('a phone re-pairs by the id it was given; nobody else can use it', async () => {
   const band = await wristband();
   const ana = await phone('band-room-4');
-  const paired = reply(ana, 'paired');
-  ana.send({ t: 'pair', code: band.show.code });
-  const { band: id } = await paired;
+  const { band: id } = await pairBand(ana, band);
   const again = reply(ana, 'paired');
   ana.send({ t: 'pair', band: id });
   assert.equal((await again).band, id, 'the phone that paired it can say so again');
@@ -247,9 +248,8 @@ test('a dropped wristband keeps its letters through a blip', async () => {
   await new Promise((resolve) => band.ws.once('close', resolve));
   await new Promise((resolve) => setTimeout(resolve, 100));
   const ana = await phone('band-room-6');
-  const paired = reply(ana, 'paired');
   ana.send({ t: 'pair', code });
-  assert.ok((await paired).band, 'the letters still pair inside the grace window');
+  assert.ok((await ana.until((v) => v.me.check)).me.check, 'the letters still reach it inside the grace window');
   close(ana);
 });
 
@@ -354,13 +354,13 @@ test('the band table has a ceiling, and filling it never evicts a live wristband
     // by the letters it is still showing.
     const late = await open();
     const lateMe = randomBytes(16).toString('hex');
-    let paired = null, refused = null;
-    late.on('message', (d) => { const m = JSON.parse(String(d)); if (m.t === 'paired') paired = m; if (m.t === 'error') refused = m.why; });
+    let checked = null, refused = null;
+    late.on('message', (d) => { const m = JSON.parse(String(d)); if (m.t === 'view' && m.view.me.check) checked = m.view.me.check; if (m.t === 'error') refused = m.why; });
     late.send(JSON.stringify({ t: 'join', venue: 'cap-late', me: lateMe }));
     await new Promise((r) => setTimeout(r, 60));
     late.send(JSON.stringify({ t: 'pair', code }));
     await new Promise((r) => setTimeout(r, 120));
-    assert.ok(paired && !refused, 'the connected wristband survived the flood (refused: ' + refused + ')');
+    assert.ok(checked && !refused, 'the connected wristband survived the flood (refused: ' + refused + ')');
   } finally {
     for (const ws of opened) { try { ws.close(); } catch { /* already gone */ } }
     await small.close();
@@ -386,9 +386,7 @@ test('a relay closed with a phone still in the room leaves no timer behind', asy
 test('a new pairing flashes the wristband white once; claiming it again by id does not', async () => {
   const band = await wristband();
   const ana = await phone('band-room-7');
-  const paired = reply(ana, 'paired');
-  ana.send({ t: 'pair', code: band.show.code });
-  const { band: id } = await paired;
+  const { band: id } = await pairBand(ana, band);
   await band.until((s) => s.kind === 'test');
   await band.until((s) => s.kind === 'off');
   const kinds = [];
@@ -504,6 +502,7 @@ test('malformed and hostile messages never take the relay down', async () => {
   const bad = [
     42, 'a string', null, [], true, 3.14,
     { t: 'pair', code: 12345 }, { t: 'pair', band: {} }, { t: 'pair' }, { t: 'pair', code: null },
+    { t: 'confirm' }, { t: 'confirm', yes: 'yes' },
     { t: 'wave' }, { t: 'wave', handle: null }, { t: 'wave', handle: 123 }, { t: 'wave', handle: 'zzzzzzzzzz' },
     { t: 'like', handle: {} }, { t: 'unlike', handle: [] },
     { t: 'clip', mime: 'text/html', data: 'PGgxPg==' }, { t: 'clip' }, { t: 'clip', data: null, mime: null },

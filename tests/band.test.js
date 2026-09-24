@@ -54,3 +54,7 @@ test('a pairing code is four letters nobody can misread, and never one already w
   assert.notEqual(newCode(new Set(['AAAA']), rand), 'AAAA');
   assert.equal(cleanCode(' kx-r1t o'), 'KXRT', 'lower case is fine; anything else is dropped');
 });
+
+test('while a pairing waits for YES the wrist shows the check number, before anything else', () => {
+  assert.deepEqual(bandShow({ view: view({ armed: 'hi' }), code: 'KXRT', check: 27, testUntil: T + 1, now: T }), { kind: 'check', big: '27' });
+});

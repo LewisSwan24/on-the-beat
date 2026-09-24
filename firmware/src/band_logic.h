@@ -100,7 +100,7 @@ inline Rgb glow(const Hue& hue, int x, int y, int w, int h) {
 
 /** One `show` from the relay: relay/band.js bandShow(), as it was sent. */
 struct Show {
-  std::string kind = "off";  // pairing | test | hi | song | dance | meet | off
+  std::string kind = "off";  // pairing | check | test | hi | song | dance | meet | off
   std::string intent, big, small, code;
   bool dim = false;
   bool quiet = false;
@@ -511,6 +511,7 @@ inline Words wordsFor(const Face& f, bool awake, int battery, Signal signal) {
   const Show& s = f.show;
   const std::string pct = battery >= 0 ? std::to_string(battery) + "%" : "";
   if (s.kind == "pairing") return {s.code, ""};
+  if (s.kind == "check") return {s.big, "ON YOUR PHONE?"};
   if (lit(s)) return {fold(s.big), upper(fold(s.small))};
   if (s.kind != "off" || !awake) return {};
   if (!f.offline) return {"READY", pct};
@@ -523,7 +524,7 @@ inline uint8_t lightFor(const Face& f, bool awake) {
   const Show& s = f.show;
   if (s.kind == "test") return LIGHT_FULL;
   if (lit(s)) return s.dim ? LIGHT_DIM : LIGHT_FULL;
-  if (s.kind == "pairing") return LIGHT_PAIR;
+  if (s.kind == "pairing" || s.kind == "check") return LIGHT_PAIR;
   return awake ? LIGHT_AWAKE : LIGHT_OFF;
 }
 
