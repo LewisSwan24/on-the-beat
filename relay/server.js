@@ -12,7 +12,7 @@ import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, isAbsolute, join, normalize, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { createRoom, SPOTS } from './room.js';
 import { bandShow, cleanCode, newCode } from './band.js';
@@ -29,6 +29,7 @@ const TRIES_MS = 60_000;              // the window wrong codes are counted in
 const SOCKET_TRIES = 5;               // wrong codes one socket may send in it
 const ADDRESS_TRIES = 20;             // wrong codes one address may send in it, over every socket
 const CLAIM_GRACE_MS = 45_000;        // an id-claim no wristband ever answers is swept after this
+const HEX32 = /^[a-f0-9]{32}$/;
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
@@ -38,6 +39,9 @@ const TYPES = {
 
 /** A venue's room key: its name, folded, so "The Roundhouse " and "the roundhouse" meet. */
 export const venueKey = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 80);
+
+/** A wristband's id: the first 32 hex of SHA-256 over its 16-byte key. Only the wristband knows the key. */
+export const bandIdOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).digest('hex').slice(0, 32);
 
 /** Tonight's shows, as the venue team wrote them. A venue nobody listed still gets a room. */
 export function loadShows(file) {
@@ -97,7 +101,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   const bandOf = (key, person) => [...bands.values()].find((b) => b.key === key && b.person === person) || null;
 
   const makeBand = (id, ws) => ({ id, ws, battery: null, code: null, key: null, person: null,
-    testUntil: 0, lastShow: null, everWs: !!ws, goneAt: 0, claimedAt: Date.now() });
+    testUntil: 0, lastShow: null, everWs: !!ws, goneAt: 0, claimedAt: Date.now(), old: false });
 
   // How long a record has been dead weight: a live wristband is never that, a
   // real paired band whose wristband has connected at least once is kept, and
@@ -143,12 +147,46 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
 
   function handleBand(ws, m) {
     const b = bands.get(ws.band);
-    if (!b) return;
+    // Only from the wristband's current socket: a set stuck in a replaced one must not land.
+    if (!b || b.ws !== ws) return;
     if (m.t === 'battery') b.battery = Math.max(0, Math.min(100, Math.round(Number(m.level) || 0)));
     // Held for a second: NOT NOW, from the wrist. The phone follows.
     if (m.t === 'hold' && b.person) rooms.get(b.key)?.room.setInvisible(b.person, true);
     const r = b.key ? rooms.get(b.key) : null;
     if (r) push(r); else showBand(b);
+  }
+
+  function refuseBand(ws) {
+    ws.send(JSON.stringify({ t: 'error', why: 'bad band' }));
+    ws.close(4001, 'bad band');
+  }
+
+  function hello(ws, m) {
+    if (ws.r) { ws.send(JSON.stringify({ t: 'error', why: 'bad band' })); return; }
+    const id = String(m.id || '');
+    const v2 = m.v === 2;
+    const key = String(m.key || '');
+    // The key proves the id; a socket says hello once.
+    const proven = v2 ? HEX32.test(id) && HEX32.test(key) && bandIdOf(key) === id : /^[a-f0-9]{16,64}$/.test(id);
+    if (ws.band || !proven) { refuseBand(ws); return; }
+    let b = bands.get(id);
+    // A hello with no version never reaches a record made by one with, nor the other way round.
+    if (b && b.old === v2) { refuseBand(ws); return; }
+    if (!b) {
+      if (bands.size >= maxBands && !evictBand(Date.now())) { ws.send(JSON.stringify({ t: 'error', why: 'too many wristbands' })); return; }
+      b = makeBand(id, ws);
+      b.old = !v2;
+      bands.set(id, b);
+    }
+    // Replaced, not cut off: it may still be closing, and its frames are dropped from here on.
+    if (b.ws && b.ws !== ws) b.ws.close(4000, 'replaced');
+    b.ws = ws;
+    b.everWs = true;
+    b.lastShow = null;
+    ws.band = id;
+    if (!b.person && !b.code) unpairBand(b);
+    if (m.battery !== undefined) handleBand(ws, { t: 'battery', level: m.battery });
+    else showBand(b);
   }
 
   /**
@@ -177,25 +215,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
 
   function handle(ws, m) {
     if (m.t === 'ping') { ws.send('{"t":"pong"}'); return; }
-    if (m.t === 'wristband') {
-      const id = String(m.id || '');
-      if (!/^[a-f0-9]{16,64}$/.test(id) || ws.r) { ws.send(JSON.stringify({ t: 'error', why: 'bad band' })); return; }
-      let b = bands.get(id);
-      if (b?.ws && b.ws !== ws) b.ws.terminate();
-      if (!b) {
-        if (bands.size >= maxBands && !evictBand(Date.now())) { ws.send(JSON.stringify({ t: 'error', why: 'too many wristbands' })); return; }
-        b = makeBand(id, ws);
-        bands.set(id, b);
-      }
-      b.ws = ws;
-      b.everWs = true;
-      b.lastShow = null;
-      ws.band = id;
-      if (!b.person && !b.code) unpairBand(b);
-      if (m.battery !== undefined) handleBand(ws, { t: 'battery', level: m.battery });
-      else showBand(b);
-      return;
-    }
+    if (m.t === 'wristband') { hello(ws, m); return; }
     if (ws.band) { handleBand(ws, m); return; }
     if (m.t === 'join') {
       const key = venueKey(m.venue);
@@ -250,6 +270,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
           bands.set(id, b);
         }
         const mine = b && b.key === r.key && b.person === me;
+        if (b?.old) { ws.send(JSON.stringify({ t: 'error', why: 'old firmware' })); return; }
         if (!b || (!b.code && !mine && !wouldClaim)) { ws.send(JSON.stringify({ t: 'error', why: 'no such wristband' })); return; }
         if (!mine) {
           const old = bandOf(r.key, me);

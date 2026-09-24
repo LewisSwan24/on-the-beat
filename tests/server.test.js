@@ -8,13 +8,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import WebSocket from 'ws';
-import { createRelay, WS_PATH, venueKey } from '../relay/server.js';
+import { createRelay, WS_PATH, bandIdOf, venueKey } from '../relay/server.js';
+import { helpers, newKey } from './relay-harness.js';
 
 let relay;
 let base;
-// Every socket a test opens, so a failing test cannot leave one holding the run open.
+// Sockets a test opens by hand, so a failing test cannot leave one holding the run open.
 const clients = new Set();
 const url = (path) => 'http://127.0.0.1:' + relay.port + path;
+const { phone, wristband, reply, pairBand, close, cleanup } = helpers(() => relay.port);
 
 before(async () => {
   // dist/ sits beside two things it must never serve: a secret, and a
@@ -31,37 +33,11 @@ before(async () => {
 });
 
 after(async () => {
+  cleanup();
   for (const ws of clients) ws.terminate();
   await relay.close();
   rmSync(base, { recursive: true, force: true });
 });
-
-/** A phone: a socket, the last view it was pushed, and a way to wait for the next one that fits. */
-async function phone(venue, { band, ip } = {}) {
-  const ws = new WebSocket('ws://127.0.0.1:' + relay.port + WS_PATH, ip ? { headers: { 'cf-connecting-ip': ip } } : undefined);
-  clients.add(ws);
-  const me = randomBytes(16).toString('hex');
-  const p = { ws, me, view: null, errors: [], sent: [], waiters: [] };
-  ws.on('message', (data) => {
-    const m = JSON.parse(String(data));
-    if (m.t === 'view') p.view = m.view;
-    if (m.t === 'error') p.errors.push(m.why);
-    if (m.t === 'sent') p.sent.push(m);
-    p.waiters = p.waiters.filter((w) => !w());
-  });
-  await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject); });
-  p.send = (m) => ws.send(JSON.stringify(m));
-  p.until = (pred, ms = 3000) => new Promise((resolve, reject) => {
-    const check = () => { if (p.view && pred(p.view, p)) { clearTimeout(timer); resolve(p.view); return true; } return false; };
-    const timer = setTimeout(() => reject(new Error('timed out; last view ' + JSON.stringify(p.view))), ms);
-    if (!check()) p.waiters.push(check);
-  });
-  p.send({ t: 'join', venue, me, band });
-  await p.until(() => true);
-  return p;
-}
-
-const close = (...phones) => phones.forEach((p) => p.ws.close());
 
 test('two phones at one venue meet: waves go both ways and both see one match, one number', async () => {
   const ana = await phone('roundhouse-bruno-mars');
@@ -149,35 +125,6 @@ test('an hour on the floor, then the clip is gone — from the floor and from th
   await ben.until((v) => v.floor.length === 0);
   assert.equal((await fetch(url('/clip/electric-ballroom-the-long-weekend/' + tile.ref))).status, 404);
   close(ana, ben);
-});
-
-/** A wristband: a socket that says it is one, and the last thing it was told to show. */
-async function wristband(battery = 62, id = randomBytes(16).toString('hex')) {
-  const ws = new WebSocket('ws://127.0.0.1:' + relay.port + WS_PATH);
-  clients.add(ws);
-  const b = { ws, id, show: null, waiters: [] };
-  ws.on('message', (data) => {
-    const m = JSON.parse(String(data));
-    if (m.t === 'show') b.show = m.show;
-    b.waiters = b.waiters.filter((w) => !w());
-  });
-  await new Promise((resolve) => ws.once('open', resolve));
-  b.send = (m) => ws.send(JSON.stringify(m));
-  b.until = (pred, ms = 3000) => new Promise((resolve, reject) => {
-    const check = () => { if (b.show && pred(b.show)) { clearTimeout(timer); resolve(b.show); return true; } return false; };
-    const timer = setTimeout(() => reject(new Error('band timed out; last show ' + JSON.stringify(b.show))), ms);
-    if (!check()) b.waiters.push(check);
-  });
-  b.send({ t: 'wristband', id: b.id, battery });
-  await b.until(() => true);
-  return b;
-}
-
-/** The next reply of a kind on a phone's socket. */
-const reply = (p, t, ms = 3000) => new Promise((resolve, reject) => {
-  const timer = setTimeout(() => { p.ws.off('message', on); reject(new Error('no ' + t + ' reply')); }, ms);
-  const on = (data) => { const m = JSON.parse(String(data)); if (m.t === t) { clearTimeout(timer); p.ws.off('message', on); resolve(m); } };
-  p.ws.on('message', on);
 });
 
 test('a wristband pairs by its four letters, then shows what its person is doing', async () => {
@@ -276,13 +223,14 @@ test('a phone re-pairs by the id it was given; nobody else can use it', async ()
 test('a phone back before its wristband holds the claim, and the wristband comes back paired', async () => {
   // What a relay restart looks like from here: an id this relay has never seen.
   const ana = await phone('band-room-5');
-  const id = randomBytes(16).toString('hex');
+  const key = newKey();
+  const id = bandIdOf(key);
   const held = reply(ana, 'paired');
   ana.send({ t: 'pair', band: id, again: true });
   assert.equal((await held).band, id);
   await ana.until((v) => v.me.wristband?.live === false);
   ana.send({ t: 'arm', intent: 'hi' });
-  const band = await wristband(40, id);
+  const band = await wristband(40, { key });
   await band.until((s) => s.kind === 'hi');
   await ana.until((v) => v.me.wristband?.live === true && v.me.wristband.battery === 40);
   assert.equal(ana.view.me.band, 'in this room', "the wristband does not take the place of where they are");
@@ -384,7 +332,8 @@ test('the band table has a ceiling, and filling it never evicts a live wristband
     const band = await open();
     let show = null;
     band.on('message', (d) => { const m = JSON.parse(String(d)); if (m.t === 'show') show = m.show; });
-    band.send(JSON.stringify({ t: 'wristband', id: randomBytes(16).toString('hex'), battery: 88 }));
+    const key = newKey();
+    band.send(JSON.stringify({ t: 'wristband', id: bandIdOf(key), key, v: 2, battery: 88 }));
     while (!show) await new Promise((r) => setTimeout(r, 20));
     assert.equal(show.kind, 'pairing');
     const code = show.code;
