@@ -750,24 +750,116 @@ inline bool validId(const std::string& id) {
   return id.find_first_not_of("0123456789abcdef") == std::string::npos;
 }
 
-/**
- * A wristband's id: 128 random bits, made once and kept. Never the chip's MAC
- * — a phone can claim a wristband by id after the relay restarts, so an id
- * anyone could read off the air or guess would let them.
- */
-inline std::string makeId(const std::function<uint32_t()>& random32) {
-  static const char DIGITS[] = "0123456789abcdef";
-  std::string id;
-  for (int w = 0; w < 4; ++w) {
-    const uint32_t v = random32();
-    for (int k = 28; k >= 0; k -= 4) id += DIGITS[(v >> k) & 0xF];
+// ---------- who it is ----------
+//
+// A key made at every boot and kept only in RAM, and an id that is its hash.
+// The relay recomputes the id from the key in every hello, so knowing an id —
+// every phone that ever paired it was told it — is not enough to speak as it.
+// Switching it off and on makes it a new wristband.
+
+namespace detail {
+constexpr uint32_t SHA_K[64] = {
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
+inline uint32_t rotr(uint32_t x, int n) { return (x >> n) | (x << (32 - n)); }
+}  // namespace detail
+
+/** SHA-256 of `n` bytes, as 64 lower-case hex digits. */
+inline std::string sha256Hex(const uint8_t* data, size_t n) {
+  uint32_t h[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+  std::vector<uint8_t> m;
+  if (n) m.assign(data, data + n);
+  m.push_back(0x80);
+  while (m.size() % 64 != 56) m.push_back(0);
+  const uint64_t bits = static_cast<uint64_t>(n) * 8;
+  for (int i = 7; i >= 0; --i) m.push_back(static_cast<uint8_t>(bits >> (8 * i)));
+  for (size_t off = 0; off < m.size(); off += 64) {
+    uint32_t w[64];
+    for (int i = 0; i < 16; ++i)
+      w[i] = (static_cast<uint32_t>(m[off + 4 * i]) << 24) | (static_cast<uint32_t>(m[off + 4 * i + 1]) << 16) |
+             (static_cast<uint32_t>(m[off + 4 * i + 2]) << 8) | static_cast<uint32_t>(m[off + 4 * i + 3]);
+    for (int i = 16; i < 64; ++i) {
+      const uint32_t s0 = detail::rotr(w[i - 15], 7) ^ detail::rotr(w[i - 15], 18) ^ (w[i - 15] >> 3);
+      const uint32_t s1 = detail::rotr(w[i - 2], 17) ^ detail::rotr(w[i - 2], 19) ^ (w[i - 2] >> 10);
+      w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+    }
+    uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], k = h[7];
+    for (int i = 0; i < 64; ++i) {
+      const uint32_t t1 = k + (detail::rotr(e, 6) ^ detail::rotr(e, 11) ^ detail::rotr(e, 25)) + ((e & f) ^ (~e & g)) +
+                          detail::SHA_K[i] + w[i];
+      const uint32_t t2 = (detail::rotr(a, 2) ^ detail::rotr(a, 13) ^ detail::rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
+      k = g;
+      g = f;
+      f = e;
+      e = d + t1;
+      d = c;
+      c = b;
+      b = a;
+      a = t1 + t2;
+    }
+    h[0] += a;
+    h[1] += b;
+    h[2] += c;
+    h[3] += d;
+    h[4] += e;
+    h[5] += f;
+    h[6] += g;
+    h[7] += k;
   }
-  return id;
+  static const char DIGITS[] = "0123456789abcdef";
+  std::string out;
+  for (uint32_t x : h)
+    for (int s = 28; s >= 0; s -= 4) out += DIGITS[(x >> s) & 0xF];
+  return out;
 }
 
-/** The first thing a wristband says on every connection: which one it is, and its battery if it knows. */
-inline std::string helloFrame(const std::string& id, int battery) {
-  std::string f = "{\"t\":\"wristband\",\"id\":\"" + id + "\"";
+/** Lower-case hex to bytes, two digits a byte; anything else, and nothing comes back. */
+inline std::vector<uint8_t> hexBytes(const std::string& hex) {
+  auto nibble = [](char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1; };
+  std::vector<uint8_t> out;
+  if (hex.size() % 2) return out;
+  for (size_t i = 0; i < hex.size(); i += 2) {
+    const int hi = nibble(hex[i]), lo = nibble(hex[i + 1]);
+    if (hi < 0 || lo < 0) return {};
+    out.push_back(static_cast<uint8_t>((hi << 4) | lo));
+  }
+  return out;
+}
+
+/** A band key: 128 random bits as 32 hex, made at every boot and kept only in RAM. Never the chip's MAC. */
+inline std::string makeKey(const std::function<uint32_t()>& random32) {
+  static const char DIGITS[] = "0123456789abcdef";
+  std::string key;
+  for (int w = 0; w < 4; ++w) {
+    const uint32_t v = random32();
+    for (int k = 28; k >= 0; k -= 4) key += DIGITS[(v >> k) & 0xF];
+  }
+  return key;
+}
+
+/** A wristband's id: the first 32 hex of SHA-256 over its key's 16 bytes, as the relay recomputes it. */
+inline std::string idFor(const std::string& keyHex) {
+  const std::vector<uint8_t> bytes = hexBytes(keyHex);
+  const uint8_t none[1] = {0};
+  return sha256Hex(bytes.empty() ? none : bytes.data(), bytes.size()).substr(0, 32);
+}
+
+/**
+ * The first thing a wristband says on every connection: who it is, the key
+ * that proves it, the protocol, and — when it has them — the secret its
+ * pairing gave it, a NOT NOW still waiting to be sent, and its battery.
+ */
+inline std::string helloFrame(const std::string& id, const std::string& key, int battery,
+                              const std::string& secret = "", bool quiet = false) {
+  std::string f = "{\"t\":\"wristband\",\"id\":\"" + id + "\",\"key\":\"" + key + "\",\"v\":2";
+  if (!secret.empty()) f += ",\"secret\":\"" + secret + "\"";
+  if (quiet) f += ",\"quiet\":true";
   if (battery >= 0) f += ",\"battery\":" + std::to_string(battery);
   return f + "}";
 }

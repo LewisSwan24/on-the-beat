@@ -50,7 +50,7 @@ Preferences prefs;
 WebSocketsClient socket_;
 M5Canvas face(&M5.Display);  // drawn off-screen, then pushed whole: no half-drawn frames on the wrist
 
-std::string bandId, ssid, pass, relayText;
+std::string bandKey, bandId, ssid, pass, relayText;
 Relay relay;
 
 Button button;
@@ -84,13 +84,7 @@ std::string setting(const char* key, const char* fallback) {
 }
 
 void loadSettings() {
-  bandId = setting("id", "");
-  if (!validId(bandId)) {
-    // Made once and kept: the relay, and the phone it pairs with, know it by this.
-    bandId = makeId([] { return static_cast<uint32_t>(esp_random()); });
-    prefs.putString("id", bandId.c_str());
-  }
-  ssid = setting("ssid", OTB_WIFI_SSID);
+  ssid =setting("ssid", OTB_WIFI_SSID);
   pass = setting("pass", OTB_WIFI_PASS);
   relayText = setting("relay", OTB_RELAY);
 }
@@ -150,7 +144,7 @@ void onSocket(WStype_t type, uint8_t* payload, size_t length) {
     case WStype_CONNECTED: {
       // First on every connection, before anything the loop has queued.
       const int level = batteryNow.load();
-      socket_.sendTXT(helloFrame(bandId, level).c_str());
+      socket_.sendTXT(helloFrame(bandId, bandKey, level).c_str());
       post(EV_OPENED, nullptr, 0, level);
       break;
     }
@@ -501,9 +495,13 @@ void setup() {
   face.setColorDepth(16);
   face.createSprite(M5.Display.width(), M5.Display.height());
 
-  // The radio on before the id is made: with it on, esp_random() is true noise.
+  // The radio on before the key is made: with it on, esp_random() is true noise.
   WiFi.mode(WIFI_STA);
+  // A new wristband at every boot: the key lives in RAM only, and the id is its hash.
+  bandKey = makeKey([] { return static_cast<uint32_t>(esp_random()); });
+  bandId = idFor(bandKey);
   prefs.begin("otb", false);
+  if (prefs.isKey("id")) prefs.remove("id");  // the id an older build kept for good is not kept any more
   loadSettings();
   readBattery(millis());
 

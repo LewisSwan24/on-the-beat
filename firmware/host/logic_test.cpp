@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <iostream>
 #include <random>
+#include <sstream>
 #include <string>
 
 // On the wristband, Arduino.h comes first and defines these as macros, so a
@@ -347,11 +348,21 @@ void relay() {
 void said() {
   CHECK(validId("0123456789abcdef") && !validId("0123456789abcde") && !validId("0123456789ABCDEF"));
   CHECK(!validId(std::string(65, 'a')) && validId(std::string(64, 'a')));
+  // SHA-256 of "abc", and of nothing: the standard's own examples.
+  const std::string abc = "abc";
+  CHECK(sha256Hex(reinterpret_cast<const uint8_t*>(abc.data()), abc.size()) ==
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  const uint8_t none[1] = {0};
+  CHECK(sha256Hex(none, 0) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  CHECK((hexBytes("00ff10") == std::vector<uint8_t>{0x00, 0xff, 0x10}) && hexBytes("0g").empty() && hexBytes("abc").empty());
   uint32_t n = 0;
-  const std::string id = makeId([&n] { return 0x01234567u + 0x11111111u * n++; });
-  CHECK(id == "0123456712345678234567893456789a" && validId(id));
-  CHECK(helloFrame(id, 62) == "{\"t\":\"wristband\",\"id\":\"" + id + "\",\"battery\":62}");
-  CHECK(helloFrame(id, -1) == "{\"t\":\"wristband\",\"id\":\"" + id + "\"}");
+  const std::string key = makeKey([&n] { return 0x01234567u + 0x11111111u * n++; });
+  CHECK(key == "0123456712345678234567893456789a" && validId(key));
+  const std::string id = idFor(key);
+  CHECK(id.size() == 32 && validId(id) && id != key);
+  CHECK(helloFrame(id, key, 62) == "{\"t\":\"wristband\",\"id\":\"" + id + "\",\"key\":\"" + key + "\",\"v\":2,\"battery\":62}");
+  CHECK(helloFrame(id, key, -1, "5ec2", true) ==
+        "{\"t\":\"wristband\",\"id\":\"" + id + "\",\"key\":\"" + key + "\",\"v\":2,\"secret\":\"5ec2\",\"quiet\":true}");
   CHECK(batteryFrame(12) == "{\"t\":\"battery\",\"level\":12}");
 
   Command c = readCommand("  RELAY https://x.example\r\n");
@@ -382,13 +393,23 @@ std::string hex(Rgb c) {
 }
 
 std::string answer(const Command& c) {
-  if (c.verb == "id") {
+  if (c.verb == "key") {
     std::random_device rd;
-    return makeId([&rd] { return static_cast<uint32_t>(rd()); });
+    return makeKey([&rd] { return static_cast<uint32_t>(rd()); });
+  }
+  if (c.verb == "idfor") return idFor(c.arg);
+  if (c.verb == "sha256") {
+    const std::vector<uint8_t> bytes = hexBytes(c.arg);
+    const uint8_t none[1] = {0};
+    return sha256Hex(bytes.empty() ? none : bytes.data(), bytes.size());
   }
   if (c.verb == "hello") {
-    const size_t sp = c.arg.find(' ');
-    return helloFrame(c.arg.substr(0, sp), sp == std::string::npos ? -1 : std::atoi(c.arg.c_str() + sp + 1));
+    // hello <key> <battery> [secret|-] [quiet]
+    std::istringstream in(c.arg);
+    std::string key, secret, quiet;
+    int battery = -1;
+    in >> key >> battery >> secret >> quiet;
+    return helloFrame(idFor(key), key, battery, secret == "-" ? "" : secret, quiet == "quiet");
   }
   if (c.verb == "battery") return batteryFrame(std::atoi(c.arg.c_str()));
   if (c.verb == "hold") return HOLD_FRAME;

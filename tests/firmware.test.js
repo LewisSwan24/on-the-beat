@@ -15,11 +15,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import WebSocket from 'ws';
 import { createRelay, WS_PATH } from '../relay/server.js';
 import { HUE } from '../app/copy.js';
 import { codeFrom, pairUrl } from '../app/lib/pairing.js';
+
+const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).digest('hex').slice(0, 32);
 
 const here = fileURLToPath(new URL('..', import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'otb-fw-'));
@@ -103,6 +105,15 @@ test('the colours on the wrist are the colours on the phone', { skip }, () => {
   assert.deepEqual(JSON.parse(hues), phone);
 });
 
+test("the firmware hashes as node:crypto does, and its id is its key's hash", { skip }, () => {
+  const inputs = ['', '616263', randomBytes(16).toString('hex'), randomBytes(55).toString('hex'), randomBytes(64).toString('hex'), randomBytes(200).toString('hex')];
+  const got = speak(inputs.map((h) => 'sha256 ' + h));
+  inputs.forEach((h, i) => assert.equal(got[i], createHash('sha256').update(Buffer.from(h, 'hex')).digest('hex'), h || 'nothing'));
+  const [key] = speak(['key']);
+  assert.match(key, /^[a-f0-9]{32}$/, 'a fresh key is 128 random bits');
+  assert.deepEqual(speak(['idfor ' + key]), [idOf(key)]);
+});
+
 test('the code a wristband draws opens the app on its own four letters', { skip }, () => {
   const [tunnel, lan, wrong] = speak(['relay https://abc-def.trycloudflare.com/', 'relay ws://192.168.1.20:8790', 'relay ftp://x.example']).map((l) => JSON.parse(l));
   assert.deepEqual(tunnel, { ok: true, origin: 'https://abc-def.trycloudflare.com' }, 'the address npm run tunnel prints');
@@ -122,9 +133,10 @@ test('what the firmware says, the relay takes; what the relay says, the firmware
   const relay = await createRelay({ port: 0, host: '127.0.0.1', root: dir });
   const socks = [];
   try {
-    const [id] = speak(['id']);
-    assert.match(id, /^[a-f0-9]{32}$/, 'a fresh id is 128 random bits, in the form the relay takes');
-    const [hello, ping, low, hold] = speak(['hello ' + id + ' 62', 'ping', 'battery 12', 'hold']);
+    const [key] = speak(['key']);
+    const id = idOf(key);
+    const [hello, ping, low, hold] = speak(['hello ' + key + ' 62', 'ping', 'battery 12', 'hold']);
+    assert.deepEqual(JSON.parse(hello), { t: 'wristband', id, key, v: 2, battery: 62 }, "v2, and the id is the key's hash");
 
     // It opens the socket the way arduinoWebSockets does: asking for its "arduino" subprotocol.
     const band = await open(relay.port, 'arduino');

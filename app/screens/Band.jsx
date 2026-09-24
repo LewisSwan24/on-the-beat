@@ -3,6 +3,7 @@ import { HUE } from '../copy.js';
 import { CODE_LETTERS, cleanCode } from '../../relay/band.js';
 import { pairUrl } from '../lib/pairing.js';
 import { qrMatrix, qrPath } from '../lib/qr.js';
+import { bandIdOf, toHex } from '../lib/sha256.js';
 import { Back, Ghost, Icon } from '../ui.jsx';
 
 /**
@@ -119,8 +120,6 @@ export const bandLine = (band) => (band
   ? [band.battery != null ? band.battery + '% battery' : null, band.live ? null : 'not connected right now'].filter(Boolean).join(' · ')
   : '');
 
-const hex = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, '0')).join('');
-
 /**
  * /band — a stand-in for the M5StickC on the strap, until one is in hand. It
  * joins the relay exactly as the firmware will, draws the same 135 x 240
@@ -128,14 +127,11 @@ const hex = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => 
  * seconds, a one-second hold is NOT NOW.
  */
 export function BandStandIn() {
-  const [id] = useState(() => {
-    try {
-      const had = localStorage.getItem('otb:band-id');
-      if (had) return had;
-      const made = hex(16);
-      localStorage.setItem('otb:band-id', made);
-      return made;
-    } catch { return hex(16); }
+  // A new wristband every load, as the firmware is every boot: the key stays in this page, and the id is its hash.
+  const [band] = useState(() => {
+    try { localStorage.removeItem('otb:band-id'); } catch { /* a private window */ }
+    const key = toHex(crypto.getRandomValues(new Uint8Array(16)));
+    return { key, id: bandIdOf(key) };
   });
   const [battery, setBattery] = useState(62);
   const [show, setShow] = useState(null);
@@ -151,7 +147,7 @@ export function BandStandIn() {
     const open = () => {
       const sock = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/ws');
       ws.current = sock;
-      sock.onopen = () => { heard = Date.now(); setLive(true); sock.send(JSON.stringify({ t: 'wristband', id, battery: batteryNow.current })); };
+      sock.onopen = () => { heard = Date.now(); setLive(true); sock.send(JSON.stringify({ t: 'wristband', id: band.id, key: band.key, v: 2, battery: batteryNow.current })); };
       sock.onmessage = (e) => { heard = Date.now(); const m = JSON.parse(e.data); if (m.t === 'show') setShow(m.show); };
       sock.onclose = () => { setLive(false); if (!closed) retry = setTimeout(open, 1500); };
     };
@@ -163,7 +159,7 @@ export function BandStandIn() {
       s.send('{"t":"ping"}');
     }, 2000);
     return () => { closed = true; clearTimeout(retry); clearInterval(beat); ws.current?.close(); };
-  }, [id]);
+  }, [band]);
 
   useEffect(() => {
     if (ws.current?.readyState === 1) ws.current.send(JSON.stringify({ t: 'battery', level: battery }));
