@@ -243,13 +243,22 @@ test('a hold while it waits, or in the hello, is applied at the claim', async ()
 });
 
 test('nobody claims it for BAND_ALONE_MS: it shows fresh letters', async () => {
-  const band = await wristband(62, { secret: newKey() });
-  relay.expire(Date.now() + BAND_ALONE_MS - 60_000);
-  await pause(50);
-  assert.equal(band.show.kind, 'waiting', 'not yet');
-  relay.expire(Date.now() + BAND_ALONE_MS + 1_000);
-  await band.until((s) => s.kind === 'pairing');
-  close(band);
+  // A relay of its own at 21:00, well clear of 06:00, which would end the wait
+  // first (tests/rules.test.js). On the wall clock this failed from 05:01 to 06:00.
+  const t = new Date(2026, 8, 24, 21, 0).getTime();
+  const own = await createRelay({ port: 0, host: '127.0.0.1', root: dir, clock: () => t });
+  const on = helpers(() => own.port);
+  try {
+    const band = await on.wristband(62, { secret: newKey() });
+    own.expire(t + BAND_ALONE_MS - 60_000);
+    await pause(50);
+    assert.equal(band.show.kind, 'waiting', 'not yet');
+    own.expire(t + BAND_ALONE_MS + 1_000);
+    await band.until((s) => s.kind === 'pairing');
+  } finally {
+    on.cleanup();
+    await own.close();
+  }
 });
 
 test('the phone back first: a placeholder is kept, and the wristband\'s secret decides', async () => {

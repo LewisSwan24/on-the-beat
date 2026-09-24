@@ -16,14 +16,15 @@ import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { createRoom, SPOTS } from './room.js';
 import { bandShow, cleanCode, newCode } from './band.js';
+import { nightOf } from './night.js';
 
 export const WS_PATH = '/api/ws';
 export const PAIR_CHECK_MS = 60_000;          // a pending pairing waits this long for YES
 export const BAND_ALONE_MS = 60 * 60_000;     // a wristband alone holds its person, or waits for its owner, this long
+export const GRACE_MS = 120_000;              // a locked screen is not leaving
 const MAX_FRAME = 1_600_000;          // a five-second clip, base64, with room to spare
 const CLIP_MAX = 1_200_000;           // bytes of video per clip
 const ROOM_CLIPS_MAX = 60_000_000;    // all clips in one room; the oldest go first
-const GRACE_MS = 120_000;             // a locked screen is not leaving
 const CLIP_TTL_MS = 3_600_000;        // "it loops on the floor for an hour"
 const PING_MS = 15_000;
 const BAND_GRACE_MS = 60_000;         // a wristband that drops keeps its letters this long
@@ -58,18 +59,24 @@ export function loadShows(file) {
  * The relay: the app, and one socket per phone and per wristband.
  *
  * The clock and the waits are options so tests can drive them: `clock` reads
- * the time, `pairCheckMs` is how long a pairing waits for YES, and
+ * the time, `pairCheckMs` is how long a pairing waits for YES,
  * `bandAloneMs` how long a wristband alone holds its person or waits for its
- * owner.
+ * owner, and `graceMs` how long a person with no phone and no live wristband
+ * stays. `nightTz` is the venue's time zone, an IANA name, whose 06:00 ends
+ * the night; the machine's own by default.
  */
 export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile, maxBands = 5_000, maxRooms = 5_000,
-  clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS } = {}) {
+  clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS, graceMs = GRACE_MS, nightTz } = {}) {
   const now = () => clock();
+  // A misspelt zone throws here, when the relay starts, not at its first sweep in the middle of the night.
+  nightOf(now(), nightTz);
   const here = fileURLToPath(new URL('..', import.meta.url));
   const dist = root ?? join(here, 'dist');
   const shows = loadShows(showsFile ?? process.env.SHOWS ?? join(here, 'relay', 'shows.json'));
   const showsJson = JSON.stringify(shows);
-  const rooms = new Map();   // key -> { room, sockets:Set, clips:Map(ref -> {mime, buf, by, slot, at}), left:Map(id -> timer) }
+  // key -> { room, sockets:Set, clips:Map(ref -> {mime, buf, by, slot, at}), left:Map(id -> timer),
+  //          heard:Map(id -> when a phone of theirs last spoke) }
+  const rooms = new Map();
   let closing = false;
   // Wrong pairing codes by address, so four letters cannot be walked: 23^4 is
   // 279,841 codes, and one unthrottled socket walked them in fifteen seconds.
@@ -83,7 +90,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
       const show = shows.find((s) => s.id === key);
       const spots = Array.isArray(show?.spots) && show.spots.length ? show.spots.map(String) : SPOTS;
-      rooms.set(key, { key, room: createRoom({ spots }), sockets: new Set(), clips: new Map(), left: new Map() });
+      rooms.set(key, { key, room: createRoom({ spots }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map() });
     }
     return rooms.get(key);
   }
@@ -103,7 +110,33 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     for (const b of bands.values()) if (b.key === r.key || b.pending?.key === r.key) showBand(b);
   }
 
+  // ---------- the grace, and leaving (rule 2) ----------
+  // One grace for every trigger: a person whose last phone socket closed with
+  // no live wristband, or whose wristband closed with no phone. A live
+  // wristband holds its person without a phone — for BAND_ALONE_MS since a
+  // phone of theirs was last heard, or until 06:00 (expire()).
+
+  function startGrace(r, me) {
+    stopGrace(r, me);
+    // A relay that is shutting down starts no grace period: close() has
+    // already cleared them, and a new one would hold the process open.
+    if (closing || !r.room.has(me)) return;
+    r.left.set(me, setTimeout(() => { r.left.delete(me); leaveRoom(r, me); }, graceMs));
+  }
+
+  function stopGrace(r, me) {
+    clearTimeout(r.left.get(me));
+    r.left.delete(me);
+  }
+
+  function leaveRoom(r, me) {
+    r.room.leave(me);
+    push(r);
+    gcRoom(r);
+  }
+
   const toPerson = (r, me, m) => { for (const s of r.sockets) if (s.me === me) s.send(JSON.stringify(m)); };
+  const phoneOf = (r, me) => [...r.sockets].some((s) => s.me === me);
 
   // ---------- wristbands ----------
   // A wristband makes a key at every boot, and its id is the key's hash; every
@@ -251,8 +284,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     ws.band = id;
     if (m.battery !== undefined) b.battery = clampBattery(m.battery);
     if (!b.person && !b.code && !b.pending && !b.waiting) freshLetters(b);
-    if (m.quiet === true) holdOn(b);
     const r = b.key ? rooms.get(b.key) : null;
+    if (r) stopGrace(r, b.person);
+    if (m.quiet === true) holdOn(b);
     if (r) push(r); else showBand(b);
   }
 
@@ -352,6 +386,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   }
 
   function handle(ws, m) {
+    // A phone of theirs was heard: any message, pings included (rule 2).
+    if (ws.r && ws.me) ws.r.heard.set(ws.me, now());
     if (m.t === 'ping') { ws.send('{"t":"pong"}'); return; }
     if (m.t === 'wristband') { hello(ws, m); return; }
     if (ws.band) { handleBand(ws, m); return; }
@@ -364,8 +400,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       if (ws.r && ws.r !== nextRoom) ws.r.sockets.delete(ws);
       ws.r = nextRoom;
       ws.me = me;
-      clearTimeout(ws.r.left.get(me));
-      ws.r.left.delete(me);
+      stopGrace(ws.r, me);
+      ws.r.heard.set(me, now());
       ws.r.room.join(me, { band: m.band });
       ws.r.sockets.add(ws);
       push(ws.r);
@@ -421,8 +457,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         break;
       }
       case 'leave':
-        clearTimeout(r.left.get(me));
-        r.left.delete(me);
+        stopGrace(r, me);
         room.leave(me);
         r.sockets.delete(ws);
         ws.r = null;
@@ -500,27 +535,24 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       if (m && typeof m.t === 'string') handle(ws, m);
     });
     ws.on('close', () => {
-      const band = ws.band && bands.get(ws.band);
-      if (band && band.ws === ws) {
-        band.ws = null;
-        band.goneAt = now();
+      const b = ws.band && bands.get(ws.band);
+      if (b && b.ws === ws) {
+        b.ws = null;
+        b.goneAt = now();
         // A wristband nobody has claimed keeps its letters for a minute, so a
         // dropped connection does not change the code someone is typing. The
         // sweep forgets it after that.
-        if (band.person && rooms.get(band.key)) push(rooms.get(band.key));
+        const br = b.key ? rooms.get(b.key) : null;
+        if (br) {
+          if (b.person && !phoneOf(br, b.person)) startGrace(br, b.person);
+          push(br);
+        }
       }
       const r = ws.r;
-      // A relay that is shutting down starts no grace period: close() has
-      // already cleared them, and a new one would hold the process open.
       if (!r || closing) return;
       r.sockets.delete(ws);
-      if ([...r.sockets].some((s) => s.me === ws.me)) return;
-      r.left.set(ws.me, setTimeout(() => {
-        r.left.delete(ws.me);
-        r.room.leave(ws.me);
-        push(r);
-        gcRoom(r);
-      }, GRACE_MS));
+      if (phoneOf(r, ws.me) || bandOf(r.key, ws.me)?.ws) return;
+      startGrace(r, ws.me);
     });
   });
 
@@ -550,9 +582,10 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   }
 
   function expire(at) {
+    const night = (t) => nightOf(t, nightTz);
     for (const b of [...bands.values()]) {
       // Nobody came for a wristband waiting after a restart: it is new to the relay again.
-      if (b.waiting && at - b.waitingAt >= bandAloneMs) { freshLetters(b); showBand(b, at); continue; }
+      if (b.waiting && (at - b.waitingAt >= bandAloneMs || night(b.waitingAt) !== night(at))) { freshLetters(b); showBand(b, at); continue; }
       if (b.ws) continue;
       const idle = at - (b.goneAt || b.claimedAt || at);
       const dead = b.person ? idle >= bandAloneMs : idle >= BAND_GRACE_MS;
@@ -560,6 +593,15 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       if (b.person) forget(b.id, at);   // a paired wristband away for the hour, or a placeholder nobody answered
       codes.delete(b.code);
       bands.delete(b.id);
+    }
+    // Someone held only by their wristband leaves an hour after a phone of theirs
+    // was last heard, or when the night ends at 06:00, whichever is first.
+    for (const r of [...rooms.values()]) {
+      for (const me of r.room.ids()) {
+        if (phoneOf(r, me) || r.left.has(me) || !bandOf(r.key, me)?.ws) continue;
+        const heard = r.heard.get(me) ?? 0;
+        if (at - heard >= bandAloneMs || night(heard) !== night(at)) leaveRoom(r, me);
+      }
     }
     for (const [addr, list] of tries) {
       const left = recent(list, at);
@@ -582,7 +624,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     server.listen(port, host, () => resolve({
       port: server.address().port,
       rooms,
-      /** For tests: run the sweep — clips, dropped wristbands, old wrong codes — as if the clock read `at`. */
+      /** For tests: run the sweep — clips, wristbands, the band-alone hour, 06:00, old attempts — as if the clock read `at`. */
       expire,
       /** For tests: time out pairing checks and redraw every wristband as if the clock read `at`. */
       tickBands,
@@ -604,6 +646,6 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === normalize(process.argv[1])) {
-  const relay = await createRelay({ port: Number(process.env.PORT) || 8790 });
+  const relay = await createRelay({ port: Number(process.env.PORT) || 8790, nightTz: process.env.NIGHT_TZ || undefined });
   console.log('ON THE BEAT relay on http://localhost:' + relay.port + '/');
 }
