@@ -512,7 +512,7 @@ test('malformed and hostile messages never take the relay down', async () => {
     { t: 'keep', match: 'nope', on: true }, { t: 'keep' }, { t: 'keep', match: {}, on: 'yes' },
     { t: 'profile', name: {}, contact: [] }, { t: 'pick', track: {} }, { t: 'pick' },
     { t: 'block', handle: '\u0000' }, { t: 'block' }, { t: 'setBand', band: 999 },
-    { t: 'arm', intent: 'nonsense' }, { t: 'invisible', on: 'yes' },
+    { t: 'arm', intent: 'nonsense' }, { t: 'invisible', on: 'yes' }, { t: 'set', intent: 'hi', basis: 1 },
     { t: 'testLight' }, { t: 'unpair' }, { t: 'leave' }, { t: 'unknown-type', x: 1 },
   ];
   for (const m of bad) junk.send(m);

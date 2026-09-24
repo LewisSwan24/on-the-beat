@@ -234,7 +234,7 @@ test('every change to armed or invisible moves rev and says who made it; nothing
 });
 
 test('a person made again never reuses a rev', () => {
-  const room = createRoom({ salt: 'test' });
+  const room = createRoom({ salt: 'test', firstRev: () => 1 });   // not left to chance: the room keeps their count
   room.join('ana');
   room.arm('ana', 'hi');
   const before = room.viewFor('ana').me.rev;
@@ -254,4 +254,13 @@ test("a person's rev counts their own changes only: it says nothing about anyone
   room.join('cai');
   room.arm('ana', 'song');
   assert.equal(room.viewFor('ana').me.rev, before + 1, 'one change of her own is one step, whoever else came, went or changed');
+});
+
+test("two people's revs start far apart, so a rev chosen from one never names the other", () => {
+  const room = createRoom({ salt: 'test' });
+  room.join('ana');
+  room.join('ben');
+  const [a, b] = [room.viewFor('ana').me.rev, room.viewFor('ben').me.rev];
+  assert.ok(Number.isSafeInteger(a) && Number.isSafeInteger(b));
+  assert.notEqual(a, b);
 });

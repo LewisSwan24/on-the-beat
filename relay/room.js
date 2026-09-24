@@ -32,7 +32,7 @@
 // relay stops it is gone. Pure and synchronous — no sockets, no clock of its
 // own — so the promises can be tested without a network.
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 
 export const INTENTS = ['hi', 'song', 'dance'];
 export const BANDS = ['in this room', 'near the bar', 'by the stage', 'somewhere out the back'];
@@ -53,6 +53,10 @@ export function createRoom({
   // Quiet corners the venue suggests for a first hello. The first one free
   // goes to each new match, in order.
   spots = SPOTS,
+  // Where someone new starts counting their revs: a random point, so two
+  // people's revs are all but never equal, and a set chosen while a wristband
+  // was someone else's cannot name this person's rev and land on them.
+  firstRev = () => randomInt(2 ** 31) + 1,
 } = {}) {
   const people = new Map();   // id -> person
   const blocks = new Map();   // id -> Set of ids they blocked; outlives leave()
@@ -86,7 +90,7 @@ export function createRoom({
       people.set(id, {
         id, name: '', contact: '', band: BANDS.includes(band) ? band : BANDS[0],
         armed: null, invisible: false, pick: null, clip: null, joinedAt: now(),
-        rev: (tombs.get(id)?.rev ?? 0) + 1, seq: 0, by: 'relay',
+        rev: tombs.has(id) ? tombs.get(id).rev + 1 : firstRev(), seq: 0, by: 'relay',
       });
     }
     return people.get(id);

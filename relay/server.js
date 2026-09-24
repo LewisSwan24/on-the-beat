@@ -14,7 +14,7 @@ import { extname, isAbsolute, join, normalize, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { WebSocketServer } from 'ws';
-import { createRoom, SPOTS } from './room.js';
+import { createRoom, INTENTS, SPOTS } from './room.js';
 import { bandShow, cleanCode, newCode } from './band.js';
 import { nightOf } from './night.js';
 
@@ -28,6 +28,7 @@ const ROOM_CLIPS_MAX = 60_000_000;    // all clips in one room; the oldest go fi
 const CLIP_TTL_MS = 3_600_000;        // "it loops on the floor for an hour"
 const PING_MS = 15_000;
 const BAND_GRACE_MS = 60_000;         // a wristband that drops keeps its letters this long
+const SET_GAP_MS = 1000;              // a wristband may change its person at most once a second
 const TRIES_MS = 60_000;              // the window pairing attempts are counted in
 const SOCKET_TRIES = 5;               // pairing attempts one socket may make in it
 const ADDRESS_TRIES = 20;             // pairing attempts one address may make in it, over every socket
@@ -159,6 +160,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     waiting: false,     // after a relay restart: said hello with a secret, and waits for its owner
     waitingAt: 0,
     quiet: false,       // a hold with nobody in a room to hide, kept until they are
+    setAt: 0,           // when this wristband last changed its person (rule 1)
   });
 
   // How long a record has been dead weight: a live wristband is never that, a
@@ -230,6 +232,22 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     else if (b.waiting) b.quiet = true;
   }
 
+  /** Rule 1: the wristband may say `set`. Returns whether anything changed. */
+  function setFromBand(ws, b, m) {
+    // Dropped whole, before anything is touched, unless it is exactly a set.
+    if (!('intent' in m) || !(m.intent === null || INTENTS.includes(m.intent)) || !Number.isInteger(m.basis)) return false;
+    const refuse = (why) => { ws.send(JSON.stringify({ t: 'set', ok: false, why })); return false; };
+    if (!b.person) return refuse('unpaired');
+    const room = rooms.get(b.key)?.room;
+    if (!room?.has(b.person)) return refuse('no room');
+    if (m.basis !== room.revOf(b.person)) return refuse('changed');
+    if (now() - b.setAt < SET_GAP_MS) return refuse('too fast');
+    b.setAt = now();
+    room.setInvisible(b.person, false, 'band');
+    room.arm(b.person, m.intent, 'band');
+    return true;
+  }
+
   function handleBand(ws, m) {
     const b = bands.get(ws.band);
     // Only from the wristband's current socket: a set stuck in a replaced one must not land.
@@ -237,6 +255,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (m.t === 'battery') b.battery = clampBattery(m.level);
     // Held: NOT NOW, from the wrist. The phone follows.
     if (m.t === 'hold') holdOn(b);
+    if (m.t === 'set' && !setFromBand(ws, b, m)) return;
     const r = b.key ? rooms.get(b.key) : null;
     if (r) push(r); else showBand(b);
   }

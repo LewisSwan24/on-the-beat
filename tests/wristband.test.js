@@ -307,3 +307,110 @@ test('a paired wristband away for BAND_ALONE_MS is forgotten, and the next claim
   assert.deepEqual(await told, { t: 'claim', ok: false, why: 'gone' });
   close(ana);
 });
+
+// ---------- rule 1: the wrist's set ----------
+
+/** A person in a room with a paired wristband, and the rev its last show named. */
+async function wearing(venue) {
+  const band = await wristband();
+  const ana = await phone(venue);
+  await pairBand(ana, band);
+  const show = await band.until((s) => s.kind === 'off' && Number.isInteger(s.rev));
+  return { band, ana, rev: show.rev };
+}
+
+test('a set is taken: visible, armed, by the band', async () => {
+  const { band, ana, rev } = await wearing('set-room');
+  band.send({ t: 'set', intent: 'song', basis: rev });
+  await ana.until((v) => v.me.armed === 'song' && v.me.by === 'band');
+  const show = await band.until((s) => s.kind === 'song');
+  assert.ok(show.rev > rev);
+  close(ana, band);
+});
+
+test('malformed sets are dropped whole, and NOT NOW survives them', async () => {
+  const { band, ana } = await wearing('set-junk');
+  band.send({ t: 'hold' });
+  const { rev } = await band.until((s) => s.quiet);
+  for (const m of [
+    { t: 'set', basis: rev }, { t: 'set', intent: 'nonsense', basis: rev }, { t: 'set', intent: 7, basis: rev },
+    { t: 'set', intent: 'hi' }, { t: 'set', intent: 'hi', basis: String(rev) }, { t: 'set', intent: 'hi', basis: rev + 0.5 },
+    { t: 'set', intent: {}, basis: rev }, { t: 'set', intent: ['hi'], basis: rev },
+  ]) band.send(m);
+  await pause(200);
+  assert.equal(ana.view.me.invisible, true, 'still NOT NOW');
+  assert.deepEqual(band.replies, [], 'and no answer at all');
+  close(ana, band);
+});
+
+test('a set from a wristband nobody paired is refused unpaired', async () => {
+  const band = await wristband();
+  band.send({ t: 'set', intent: 'hi', basis: 1 });
+  await band.until((s, b) => b.replies.length === 1);
+  assert.deepEqual(band.replies, [{ t: 'set', ok: false, why: 'unpaired' }]);
+  close(band);
+});
+
+test('a set for a person who is not in a room is refused no room', async () => {
+  const { band, ana, rev } = await wearing('set-noroom');
+  ana.ws.close();
+  await pause(100);
+  relay.expire(Date.now() + BAND_ALONE_MS + 1_000);   // held only by the wristband, for the hour
+  await band.until((s) => s.away);
+  band.send({ t: 'set', intent: 'hi', basis: rev });
+  await band.until((s, b) => b.replies.length === 1);
+  assert.deepEqual(band.replies, [{ t: 'set', ok: false, why: 'no room' }]);
+  close(band);
+});
+
+test('a set naming a rev that has moved is refused changed, and changes nothing', async () => {
+  const { band, ana, rev } = await wearing('set-changed');
+  ana.send({ t: 'invisible', on: true });
+  await band.until((s) => s.quiet);
+  band.send({ t: 'set', intent: 'hi', basis: rev });
+  await band.until((s, b) => b.replies.length === 1);
+  assert.deepEqual(band.replies, [{ t: 'set', ok: false, why: 'changed' }]);
+  assert.equal(ana.view.me.invisible, true);
+  close(ana, band);
+});
+
+test('a set chosen while the wristband was someone else\'s is refused changed', async () => {
+  // Chosen on ana's wrist and held up on the way, it lands after the band was paired to ben.
+  const { band, ana, rev } = await wearing('set-repaired');
+  ana.send({ t: 'unpair' });
+  await band.until((s) => s.kind === 'pairing');
+  const ben = await phone('set-repaired');
+  await pairBand(ben, band);
+  await band.until((s) => s.kind === 'off' && Number.isInteger(s.rev));
+  band.send({ t: 'set', intent: 'hi', basis: rev });
+  await band.until((s, b) => b.replies.length === 1);
+  assert.deepEqual(band.replies, [{ t: 'set', ok: false, why: 'changed' }]);
+  assert.equal(ben.view.me.armed, null, 'ben was not shown with a card he never chose');
+  close(ana, ben, band);
+});
+
+test('more than one set a second is refused too fast; a second on, the wrist may set again', async () => {
+  // A relay of its own with its clock held, so the second is the relay's and not the machine's.
+  let t = new Date(2026, 8, 24, 21, 0).getTime();
+  const own = await createRelay({ port: 0, host: '127.0.0.1', root: dir, clock: () => t });
+  const on = helpers(() => own.port);
+  try {
+    const band = await on.wristband();
+    const ana = await on.phone('set-fast');
+    await on.pairBand(ana, band);
+    t += 3_000;                                    // past the white flash a new pairing gives
+    const { rev } = await band.until((s) => s.kind === 'off' && Number.isInteger(s.rev));
+    band.send({ t: 'set', intent: 'hi', basis: rev });
+    const { rev: next } = await band.until((s) => s.kind === 'hi');
+    band.send({ t: 'set', intent: 'song', basis: next });
+    await band.until((s, b) => b.replies.length === 1);
+    assert.deepEqual(band.replies, [{ t: 'set', ok: false, why: 'too fast' }]);
+    assert.equal(ana.view.me.armed, 'hi');
+    t += 1_000;
+    band.send({ t: 'set', intent: 'song', basis: next });
+    await ana.until((v) => v.me.armed === 'song');
+  } finally {
+    on.cleanup();
+    await own.close();
+  }
+});
