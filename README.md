@@ -27,6 +27,12 @@ npm run dev          # Vite on :5178 for working on the app (run `npm run relay`
 npm run tunnel       # an https address for real phones (cloudflared must be installed)
 ```
 
+**CI.** Every push to `main` and every pull request runs `npm test` and builds
+the wristband's firmware with PlatformIO (`.github/workflows/ci.yml`). Each
+run keeps the firmware as a download: `firmware.bin`, and
+`otb-wristband-full.bin`, which carries the bootloader and partition table too
+and flashes whole at `0x0`.
+
 **Phones need https.** The camera, the screen wake lock and the offline shell
 are all refused on plain http, so a phone on the LAN gets an app with no
 camera. `npm start` and then `npm run tunnel` gives every phone the same https
