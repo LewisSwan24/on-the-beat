@@ -25,6 +25,7 @@ export const GRACE_MS = 120_000;              // a locked screen is not leaving
 const MAX_FRAME = 1_600_000;          // a five-second clip, base64, with room to spare
 const CLIP_MAX = 1_200_000;           // bytes of video per clip
 const ROOM_CLIPS_MAX = 60_000_000;    // all clips in one room; the oldest go first
+const ALL_CLIPS_MAX = 96_000_000;     // every room's clips together: what a small always-on machine can hold
 const CLIP_TTL_MS = 3_600_000;        // "it loops on the floor for an hour"
 const PING_MS = 15_000;
 const BAND_GRACE_MS = 60_000;         // a wristband that drops keeps its letters this long
@@ -68,7 +69,7 @@ export function loadShows(file) {
  */
 export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile, maxBands = 5_000, maxRooms = 5_000,
   clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS, graceMs = GRACE_MS, nightTz,
-  clientIpHeader } = {}) {
+  clientIpHeader, allClipsMax = ALL_CLIPS_MAX } = {}) {
   const now = () => clock();
   // A misspelt zone throws here, when the relay starts, not at its first sweep in the middle of the night.
   nightOf(now(), nightTz);
@@ -386,21 +387,32 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   /**
    * One clip per person per slot: 'floor' for everyone, or 'to:<handle>' for a
    * dance back. A new one replaces the old; past the room's cap the oldest go,
-   * and a floor clip that goes is taken off the floor rather than left to 404.
+   * and so do the oldest anywhere past every room's cap together. A floor clip
+   * that goes is taken off the floor rather than left to 404.
    */
   function keepClip(r, id, mime, data, slot) {
     const buf = Buffer.from(String(data || ''), 'base64');
     if (!buf.length || buf.length > CLIP_MAX || !/^video\/(webm|mp4)/.test(String(mime))) return null;
-    const drop = (ref, c) => {
-      r.clips.delete(ref);
-      if (c.slot === 'floor' && r.room.has(c.by)) r.room.postClip(c.by, null);
+    const drop = (room, ref, c) => {
+      room.clips.delete(ref);
+      if (c.slot === 'floor' && room.room.has(c.by)) {
+        room.room.postClip(c.by, null);
+        if (room !== r) push(room);   // this room is pushed by the message that brought the clip
+      }
     };
     for (const [ref, c] of r.clips) if (c.by === id && c.slot === slot) r.clips.delete(ref);
     let total = [...r.clips.values()].reduce((n, c) => n + c.buf.length, 0) + buf.length;
     for (const [ref, c] of [...r.clips].sort((a, b) => a[1].at - b[1].at)) {
       if (total <= ROOM_CLIPS_MAX) break;
-      drop(ref, c);
+      drop(r, ref, c);
       total -= c.buf.length;
+    }
+    const every = [...rooms.values()].flatMap((room) => [...room.clips].map(([ref, c]) => [room, ref, c]));
+    let all = every.reduce((n, [, , c]) => n + c.buf.length, 0) + buf.length;
+    for (const [room, ref, c] of every.sort((a, b) => a[2].at - b[2].at)) {
+      if (all <= allClipsMax) break;
+      drop(room, ref, c);
+      all -= c.buf.length;
     }
     const ref = randomBytes(12).toString('hex');
     r.clips.set(ref, { mime: String(mime).split(';')[0], buf, by: id, slot, at: now() });

@@ -127,6 +127,42 @@ test('an hour on the floor, then the clip is gone — from the floor and from th
   close(ana, ben);
 });
 
+test("every room's clips together stay under the machine's cap: the oldest go first, wherever they are", async () => {
+  // On a small always-on machine one room's cap is not the limit that
+  // matters: clips posted across many venues would fill its memory and stop
+  // the relay for everyone. The oldest anywhere goes, and its floor with it.
+  const small = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist'), allClipsMax: 3 * 4096 });
+  const h = helpers(() => small.port);
+  const at = (venue, ref) => fetch('http://127.0.0.1:' + small.port + '/clip/' + venue + '/' + ref).then((r) => r.status);
+  try {
+    const ana = await h.phone('cap-a');
+    const ben = await h.phone('cap-a');
+    const cai = await h.phone('cap-b');
+    const dee = await h.phone('cap-b');
+    const eve = await h.phone('cap-b');
+    const post = (p) => p.send({ t: 'clip', mime: 'video/webm', data: randomBytes(4096).toString('base64') });
+    post(ana);
+    const [a1] = (await ben.until((v) => v.floor.length === 1)).floor;
+    post(cai);
+    const [b1] = (await dee.until((v) => v.floor.length === 1)).floor;
+    post(dee);
+    const b2 = (await cai.until((v) => v.floor.length === 1)).floor[0];
+    assert.equal(await at('cap-a', a1.ref), 200, 'three clips fit the cap exactly');
+    // The fourth is posted in the other room: the oldest goes from a room
+    // nothing was said in, and that room's phones are told.
+    post(eve);
+    await cai.until((v) => v.floor.length === 2);
+    await ben.until((v) => v.floor.length === 0);
+    assert.equal(await at('cap-a', a1.ref), 404, 'the oldest clip, in another room, went for the newest');
+    assert.equal(await at('cap-b', b1.ref), 200);
+    assert.equal(await at('cap-b', b2.ref), 200);
+    h.close(ana, ben, cai, dee, eve);
+  } finally {
+    h.cleanup();
+    await small.close();
+  }
+});
+
 test('a wristband pairs by its four letters, then shows what its person is doing', async () => {
   const band = await wristband();
   assert.equal(band.show.kind, 'pairing');
