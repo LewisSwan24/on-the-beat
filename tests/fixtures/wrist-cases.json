@@ -98,7 +98,8 @@
         { "at": "4000", "press": 2, "face": { "big": "OFF", "small": "SIDE: NEXT", "ink": "text2" } },
         { "at": "4100+COMMIT_MS-1", "face": { "big": "OFF", "small": "SIDE: NEXT" } },
         { "at": "4100+COMMIT_MS", "sent": [{ "t": "set", "intent": null, "basis": 3 }], "face": { "big": "OFF", "small": "SENDING" } },
-        { "at": "7500", "show": "OFF", "rev": 4, "face": { "big": "READY", "small": "SET", "light": "LIGHT_AWAKE" } },
+        { "at": "7500", "show": "OFF", "rev": 4, "sounds": ["up"], "face": { "big": "", "field": "white", "light": "LIGHT_FULL" } },
+        { "at": "7500+500", "face": { "big": "READY", "small": "SET", "light": "LIGHT_AWAKE" } },
         { "at": "7500+RESULT_MS", "face": { "big": "", "light": "LIGHT_OFF" } }
       ]
     },
@@ -145,7 +146,8 @@
         { "at": "12000", "key2": "down" },
         { "at": "12000+HOLD_MS", "sent": [{ "t": "set", "intent": "hi", "basis": 6 }], "face": { "big": "HI :)", "small": "SENDING" } },
         { "at": "12000+HOLD_MS", "key2": "up" },
-        { "at": "14000", "show": "HI", "rev": 7, "face": { "big": "HI :)", "small": "SET", "field": "hi" } }
+        { "at": "14000", "show": "HI", "rev": 7, "sounds": ["up"], "face": { "big": "", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "14000+500", "face": { "big": "HI :)", "small": "SET", "field": "hi" } }
       ]
     },
     {
@@ -210,12 +212,14 @@
         { "at": "1000", "press": 2 },
         { "at": "2000", "press": 2 },
         { "at": "2100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
-        { "at": "5500", "frame": { "t": "set", "ok": false, "why": "changed" }, "face": { "big": "HI :)", "small": "CHANGED", "field": "hi" } },
+        { "at": "5500", "frame": { "t": "set", "ok": false, "why": "changed" }, "sounds": ["fall"], "face": { "big": "", "field": "red", "light": "LIGHT_FULL" } },
+        { "at": "5500+630", "face": { "big": "HI :)", "small": "CHANGED", "field": "hi" } },
         { "at": "5500+RESULT_MS", "face": { "small": "BLUE MEANS HELLO" } },
         { "at": "10000", "press": 2 },
         { "at": "11000", "press": 2 },
         { "at": "11100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
-        { "at": "14500", "frame": { "t": "set", "ok": false, "why": "too fast" }, "face": { "small": "NOT SENT" } }
+        { "at": "14500", "frame": { "t": "set", "ok": false, "why": "too fast" }, "sounds": ["low"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "14500+1200", "face": { "small": "NOT SENT" } }
       ]
     },
     {
@@ -228,9 +232,10 @@
         { "at": "2000", "press": 2 },
         { "at": "2100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
         { "at": "2100+COMMIT_MS+CONFIRM_MS-1", "face": { "small": "SENDING" } },
-        { "at": "2100+COMMIT_MS+CONFIRM_MS", "sent": ["DROP"], "face": { "big": "HI :)", "small": "NOT SENT" } },
+        { "at": "2100+COMMIT_MS+CONFIRM_MS", "sent": ["DROP"], "sounds": ["low"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
         { "at": "16000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
-        { "at": "16100", "show": "SONG", "rev": 4, "face": { "big": "FIRST SONG?", "small": "NOT SENT", "field": "song" } },
+        { "at": "16100", "show": "SONG", "rev": 4, "face": { "big": "FIRST SONG?", "small": "NOT SENT", "field": "song", "light": "LIGHT_OFF" } },
+        { "at": "16300", "face": { "big": "FIRST SONG?", "small": "NOT SENT", "field": "song", "light": "LIGHT_FULL" } },
         { "at": "15100+RESULT_MS", "face": { "small": "TREASURE" } }
       ]
     },
@@ -301,6 +306,74 @@
         { "at": "0", "show": "MEET", "rev": 3, "face": { "big": "27", "small": "MEET", "field": "song" } },
         { "at": "1000", "press": 2, "face": { "big": "HI :)", "small": "SIDE TO CHANGE", "field": "hi" } },
         { "at": "1100+CHOOSE_MS", "face": { "big": "27", "small": "MEET" } }
+      ]
+    },
+    {
+      "name": "SET plays up and flashes the card's colour twice, 150 on and 100 off; then SET shows",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2, "face": { "big": "FIRST SONG?", "small": "SIDE: NEXT" } },
+        { "at": "2100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
+        { "at": "6000", "show": "SONG", "rev": 4, "sounds": ["up"], "face": { "big": "", "small": "", "field": "song", "light": "LIGHT_FULL", "code": "" } },
+        { "at": "6000+149", "face": { "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "6000+150", "face": { "big": "FIRST SONG?", "small": "SET", "light": "LIGHT_OFF" } },
+        { "at": "6000+250", "face": { "big": "", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "6000+400", "face": { "light": "LIGHT_OFF" } },
+        { "at": "6000+500", "face": { "big": "FIRST SONG?", "small": "SET", "field": "song", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "CHANGED plays fall and flashes red three times, 120 on and 90 off; NOT SENT plays low and flashes orange twice, 350 on and 250 off",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2 },
+        { "at": "2100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
+        { "at": "6000", "frame": { "t": "set", "ok": false, "why": "changed" }, "sounds": ["fall"], "face": { "big": "", "field": "red", "light": "LIGHT_FULL" } },
+        { "at": "6000+120", "face": { "light": "LIGHT_OFF" } },
+        { "at": "6000+210", "face": { "field": "red", "light": "LIGHT_FULL" } },
+        { "at": "6000+420", "face": { "field": "red", "light": "LIGHT_FULL" } },
+        { "at": "6000+540", "face": { "light": "LIGHT_OFF" } },
+        { "at": "6000+630", "face": { "big": "HI :)", "small": "CHANGED", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "10000", "press": 2 },
+        { "at": "11000", "press": 2 },
+        { "at": "11100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
+        { "at": "15000", "frame": { "t": "set", "ok": false, "why": "no room" }, "sounds": ["low"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "15000+350", "face": { "light": "LIGHT_OFF" } },
+        { "at": "15000+600", "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "15000+950", "face": { "light": "LIGHT_OFF" } },
+        { "at": "15000+1200", "face": { "big": "HI :)", "small": "NOT SENT", "field": "hi" } }
+      ]
+    },
+    {
+      "name": "a key going down ends a flash: only its tick plays, and the face under the flash shows at once",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2 },
+        { "at": "2100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
+        { "at": "6000", "show": "SONG", "rev": 4, "sounds": ["up"], "face": { "big": "", "field": "song" } },
+        { "at": "6000+50", "key1": "down", "sounds": ["tick"], "face": { "big": "FIRST SONG?", "small": "SET", "light": "LIGHT_FULL" } },
+        { "at": "6000+150", "key1": "up", "face": { "big": "FIRST SONG?", "small": "SET", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "a SIDE hold on a preview of what is already armed sends nothing and plays no double",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2, "face": { "big": "HI :)", "small": "SIDE TO CHANGE" } },
+        { "at": "2000", "press": 2 },
+        { "at": "3000", "press": 2 },
+        { "at": "4000", "press": 2, "face": { "big": "OFF" } },
+        { "at": "5000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT" } },
+        { "at": "6000", "key2": "down", "sounds": ["tick"] },
+        { "at": "6000+HOLD_MS", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "light": "LIGHT_FULL" } },
+        { "at": "6000+HOLD_MS", "key2": "up" }
       ]
     }
   ]

@@ -1019,7 +1019,7 @@ inline const char* cardWords(const std::string& intent) {
 /** What the screen shows: two lines on one field, the backlight, the KEEP HOLDING bar, and letters to draw with their QR. */
 struct Screen {
   std::string big, small;
-  std::string field = "black";  // black | white | hi | song | dance
+  std::string field = "black";  // black | white | hi | song | dance | red | orange
   std::string ink = "text2";    // ink | text2 | white | hi | song | dance
   uint8_t light = LIGHT_OFF;
   int bar = -1;                 // 0..99 while KEY1 is held past BAR_MS; -1 otherwise
@@ -1204,6 +1204,24 @@ class Wrist {
       f.bar = std::min<int>(99, static_cast<int>((now - k1_.since) * 100 / HOLD_MS));
       if (f.light < LIGHT_AWAKE) f.light = LIGHT_AWAKE;
     }
+    return flashOver(f, now);
+  }
+
+ private:
+  /** A flash, step by step: on is its colour at full light and nothing else; off is the backlight off. */
+  Screen flashOver(Screen f, uint32_t now) const {
+    if (!playingOn_ || !playing_.flash) return f;
+    const Flash& fl = *playing_.flash;
+    const uint32_t t = now - playing_.at;
+    if (static_cast<int32_t>(t) < 0 || t >= flashMs(&fl)) return f;
+    if (t % (uint32_t(fl.on) + fl.off) < fl.on) {
+      Screen on;
+      on.field = playing_.colour;
+      on.ink = "ink";
+      on.light = LIGHT_FULL;
+      return on;
+    }
+    f.light = LIGHT_OFF;
     return f;
   }
 
@@ -1218,15 +1236,18 @@ class Wrist {
   struct Reaction {
     const char* sound = nullptr;
     const Flash* flash = nullptr;
+    std::string colour;
     int cls = 0;
     bool audible = true;
     uint32_t at = 0, until = 0;
   };
 
-  void react(const char* sound, const Flash* flash = nullptr, int cls = 0) {
+  /** A reaction of this moment. `card`: the colour a "set" flash takes. */
+  void react(const char* sound, const char* flash = nullptr, int cls = 0, const std::string& card = "") {
     Reaction r;
     r.sound = sound;
-    r.flash = flash;
+    r.flash = flash ? flashFor(flash) : nullptr;
+    if (r.flash) r.colour = std::string(r.flash->colour) == "card" ? (card.empty() ? "white" : card) : r.flash->colour;
     r.cls = cls;
     moment_.push_back(r);
   }
@@ -1313,12 +1334,18 @@ class Wrist {
     react("down");
   }
 
+  /** SET, CHANGED or NOT SENT on the face, with its sound and flash. In NOT NOW a failed try to come back is silent. */
   void result(uint32_t now, const char* w) {
     mode_ = RESULT;
     word_ = w;
     resultUntil_ = now + RESULT_MS;
     preview_.clear();
     frozen_ = false;
+    if (current() == "notnow") return;
+    const std::string word = w;
+    if (word == "SET") react("up", "set", 0, choice_);
+    else if (word == "CHANGED") react("fall", "changed");
+    else react("low", "notsent");
   }
 
   /** `held`: a KEY2 hold sends it at once, and says so with a double tick, except from NOT NOW, which is silent. */

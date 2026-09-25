@@ -119,9 +119,11 @@ export function createWrist({ key }) {
   const current = () => (quiet.pending || show?.quiet ? 'notnow' : show?.armed || 'off');
   const pct = () => (battery >= 0 ? battery + '%' : '');
 
-  /** A reaction of this moment. cls: 0 a key or a result, 1 a call, 2 a warning. */
-  function react(sound, flash = null, cls = 0) {
-    moment.push({ sound, flash, cls, audible: true });
+  /** A reaction of this moment. cls: 0 a key or a result, 1 a call, 2 a warning. `card`: the colour a `set` flash takes. */
+  function react(sound, flash = null, cls = 0, card = '') {
+    const f = flash ? FLASHES[flash] : null;
+    const colour = f ? (f.colour === 'card' ? card || 'white' : f.colour) : '';
+    moment.push({ sound, flash: f, colour, cls, audible: true });
   }
 
   function start(r, at) {
@@ -168,12 +170,17 @@ export function createWrist({ key }) {
     react('down');
   }
 
+  /** SET, CHANGED or NOT SENT on the face, with its sound and flash. In NOT NOW a failed try to come back is silent. */
   function result(now, w) {
     mode = 'result';
     word = w;
     resultUntil = now + RESULT_MS;
     preview = '';
     frozen = false;
+    if (current() === 'notnow') return;
+    if (w === 'SET') react('up', 'set', 0, choice);
+    else if (w === 'CHANGED') react('fall', 'changed');
+    else react('low', 'notsent');
   }
 
   /** `held`: a KEY2 hold sends it at once, and says so with a double tick, except from NOT NOW, which is silent. */
@@ -366,7 +373,18 @@ export function createWrist({ key }) {
     if (k1.down && !k1.fired && now - k1.since >= BAR_MS) {
       f = { ...f, small: 'KEEP HOLDING', bar: Math.min(99, Math.floor(((now - k1.since) * 100) / HOLD_MS)), light: Math.max(f.light, LIGHT_AWAKE) };
     }
-    return f;
+    return flashOver(f, now);
+  }
+
+  /** A flash, step by step: on is its colour at full light and nothing else; off is the backlight off. */
+  function flashOver(f, now) {
+    if (!playing || !playing.flash) return f;
+    const { count, on, off } = playing.flash;
+    const t = now - playing.at;
+    if (t < 0 || t >= count * (on + off)) return f;
+    return t % (on + off) < on
+      ? { big: '', small: '', field: playing.colour, ink: 'ink', light: LIGHT_FULL, bar: -1, code: '' }
+      : { ...f, light: LIGHT_OFF };
   }
 
   return {
