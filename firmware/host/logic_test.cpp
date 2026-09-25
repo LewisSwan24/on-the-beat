@@ -415,6 +415,41 @@ void rejoin() {
   CHECK(w.due(true, false, REJOIN_MS - 1001));
 }
 
+void console() {
+  const std::string key = "0123456712345678234567893456789a", id = idFor(key);
+  const std::string secret = "5ec2e75ec2e75ec2e75ec2e75ec2e75e";
+  CHECK(saidLine("DROP") == "the relay went quiet; trying again");
+  CHECK(saidLine(HOLD_FRAME) == "NOT NOW, from the wrist");
+  CHECK(saidLine(PING_FRAME).empty() && saidLine(batteryFrame(40)).empty());
+  CHECK(saidLine(helloFrame(id, key, 62)) == "hello to the relay, as a new wristband");
+  CHECK(saidLine(helloFrame(id, key, 62, secret, true)) == "hello to the relay, with its secret");
+  CHECK(saidLine("{\"t\":\"set\",\"intent\":\"hi\",\"basis\":7}") == "a choice from the wrist: HI :)");
+  CHECK(saidLine("{\"t\":\"set\",\"intent\":null,\"basis\":7}") == "a choice from the wrist: OFF");
+
+  std::string shown;
+  const auto heard = [&shown](const std::string& text) {
+    Frame f;
+    CHECK(readFrame(text, f));
+    return heardLine(f, shown);
+  };
+  CHECK(heard("{\"t\":\"error\",\"why\":\"bad band\"}") == "the relay says: bad band");
+  CHECK(heard("{\"t\":\"set\",\"ok\":false,\"why\":\"changed\"}") == "the relay did not take the choice: changed");
+  const std::string paired = heard("{\"t\":\"paired\",\"secret\":\"" + secret + "\"}");
+  CHECK(paired == "paired: the relay gave it a secret" && paired.find("5ec2") == std::string::npos);  // never the secret
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"pairing\",\"code\":\"MHJJ\"}}") == "the relay shows: pairing MHJJ");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"pairing\",\"code\":\"MHJJ\"}}").empty());  // only a change is said
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"check\",\"big\":\"27\"}}") == "the relay shows: check 27");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"test\"}}") == "the relay shows: test");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"armed\":null,\"rev\":3}}") == "the relay shows: off");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"hi\",\"intent\":\"hi\",\"big\":\"HI :)\",\"armed\":\"hi\",\"rev\":4}}") == "the relay shows: hi");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"hi\",\"intent\":\"hi\",\"big\":\"HI :)\",\"armed\":\"hi\",\"rev\":5}}").empty());
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"quiet\":true,\"armed\":\"hi\",\"rev\":6}}") == "the relay shows: off (NOT NOW)");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"away\":true}}") == "the relay shows: off (away)");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"meet\",\"intent\":\"hi\",\"big\":\"42\",\"small\":\"MEET\"}}") == "the relay shows: meet 42");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"waiting\"}}") == "the relay shows: waiting");
+  CHECK(heard("{\"t\":\"ping\"}").empty());
+}
+
 void said() {
   CHECK(validId("0123456789abcdef") && !validId("0123456789abcde") && !validId("0123456789ABCDEF"));
   CHECK(!validId(std::string(65, 'a')) && validId(std::string(64, 'a')));
@@ -597,6 +632,7 @@ int main(int argc, char** argv) {
   pairing();
   relay();
   rejoin();
+  console();
   said();
   std::printf("ok: %d checks\n", checks);
   return 0;

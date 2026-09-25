@@ -60,6 +60,7 @@ BatteryReport batteryReport;
 Rejoin rejoin;
 std::atomic<uint8_t> wifiWhy{0};  // why the radio last dropped, as the Wi-Fi task heard it; 0 until it has
 bool onWifi = false;              // joined, as the console last said
+std::string shown;                // what the console last said about a show
 
 int battery = -1;       // percent, or -1 while it will not say
 uint32_t batteryAt = 0;
@@ -148,8 +149,8 @@ void flushOut() {
     const std::string& next = waitingOut.front();
     const bool taken = next == "DROP" ? toSocket(OUT_DROP) : toSocket(OUT_SEND, next);
     if (!taken) return;
-    if (next == "DROP") Serial.println("the relay went quiet; trying again");
-    else if (next == HOLD_FRAME) Serial.println("NOT NOW, from the wrist");
+    const std::string line = saidLine(next);
+    if (!line.empty()) Serial.println(line.c_str());
     waitingOut.erase(waitingOut.begin());
   }
 }
@@ -240,7 +241,10 @@ void drain(uint32_t now) {
         const std::string text(e.text, e.length);
         wrist->frame(text, now);
         Frame f;
-        if (readFrame(text, f) && f.t == "error") Serial.printf("the relay says: %s\n", f.why.c_str());
+        if (readFrame(text, f)) {
+          const std::string line = heardLine(f, shown);
+          if (!line.empty()) Serial.println(line.c_str());
+        }
         break;
       }
       case EV_HEARD:
