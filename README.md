@@ -457,8 +457,10 @@ relay could drive what a wrist shows.
   shows). That evening both moved to the always-on relay with one `relay`
   line each and no reflash; then, with no relay or tunnel on the laptop and
   both bands off its USB, the phone paired with a band through
-  https://on-the-beat.fly.dev and the band responded. A night's worth of
-  battery, and the Plus's face button, are not tried. CI builds both envs with PlatformIO on every push — the ESP32 image
+  https://on-the-beat.fly.dev and the band responded; a second device paired
+  the other, and a wave and a wave back between the two put `MEET` on both
+  bands. A night's worth of battery, and the Plus's face button, are not
+  tried. CI builds both envs with PlatformIO on every push — the ESP32 image
   is about 1.2 MB of its 3 MB app partition — and keeps each image to flash.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
