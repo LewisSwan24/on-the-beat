@@ -520,7 +520,7 @@ void readBattery(uint32_t now) {
   batteryAt = now;
   const int32_t level = M5.Power.getBatteryLevel();
   battery = level >= 0 && level <= 100 ? static_cast<int>(level) : -1;
-  if (wrist) wrist->setBattery(battery);
+  if (wrist) wrist->setBattery(battery, now);
 }
 
 }  // namespace
@@ -550,7 +550,7 @@ void setup() {
   if (prefs.isKey("id")) prefs.remove("id");  // the id an older build kept for good is not kept any more
   loadSettings();
   readBattery(millis());
-  wrist->setBattery(battery);
+  wrist->setBattery(battery, millis());
 
   Serial.println("\nON THE BEAT wristband");
   help();

@@ -15,9 +15,9 @@
 //
 // It also reacts, in sound and light (docs/superpowers/specs/
 // 2026-09-25-wrist-reactions-design.md). Each input is one moment; a moment's
-// reactions play one after another, and a later moment's replace the one
-// playing. sounds() gives the names of the sounds due to start since it was
-// last asked.
+// reactions play in order (a key or a result, then a call, then a warning),
+// one after another, and a later moment's replace the one playing. sounds()
+// gives the names of the sounds due to start since it was last asked.
 
 import { bandIdOf } from './sha256.js';
 
@@ -112,7 +112,7 @@ export function createWrist({ key }) {
   let choice = '';            // what was sent: a card, or '' for off
   let word = '';
   let out = [];
-  // Reactions (rule 6): this input's; the one playing; those waiting their turn.
+  // Reactions (rule 6): this input's, not yet in order; the one playing; those waiting their turn.
   let moment = [];
   let playing = null;         // { sound, flash, colour, cls, audible, at, until }
   let queue = [];
@@ -129,6 +129,11 @@ export function createWrist({ key }) {
   let pairCode = '';
   let waitAt = null;
   let hintUntil = 0;
+  // Rule 7: each warning plays once per change. Which have played (true while their condition holds), which
+  // battery thresholds are armed, and which came up in NOT NOW or during a choice and are owed.
+  const warned = { reach: false, wait: false, away: false };
+  const armed = { low: true, empty: true };
+  const owed = new Set();
 
   const send = (m) => out.push(JSON.stringify(m));
   const stale = (now) => !link.up && (!link.ever || now - link.lost >= STALE_MS);
@@ -152,10 +157,30 @@ export function createWrist({ key }) {
     if (r.sound && r.audible) due.push(r.sound);
   }
 
-  /** The end of a moment: its reactions go first, one after another, and what was already waiting plays after them. */
+  /** A warning: orange twice with warn. One a moment, however many came up in it. */
+  function playWarn() {
+    if (!moment.some((r) => r.cls === 2)) react('warn', 'warn', 2);
+  }
+
+  /** A warning came up. In NOT NOW, or while the face is not resting, it is owed (rules 1 and 6). */
+  function warn(name) {
+    if (silent || mode !== 'rest') owed.add(name);
+    else playWarn();
+  }
+
+  /** What is owed plays once, if any of it still holds. */
+  function payOwed() {
+    const holds = (name) => (name === 'battery' ? battery >= 0 && battery <= 15 : warned[name]);
+    if ([...owed].some(holds)) playWarn();
+    owed.clear();
+  }
+
+  /** The end of a moment: its reactions go first, in order, and what was already waiting plays after them. */
   function settle(now) {
+    // A warning that waited for a choice plays once the face rests.
+    if (owed.size && !silent && mode === 'rest') payOwed();
     if (!moment.length) return;
-    const mine = moment;
+    const mine = moment.sort((a, b) => a.cls - b.cls);
     moment = [];
     queue = [...mine.slice(1), ...queue];
     start(mine[0], now);
@@ -264,6 +289,9 @@ export function createWrist({ key }) {
   function tick(now) {
     advance(now);
     if (calling && stale(now)) calling = false;  // a show no longer believed calls no more
+    // Out of reach: a paired band, STALE_MS without the relay. Waiting: STALE_MS after it began.
+    if (secret && stale(now) && !warned.reach) { warned.reach = true; warn('reach'); }
+    if (waitAt !== null && now - waitAt >= STALE_MS && !warned.wait) { warned.wait = true; warn('wait'); }
     if (link.up) {
       if (now - link.heard > DEAF_MS) { out.push('DROP'); closed(now); }
       else if (now - link.asked >= PING_EVERY_MS) { link.asked = now; send({ t: 'ping' }); }
@@ -325,6 +353,7 @@ export function createWrist({ key }) {
     if (stale(now)) show = null;
     link.up = true;
     link.ever = true;
+    warned.reach = false;  // it has the relay again
     link.heard = now;
     link.asked = now;
     const hello = { t: 'wristband', id, key, v: 2 };
@@ -332,6 +361,18 @@ export function createWrist({ key }) {
     if (quiet.pending) { hello.quiet = true; quiet.sent = true; quiet.at = now; }
     if (battery >= 0) hello.battery = battery;
     send(hello);
+    settle(now);
+  }
+
+  /** A battery reading. Low at 15% or below, again only after 20%; very low at 5% or below, again only after 10%. */
+  function setBattery(level, now) {
+    advance(now);
+    battery = Number.isInteger(level) && level >= 0 && level <= 100 ? level : -1;
+    // Past both at once is still one warning: a moment plays one.
+    if (battery >= 0) {
+      if (battery <= 15 && armed.low) { armed.low = false; warn('battery'); } else if (battery >= 20) armed.low = true;
+      if (battery <= 5 && armed.empty) { armed.empty = false; warn('battery'); } else if (battery >= 10) armed.empty = true;
+    }
     settle(now);
   }
 
@@ -359,6 +400,7 @@ export function createWrist({ key }) {
     }
     if (m.t !== 'show' || !m.show || typeof m.show !== 'object') return;
     const was = show;
+    const wasSilent = silent;
     show = readShow(m.show);
     // Reactions come from changes; a show that differs only in `sound` is no change.
     const same = !!was && JSON.stringify(was) === JSON.stringify(show);
@@ -366,17 +408,19 @@ export function createWrist({ key }) {
     if (typeof m.show.sound === 'boolean') soundOn = m.show.sound;
     if (show.kind === 'pairing') {
       // The band is nobody's: NOT NOW is over, and no meeting is anyone's.
+      const wasPaired = !!secret;
       secret = '';
       silent = false;
       called = '';
       calling = false;
       if (was?.kind === 'check') react('fall', null, 1);  // the check ended without YES
+      if (wasPaired) playWarn();                          // unpaired; the letters end any choice, so at once
       soundOn = true;                                     // after the letters' own reactions
       // New letters light for PAIR_AWAKE_MS; the same letters again (a reconnect) do not.
       if (show.code !== pairCode) { pairCode = show.code; litUntil = now + PAIR_AWAKE_MS; }
     } else pairCode = '';
-    // The waiting face lights when waiting starts. Losing the relay does not end it.
-    if (show.kind !== 'waiting') waitAt = null;
+    // The waiting face lights when waiting starts. Losing the relay does not end it; any other show does.
+    if (show.kind !== 'waiting') { waitAt = null; warned.wait = false; }
     else if (waitAt === null) { waitAt = now; litUntil = now + PAIR_AWAKE_MS; }
     if (quiet.pending && quiet.sent && !lit(show)) quiet.pending = false;
     // NOT NOW's silence starts and ends only with a show about the person (rule 1).
@@ -391,6 +435,11 @@ export function createWrist({ key }) {
     } else if (mode === 'sending' && personal() && show.rev > basis && show.armed === choice && !show.quiet) {
       result(now, 'SET');
     }
+    // Away starts at an away show and ends at one that is not; the same again after a reconnect is no change.
+    if (!show.away) warned.away = false;
+    else if (!warned.away) { warned.away = true; warn('away'); }
+    // NOT NOW is over: what came up in it plays once, after this moment's own reactions (rule 1).
+    if (wasSilent && !silent) payOwed();
     if (same || silent) return;
     if (show.kind === 'check') react('ask', 'check', 1);
     else if (show.kind === 'test') react('up', null, 1);  // paired, or TEST THE LIGHT: the white face is its flash
@@ -483,7 +532,7 @@ export function createWrist({ key }) {
     heard: (now) => { link.heard = now; },
     frame,
     tick,
-    setBattery: (level) => { battery = Number.isInteger(level) && level >= 0 && level <= 100 ? level : -1; },
+    setBattery,
     setWifi: (on) => { wifi = !!on; },
     /** Everything to send since the last take: frame text, or 'DROP' to drop the socket. */
     take: () => { const o = out; out = []; return o; },

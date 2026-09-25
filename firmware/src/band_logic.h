@@ -1046,7 +1046,27 @@ class Wrist {
   const std::string& secret() const { return secret_; }
   bool up() const { return link_.up(); }
 
-  void setBattery(int level) { battery_ = level >= 0 && level <= 100 ? level : -1; }
+  /** A battery reading. Low at 15% or below, again only after 20%; very low at 5% or below, again only after 10%. */
+  void setBattery(int level, uint32_t now) {
+    advance(now);
+    battery_ = level >= 0 && level <= 100 ? level : -1;
+    // Past both at once is still one warning: a moment plays one.
+    if (battery_ >= 0) {
+      if (battery_ <= 15 && armedLow_) {
+        armedLow_ = false;
+        warn(BATTERY);
+      } else if (battery_ >= 20) {
+        armedLow_ = true;
+      }
+      if (battery_ <= 5 && armedEmpty_) {
+        armedEmpty_ = false;
+        warn(BATTERY);
+      } else if (battery_ >= 10) {
+        armedEmpty_ = true;
+      }
+    }
+    settle(now);
+  }
   void setWifi(bool on) { wifi_ = on; }
   /** The relay answered a ping, or anything else was heard. */
   void heard(uint32_t now) { link_.heard(now); }
@@ -1109,6 +1129,7 @@ class Wrist {
     advance(now);
     if (link_.stale(now)) haveShow_ = false;
     link_.opened(now);
+    warnedReach_ = false;  // it has the relay again
     // A hold not yet heard rides on the hello: the relay applies it before anything else.
     const bool quiet = quiet_.dark();
     if (quiet) quiet_.sent(now);
@@ -1151,17 +1172,20 @@ class Wrist {
     // Reactions come from changes; a show that differs only in its sound switch is no change.
     const bool same = haveShow_ && show_ == f.show;
     const bool wasCheck = haveShow_ && show_.kind == "check";
+    const bool wasSilent = silent_;
     show_ = f.show;
     haveShow_ = true;
     // A show's own switch counts for what it causes.
     if (f.sound >= 0) soundOn_ = f.sound == 1;
     if (show_.kind == "pairing") {
       // Unpaired, or nobody came for it: the band is nobody's, so NOT NOW is over and no meeting is anyone's.
+      const bool wasPaired = !secret_.empty();
       secret_.clear();
       silent_ = false;
       called_.clear();
       calling_ = false;
       if (wasCheck) react("fall", nullptr, 1);    // the check ended without YES
+      if (wasPaired) playWarn();                  // unpaired; the letters end any choice, so at once
       soundOn_ = true;                            // after the letters' own reactions
       // New letters light for PAIR_AWAKE_MS; the same letters again (a reconnect) do not.
       if (show_.code != pairCode_) {
@@ -1171,9 +1195,10 @@ class Wrist {
     } else {
       pairCode_.clear();
     }
-    // The waiting face lights when waiting starts. Losing the relay does not end it.
+    // The waiting face lights when waiting starts. Losing the relay does not end it; any other show does.
     if (show_.kind != "waiting") {
       waiting_ = false;
+      warnedWait_ = false;
     } else if (!waiting_) {
       waiting_ = true;
       waitAt_ = now;
@@ -1196,6 +1221,15 @@ class Wrist {
     } else if (mode_ == SENDING && personal() && show_.rev > basis_ && show_.armed == choice_ && !show_.quiet) {
       result(now, "SET");
     }
+    // Away starts at an away show and ends at one that is not; the same again after a reconnect is no change.
+    if (!show_.away) {
+      warnedAway_ = false;
+    } else if (!warnedAway_) {
+      warnedAway_ = true;
+      warn(AWAY);
+    }
+    // NOT NOW is over: what came up in it plays once, after this moment's own reactions (rule 1).
+    if (wasSilent && !silent_) payOwed();
     if (same || silent_) return;
     if (show_.kind == "check") {
       react("ask", "check", 1);
@@ -1212,6 +1246,15 @@ class Wrist {
 
   void ticked(uint32_t now) {
     if (calling_ && link_.stale(now)) calling_ = false;  // a show no longer believed calls no more
+    // Out of reach: a paired band, STALE_MS without the relay. Waiting: STALE_MS after it began.
+    if (!secret_.empty() && link_.stale(now) && !warnedReach_) {
+      warnedReach_ = true;
+      warn(REACH);
+    }
+    if (waiting_ && now - waitAt_ >= STALE_MS && !warnedWait_) {
+      warnedWait_ = true;
+      warn(WAIT);
+    }
     switch (link_.tick(now)) {
       case Link::DROP:
         out_.push_back("DROP");
@@ -1336,9 +1379,33 @@ class Wrist {
     if (r.sound && r.audible) due_.push_back(r.sound);
   }
 
-  /** The end of a moment: its reactions go first, one after another, and what was already waiting plays after them. */
+  /** A warning: orange twice with warn. One a moment, however many came up in it. */
+  void playWarn() {
+    for (const Reaction& r : moment_)
+      if (r.cls == 2) return;
+    react("warn", "warn", 2);
+  }
+
+  /** A warning came up. In NOT NOW, or while the face is not resting, it is owed (rules 1 and 6). */
+  void warn(uint8_t w) {
+    if (silent_ || mode_ != REST) owed_ |= w;
+    else playWarn();
+  }
+
+  /** What is owed plays once, if any of it still holds. */
+  void payOwed() {
+    const bool holds = ((owed_ & REACH) && warnedReach_) || ((owed_ & WAIT) && warnedWait_) ||
+                       ((owed_ & AWAY) && warnedAway_) || ((owed_ & BATTERY) && battery_ >= 0 && battery_ <= 15);
+    if (holds) playWarn();
+    owed_ = 0;
+  }
+
+  /** The end of a moment: its reactions go first, in order, and what was already waiting plays after them. */
   void settle(uint32_t now) {
+    // A warning that waited for a choice plays once the face rests.
+    if (owed_ && !silent_ && mode_ == REST) payOwed();
     if (moment_.empty()) return;
+    std::stable_sort(moment_.begin(), moment_.end(), [](const Reaction& a, const Reaction& b) { return a.cls < b.cls; });
     std::vector<Reaction> next(moment_.begin() + 1, moment_.end());
     next.insert(next.end(), queue_.begin(), queue_.end());
     queue_.swap(next);
@@ -1530,7 +1597,7 @@ class Wrist {
   uint32_t wakeUntil_ = 0, stepAt_ = 0, sentAt_ = 0, resultUntil_ = 0;
   int64_t basis_ = 0;
   std::vector<std::string> out_;
-  // Reactions (rule 6): this input's; the one playing; those waiting their turn.
+  // Reactions (rule 6): this input's, not yet in order; the one playing; those waiting their turn.
   std::vector<Reaction> moment_, queue_;
   Reaction playing_;
   bool playingOn_ = false;
@@ -1548,6 +1615,12 @@ class Wrist {
   bool waiting_ = false;
   uint32_t waitAt_ = 0;
   uint32_t hintUntil_ = 0;
+  // Rule 7: each warning plays once per change. Which have played (true while their condition holds), which
+  // battery thresholds are armed, and which came up in NOT NOW or during a choice and are owed, by bit.
+  enum Warning : uint8_t { REACH = 1, WAIT = 2, AWAY = 4, BATTERY = 8 };
+  bool warnedReach_ = false, warnedWait_ = false, warnedAway_ = false;
+  bool armedLow_ = true, armedEmpty_ = true;
+  uint8_t owed_ = 0;
 };
 
 // ---------- the serial console ----------

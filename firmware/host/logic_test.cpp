@@ -621,7 +621,7 @@ int runWrist() {
       else w->keyUp(k, t);
     }
     else if (verb == "frame") w->frame(arg, t);
-    else if (verb == "battery") w->setBattery(std::atoi(arg.c_str()));
+    else if (verb == "battery") w->setBattery(std::atoi(arg.c_str()), t);
     else if (verb == "wifi") w->setWifi(arg == "1");
     std::string sent, sounds;
     for (const std::string& f : w->take()) sent += (sent.empty() ? "" : ",") + (f == "DROP" ? std::string("\"DROP\"") : f);

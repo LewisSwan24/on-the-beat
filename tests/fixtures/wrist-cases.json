@@ -27,7 +27,7 @@
         { "at": "10", "frame": { "t": "paired", "secret": "5ec2e75ec2e75ec2e75ec2e75ec2e75e" } },
         { "at": "20", "link": "down" },
         { "at": "30", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "secret": "5ec2e75ec2e75ec2e75ec2e75ec2e75e", "battery": 62 }] },
-        { "at": "40", "show": "PAIRING", "face": { "big": "KXRT", "code": "KXRT", "light": "LIGHT_PAIR" } },
+        { "at": "40", "show": "PAIRING", "sounds": ["warn"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
         { "at": "50", "link": "down" },
         { "at": "60", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] }
       ]
@@ -277,7 +277,7 @@
         { "at": "500", "face": { "big": "27", "small": "ON YOUR PHONE?", "field": "black", "ink": "white", "light": "LIGHT_PAIR" } },
         { "at": "1000", "press": 2, "face": { "big": "27", "small": "PAIR ON YOUR PHONE" } },
         { "at": "2000", "show": "WAITING", "face": { "big": "OPEN YOUR PHONE", "small": "OR SWITCH ME OFF", "light": "LIGHT_AWAKE" } },
-        { "at": "3000", "show": "AWAY", "face": { "big": "", "light": "LIGHT_OFF" } },
+        { "at": "3000", "show": "AWAY", "sounds": ["warn"], "face": { "big": "", "field": "orange", "light": "LIGHT_FULL" } },
         { "at": "10000", "face": { "big": "", "light": "LIGHT_OFF" } },
         { "at": "11000", "press": 1, "face": { "big": "OPEN YOUR PHONE", "small": "TO COME BACK", "light": "LIGHT_AWAKE" } },
         { "at": "12000", "press": 2, "face": { "small": "TO COME BACK" } },
@@ -676,6 +676,7 @@
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
         { "at": "0", "show": "HI", "rev": 1 },
         { "at": "1000", "show": "WAITING", "face": { "big": "OPEN YOUR PHONE", "light": "LIGHT_AWAKE" } },
+        { "at": "1000+STALE_MS", "sounds": ["warn"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
         { "at": "1000+PAIR_AWAKE_MS-1", "face": { "light": "LIGHT_AWAKE" } },
         { "at": "1000+PAIR_AWAKE_MS", "face": { "big": "OPEN YOUR PHONE", "light": "LIGHT_OFF" } },
         { "at": "130000", "show": "WAITING", "face": { "light": "LIGHT_OFF" } },
@@ -686,6 +687,162 @@
         { "at": "270000+BAR_MS", "face": { "small": "KEEP HOLDING", "light": "LIGHT_AWAKE" } },
         { "at": "270000+HOLD_MS", "sent": [{ "t": "hold" }], "sounds": ["down"], "face": { "light": "LIGHT_OFF" } },
         { "at": "270000+HOLD_MS", "key1": "up" }
+      ]
+    },
+    {
+      "name": "out of reach warns once, STALE_MS after a paired band lost the relay, flashing orange twice, and again only after it has had the relay back",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "10", "frame": { "t": "paired", "secret": "5ec2e75ec2e75ec2e75ec2e75ec2e75e" } },
+        { "at": "20", "show": "HI", "rev": 1 },
+        { "at": "1000", "link": "down" },
+        { "at": "1000+STALE_MS-1", "face": { "big": "HI :)" } },
+        { "at": "1000+STALE_MS", "sounds": ["warn"], "face": { "big": "", "small": "", "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "1000+STALE_MS+350", "face": { "light": "LIGHT_OFF" } },
+        { "at": "1000+STALE_MS+600", "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "1000+STALE_MS+1200", "face": { "big": "", "light": "LIGHT_OFF" } },
+        { "at": "20000" },
+        { "at": "30000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "secret": "5ec2e75ec2e75ec2e75ec2e75ec2e75e" }] },
+        { "at": "30100", "show": "HI", "rev": 1 },
+        { "at": "31000", "link": "down" },
+        { "at": "31000+STALE_MS", "sounds": ["warn"] }
+      ]
+    },
+    {
+      "name": "an unpaired band out of reach does not warn",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "PAIRING" },
+        { "at": "1000", "link": "down" },
+        { "at": "1000+STALE_MS" },
+        { "at": "30000" }
+      ]
+    },
+    {
+      "name": "waiting warns once, STALE_MS after the first waiting show; losing the relay does not end it, another show does",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "WAITING" },
+        { "at": "STALE_MS-1" },
+        { "at": "STALE_MS", "sounds": ["warn"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "15000", "link": "down" },
+        { "at": "15000+STALE_MS+1000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "15000+STALE_MS+1100", "show": "WAITING" },
+        { "at": "15000+2*STALE_MS+2000" },
+        { "at": "50000", "show": "HI", "rev": 1 },
+        { "at": "51000", "show": "WAITING" },
+        { "at": "51000+STALE_MS", "sounds": ["warn"] }
+      ]
+    },
+    {
+      "name": "away warns once at an away show; the same after a reconnect does not warn again; a show that is not away ends it",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 1 },
+        { "at": "1000", "show": "AWAY", "sounds": ["warn"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "2000", "link": "down" },
+        { "at": "2000+STALE_MS+1000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "2000+STALE_MS+1100", "show": "AWAY" },
+        { "at": "20000", "show": "HI", "rev": 1 },
+        { "at": "21000", "show": "AWAY", "sounds": ["warn"] }
+      ]
+    },
+    {
+      "name": "unpaired warns when letters reach a band that held a secret, with the switch as it was; after a check without YES, fall plays instead",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "10", "frame": { "t": "paired", "secret": "5ec2e75ec2e75ec2e75ec2e75ec2e75e" } },
+        { "at": "20", "show": "HI", "rev": 1, "with": { "sound": false } },
+        { "at": "1000", "show": "PAIRING", "face": { "big": "", "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "1000+1200", "face": { "big": "KXRT", "light": "LIGHT_PAIR" } },
+        { "at": "3000", "show": "CHECK", "sounds": ["ask"] },
+        { "at": "4000", "show": "PAIRING", "with": { "code": "MQTV" }, "sounds": ["fall"] }
+      ]
+    },
+    {
+      "name": "battery warns at 15% and again only after 20%, at 5% and again only after 10%; the first reading after a boot counts",
+      "steps": [
+        { "at": "0", "battery": 12, "sounds": ["warn"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "2000", "battery": 14 },
+        { "at": "3000", "battery": 19 },
+        { "at": "4000", "battery": 15 },
+        { "at": "5000", "battery": 20 },
+        { "at": "6000", "battery": 15, "sounds": ["warn"] },
+        { "at": "8000", "battery": 5, "sounds": ["warn"] },
+        { "at": "10000", "battery": 9 },
+        { "at": "11000", "battery": 5 },
+        { "at": "12000", "battery": 10 },
+        { "at": "13000", "battery": 4, "sounds": ["warn"] },
+        { "at": "15000", "battery": 3 }
+      ]
+    },
+    {
+      "name": "a first reading past both thresholds warns once",
+      "steps": [
+        { "at": "0", "battery": 3, "sounds": ["warn"] },
+        { "at": "1200", "battery": 4 },
+        { "at": "3000" }
+      ]
+    },
+    {
+      "name": "a warning in NOT NOW is owed: it plays once when NOT NOW ends, after that moment's SET and call, and not if it no longer holds",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "QUIET", "rev": 6 },
+        { "at": "500", "battery": 12, "face": { "light": "LIGHT_OFF" } },
+        { "at": "1000", "press": 2, "downSounds": [] },
+        { "at": "2000", "press": 2, "downSounds": [], "face": { "big": "HI :)", "small": "HOLD SIDE TO SHOW" } },
+        { "at": "3000", "key2": "down" },
+        { "at": "3000+HOLD_MS", "sent": [{ "t": "set", "intent": "hi", "basis": 6 }] },
+        { "at": "3000+HOLD_MS", "key2": "up" },
+        { "at": "6000", "show": "MEET", "rev": 7, "sounds": ["up"], "face": { "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "6000+500", "sounds": ["jingle"], "face": { "big": "27", "small": "SET" } },
+        { "at": "6000+1100", "sounds": ["warn"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "6000+2300", "face": { "big": "27", "small": "SET", "field": "song" } },
+        { "at": "20000", "show": "QUIET", "rev": 8 },
+        { "at": "21000", "battery": 25 },
+        { "at": "22000", "battery": 14 },
+        { "at": "23000", "battery": 18 },
+        { "at": "24000", "show": "HI", "rev": 9 },
+        { "at": "25000", "press": 1 }
+      ]
+    },
+    {
+      "name": "a warning that comes up during a choice waits, sound and flash, until the face rests",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "battery": 12, "face": { "big": "HI :)", "small": "SIDE TO CHANGE", "light": "LIGHT_FULL" } },
+        { "at": "1100+CHOOSE_MS-1", "face": { "small": "SIDE TO CHANGE" } },
+        { "at": "1100+CHOOSE_MS", "sounds": ["warn"], "face": { "field": "orange", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "a warning's flash covers a call's blink and the blink comes back after it; a key during the flash answers the call",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "sounds": ["jingle"] },
+        { "at": "1000", "battery": 12, "sounds": ["warn"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "1000+1200", "face": { "big": "27", "light": "LIGHT_FULL" } },
+        { "at": "1000+1700", "face": { "big": "27", "light": "LIGHT_OFF" } },
+        { "at": "3000", "battery": 25 },
+        { "at": "4000", "battery": 13, "sounds": ["warn"] },
+        { "at": "4100", "key1": "down", "sounds": ["tick"], "face": { "big": "27", "small": "MEET", "light": "LIGHT_FULL" } },
+        { "at": "4600", "face": { "big": "27", "light": "LIGHT_FULL" } },
+        { "at": "4700", "key1": "up" }
+      ]
+    },
+    {
+      "name": "letters that end NOT NOW play one warning, however many are due",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "10", "frame": { "t": "paired", "secret": "5ec2e75ec2e75ec2e75ec2e75ec2e75e" } },
+        { "at": "20", "show": "QUIET", "rev": 1 },
+        { "at": "500", "battery": 12 },
+        { "at": "1000", "show": "PAIRING", "sounds": ["warn"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "1000+1200", "face": { "big": "KXRT", "light": "LIGHT_PAIR" } },
+        { "at": "5000" }
       ]
     }
   ]

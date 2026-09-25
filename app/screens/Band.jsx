@@ -196,7 +196,7 @@ export function BandStandIn() {
   }, [wrist]);
 
   useEffect(() => {
-    wrist.setBattery(battery);
+    wrist.setBattery(battery, Date.now());
     if (ws.current?.readyState === 1) ws.current.send(JSON.stringify({ t: 'battery', level: battery }));
   }, [wrist, battery]);
 

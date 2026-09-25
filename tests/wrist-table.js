@@ -91,7 +91,7 @@ export function runJs(protocol) {
     else if (verb === 'down') wrist.linkDown(t);
     else if (verb === 'key1' || verb === 'key2') (rest[0] === 'down' ? wrist.keyDown : wrist.keyUp)(verb === 'key1' ? 1 : 2, t);
     else if (verb === 'frame') wrist.frame(rest.join(' '), t);
-    else if (verb === 'battery') wrist.setBattery(Number(rest[0]));
+    else if (verb === 'battery') wrist.setBattery(Number(rest[0]), t);
     else if (verb === 'wifi') wrist.setWifi(rest[0] === '1');
     answers.push({ sent: wrist.take().map((o) => (o === 'DROP' ? o : JSON.parse(o))), sounds: wrist.sounds(), face: wrist.face(t) });
   }
