@@ -78,6 +78,7 @@ constexpr Note LOW_TONE[] = {{784, 120}, {523, 220}};  // not LOW: Arduino.h mak
 constexpr Note ASK[] = {{1319, 80}, {0, 50}, {1760, 160}};
 constexpr Note JINGLE[] = {{1319, 80}, {1568, 80}, {2637, 80}, {2093, 80}, {2349, 80}, {3136, 200}};
 constexpr Note WARN[] = {{880, 150}, {698, 150}, {880, 150}, {698, 150}};
+constexpr Note HELLO[] = {{1568, 60}, {2093, 120}};
 template <size_t N>
 constexpr Sound sound(const char* name, const Note (&notes)[N]) { return {name, notes, N}; }
 }  // namespace detail
@@ -86,6 +87,7 @@ constexpr Sound SOUNDS[] = {
     detail::sound("tick", detail::TICK),     detail::sound("double", detail::DOUBLE), detail::sound("down", detail::DOWN),
     detail::sound("up", detail::UP),         detail::sound("fall", detail::FALL),     detail::sound("low", detail::LOW_TONE),
     detail::sound("ask", detail::ASK),       detail::sound("jingle", detail::JINGLE), detail::sound("warn", detail::WARN),
+    detail::sound("hello", detail::HELLO),
 };
 
 inline const Sound* soundFor(const std::string& name) {
@@ -159,7 +161,7 @@ struct Flash {
 
 constexpr Flash FLASHES[] = {
     {"set", "card", 2, 150, 100},       {"changed", "red", 3, 120, 90}, {"notsent", "orange", 2, 350, 250},
-    {"warn", "orange", 2, 350, 250},    {"check", "white", 2, 150, 100},
+    {"warn", "orange", 2, 350, 250},    {"check", "white", 2, 150, 100},   {"wave", "hi", 3, 500, 500},
 };
 
 inline const Flash* flashFor(const std::string& name) {
@@ -483,11 +485,19 @@ class Reader {
 }  // namespace json
 
 /** A frame from the relay: its type, and the show, the reason, the answer or the secret it carries. */
+/** Who waved at the person and waits: the newest one's handle, how many, and the newest one's number. */
+struct Waves {
+  std::string ref;
+  int64_t n = 0;
+  int64_t seq = 0;  // the relay's clock in ms when the wave was made: past 32 bits
+};
+
 struct Frame {
   std::string t;
   bool hasShow = false;
   Show show;
   int sound = -1;          // the show's sound switch: 1 on, 0 off, -1 not said (so not part of the Show)
+  Waves waves;             // the show's waves, nobody unless said (so not part of the Show either)
   std::string why;
   bool hasOk = false;      // {t:'set', ok:false, why}: the relay refused a choice
   bool ok = true;
@@ -560,6 +570,18 @@ inline bool readFrame(const std::string& text, Frame& f) {
         if (!r.boolean(on)) return false;
         f.sound = on ? 1 : 0;
         return true;
+      }
+      if (k == "waves") {
+        if (!r.peek('{')) return r.skip();
+        return r.object([&](const std::string& w) {
+          if (w == "ref") return text_(f.waves.ref, 16);
+          if (w != "n" && w != "seq") return r.skip();
+          int64_t v = 0;
+          bool whole = false;
+          if (!r.integer(v, whole)) return r.skip();
+          (w == "n" ? f.waves.n : f.waves.seq) = whole ? v : 0;
+          return true;
+        });
       }
       return r.skip();
     });
@@ -1153,8 +1175,10 @@ class Wrist {
     s.fired = false;
     // Any KEY1 press-down freezes a choice at once: no commit can fire.
     if (k == 1 && (mode_ == LOOK || mode_ == CHOOSING)) frozen_ = true;
+    // During a wave's flashes a key only ticks: a meeting calling underneath is answered after them.
+    const bool whole = waveFlashing(now);
     // The key that answers a call only answers: letting it go, or holding it, does nothing more.
-    if (blinking(now)) {
+    if (blinking(now) && !whole) {
       calling_ = false;
       s.fired = true;
     } else if (pairingFace(now)) {
@@ -1163,8 +1187,11 @@ class Wrist {
       hintUntil_ = now + HINT_MS;
       if (show_.kind == "pairing") litUntil_ = now + PAIR_AWAKE_MS;
     }
-    // Every press is heard as it goes down; NOT NOW is silent.
-    if (!silent_) react("tick");
+    // Every press is heard as it goes down; NOT NOW is silent. A tick does not end a wave's flashes.
+    if (!silent_) {
+      if (!whole) react("tick");
+      else if (soundOn_) due_.push_back("tick");
+    }
     settle(now);
   }
 
@@ -1173,7 +1200,7 @@ class Wrist {
     Key& s = k == 1 ? k1_ : k2_;
     if (!s.down) return;
     s.down = false;
-    if (!s.fired) {
+    if (!s.fired && !waveFlashing(now)) {
       if (k == 2) {
         step(now);
       } else {
@@ -1234,6 +1261,7 @@ class Wrist {
     const bool wasSilent = silent_;
     show_ = f.show;
     haveShow_ = true;
+    waves_ = f.waves;
     // A show's own switch counts for what it causes.
     if (f.sound >= 0) soundOn_ = f.sound == 1;
     if (show_.kind == "pairing") {
@@ -1243,6 +1271,8 @@ class Wrist {
       silent_ = false;
       called_.clear();
       calling_ = false;
+      waveSeq_ = 0;
+      waveOwed_ = false;
       if (wasCheck) react("fall", nullptr, 1);    // the check ended without YES
       if (wasPaired) playWarn();                  // unpaired; the letters end any choice, so at once
       soundOn_ = true;                            // after the letters' own reactions
@@ -1289,18 +1319,26 @@ class Wrist {
     }
     // NOT NOW is over: what came up in it plays once, after this moment's own reactions (rule 1).
     if (wasSilent && !silent_) payOwed();
-    if (same || silent_) return;
-    if (show_.kind == "check") {
-      react("ask", "check", 1);
-    } else if (show_.kind == "test") {
-      react("up", nullptr, 1);  // paired, or TEST THE LIGHT: the white face is its flash
-    } else if (show_.kind == "meet" && show_.big != called_) {
-      // A number not yet called for calls until it is answered (rule 4).
-      react("jingle", nullptr, 1);
-      called_ = show_.big;
-      calling_ = true;
-      callAt_ = now;
+    // A wave newer than any called for calls; either way the number moves up (waves §3).
+    const bool newer = waves_.seq > waveSeq_;
+    if (newer) waveSeq_ = waves_.seq;
+    if (silent_) return;
+    // A show that differs only in its sound or its waves is no change.
+    if (!same) {
+      if (show_.kind == "check") {
+        react("ask", "check", 1);
+      } else if (show_.kind == "test") {
+        react("up", nullptr, 1);  // paired, or TEST THE LIGHT: the white face is its flash
+      } else if (show_.kind == "meet" && show_.big != called_) {
+        // A number not yet called for calls until it is answered (rule 4).
+        react("jingle", nullptr, 1);
+        called_ = show_.big;
+        calling_ = true;
+        callAt_ = now;
+      }
     }
+    // After a meeting's jingle. A wave call already under way takes the new wave in.
+    if (newer && !waveCalling()) callWave();
   }
 
   void ticked(uint32_t now) {
@@ -1329,9 +1367,10 @@ class Wrist {
       k1_.fired = true;
       hold(now);
     }
+    // A SIDE hold that comes due during a wave's flashes does nothing else.
     if (k2_.down && !k2_.fired && now - k2_.since >= HOLD_MS) {
       k2_.fired = true;
-      sideHeld(now);
+      if (!waveFlashing(now)) sideHeld(now);
     }
     if (quiet_.due(link_.up())) {
       out_.push_back(HOLD_FRAME);
@@ -1409,13 +1448,14 @@ class Wrist {
     bool fired = false;
     uint32_t since = 0;
   };
-  /** One reaction. cls: 0 a key or a result, 1 a call, 2 a warning. */
+  /** One reaction. cls: 0 a key or a result, 1 a call, 2 a warning. `whole`: a wave's flashes, which no key ends. */
   struct Reaction {
     const char* sound = nullptr;
     const Flash* flash = nullptr;
     std::string colour;
     int cls = 0;
     bool audible = true;
+    bool whole = false;
     uint32_t at = 0, until = 0;
   };
 
@@ -1427,7 +1467,33 @@ class Wrist {
     if (r.flash) r.colour = std::string(r.flash->colour) == "card" ? (card.empty() ? "white" : card) : r.flash->colour;
     r.cls = cls;
     r.audible = soundOn_;
+    r.whole = flash && std::string(flash) == "wave";
     moment_.push_back(r);
+  }
+
+  /** A wave's flashes are on the face: a key only ticks (waves decision 6). */
+  bool waveFlashing(uint32_t now) const {
+    return playingOn_ && playing_.whole && static_cast<int32_t>(now - (playing_.at + flashMs(playing_.flash))) < 0;
+  }
+
+  /** A wave call playing, waiting its turn, or owed: a new wave joins it. */
+  bool waveCalling() const {
+    if ((playingOn_ && playing_.whole) || waveOwed_) return true;
+    for (const Reaction& r : queue_)
+      if (r.whole) return true;
+    for (const Reaction& r : moment_)
+      if (r.whole) return true;
+    return false;
+  }
+
+  /** A wave newer than any called for: hello, and its flashes now, or once the face rests (waves §1.2). */
+  void callWave() {
+    if (mode_ == REST) {
+      react("hello", "wave", 1);
+    } else {
+      react("hello", nullptr, 1);
+      waveOwed_ = true;
+    }
   }
 
   void start(Reaction r, uint32_t at) {
@@ -1461,7 +1527,11 @@ class Wrist {
 
   /** The end of a moment: its reactions go first, in order, and what was already waiting plays after them. */
   void settle(uint32_t now) {
-    // A warning that waited for a choice plays once the face rests.
+    // A wave's flashes, or a warning, that waited for a choice play once the face rests.
+    if (waveOwed_ && !silent_ && mode_ == REST) {
+      waveOwed_ = false;
+      react(nullptr, "wave", 1);
+    }
     if (owed_ && !silent_ && mode_ == REST) payOwed();
     if (moment_.empty()) return;
     std::stable_sort(moment_.begin(), moment_.end(), [](const Reaction& a, const Reaction& b) { return a.cls < b.cls; });
@@ -1570,6 +1640,7 @@ class Wrist {
     if (!silent_) react("down");
     silent_ = true;
     calling_ = false;  // NOT NOW ends a call
+    waveOwed_ = false;
   }
 
   /** SET, CHANGED or NOT SENT on the face, with its sound and flash. In NOT NOW a failed try to come back is silent. */
@@ -1667,6 +1738,11 @@ class Wrist {
   std::string called_;
   bool calling_ = false;
   uint32_t callAt_ = 0;
+  // Waves: who waits, as the last show said; the newest wave number called for (the relay's clock, past 32
+  // bits); and a call's flashes, owed until the face rests.
+  Waves waves_;
+  int64_t waveSeq_ = 0;
+  bool waveOwed_ = false;
   // Rule 5: the letters and the waiting face sleep. Until when they are lit, which letters lit them, when
   // waiting began, and until when a press says where to go.
   uint32_t litUntil_ = 0;

@@ -18,6 +18,9 @@
 // reactions play in order (a key or a result, then a call, then a warning),
 // one after another, and a later moment's replace the one playing. sounds()
 // gives the names of the sounds due to start since it was last asked.
+//
+// A wave at its person calls (docs/superpowers/specs/2026-09-25-wrist-waves-
+// design.md): hello, and the HI blue three times, whatever the keys do.
 
 import { bandIdOf } from './sha256.js';
 
@@ -64,6 +67,7 @@ export const SOUNDS = {
   ask: [[1319, 80], [0, 50], [1760, 160]],
   jingle: [[1319, 80], [1568, 80], [2637, 80], [2093, 80], [2349, 80], [3136, 200]],
   warn: [[880, 150], [698, 150], [880, 150], [698, 150]],
+  hello: [[1568, 60], [2093, 120]],
 };
 
 /** Every flash: its colour, then count × on / off ms. `card` is the card chosen, white for OFF. band_logic.h FLASHES. */
@@ -73,6 +77,7 @@ export const FLASHES = {
   notsent: { colour: 'orange', count: 2, on: 350, off: 250 },
   warn: { colour: 'orange', count: 2, on: 350, off: 250 },
   check: { colour: 'white', count: 2, on: 150, off: 100 },
+  wave: { colour: 'hi', count: 3, on: 500, off: 500 },
 };
 
 /**
@@ -94,6 +99,12 @@ function readShow(s) {
     armed: typeof s.armed === 'string' ? s.armed : '',
     rev: Number.isInteger(s.rev) ? s.rev : 0,
   };
+}
+
+/** A show's waves, read apart from the show, as band_logic.h readFrame() reads them: nobody waiting unless said. */
+function readWaves(s) {
+  const w = s.waves && typeof s.waves === 'object' ? s.waves : {};
+  return { ref: typeof w.ref === 'string' ? w.ref : '', n: Number.isInteger(w.n) ? w.n : 0, seq: Number.isInteger(w.seq) ? w.seq : 0 };
 }
 
 const lit = (s) => LIT.includes(s.kind) && !!CARD_WORDS[s.intent];
@@ -120,7 +131,7 @@ export function createWrist({ key }) {
   let out = [];
   // Reactions (rule 6): this input's, not yet in order; the one playing; those waiting their turn.
   let moment = [];
-  let playing = null;         // { sound, flash, colour, cls, audible, at, until }
+  let playing = null;         // { sound, flash, colour, cls, audible, whole, at, until }
   let queue = [];
   let due = [];               // sounds started since sounds() was last asked
   let soundOn = true;         // the person's switch, as the last show that said it had it (rule 3)
@@ -129,6 +140,11 @@ export function createWrist({ key }) {
   let called = '';
   let calling = false;
   let callAt = 0;
+  // Waves: who waits, as the last show said; the newest wave number called for; and a call's flashes, owed until
+  // the face rests.
+  let waves = readWaves({});
+  let waveSeq = 0;
+  let waveOwed = false;
   // Rule 5: the letters and the waiting face sleep. Until when they are lit, which letters lit them, when
   // waiting began, and until when a press says where to go.
   let litUntil = 0;
@@ -151,11 +167,28 @@ export function createWrist({ key }) {
   const current = () => (quiet.pending || show?.quiet ? 'notnow' : show?.armed || 'off');
   const pct = () => (battery >= 0 ? battery + '%' : '');
 
-  /** A reaction of this moment. cls: 0 a key or a result, 1 a call, 2 a warning. `card`: the colour a `set` flash takes. */
+  /**
+   * A reaction of this moment. cls: 0 a key or a result, 1 a call, 2 a warning. `card`: the colour a `set` flash
+   * takes. A wave's flashes play whole: a key does not end them.
+   */
   function react(sound, flash = null, cls = 0, card = '') {
     const f = flash ? FLASHES[flash] : null;
     const colour = f ? (f.colour === 'card' ? card || 'white' : f.colour) : '';
-    moment.push({ sound, flash: f, colour, cls, audible: soundOn });
+    moment.push({ sound, flash: f, colour, cls, audible: soundOn, whole: flash === 'wave' });
+  }
+
+  /** A wave's flashes are on the face: a key only ticks (waves decision 6). */
+  const waveFlashing = (now) => !!playing && playing.whole && now < playing.at + flashMs(playing.flash);
+  /** A wave call playing, waiting its turn, or owed: a new wave joins it. */
+  const waveCalling = () => !!playing?.whole || queue.some((r) => r.whole) || moment.some((r) => r.whole) || waveOwed;
+
+  /** A wave newer than any called for: hello, and its flashes now, or once the face rests (waves §1.2). */
+  function callWave() {
+    if (mode === 'rest') react('hello', 'wave', 1);
+    else {
+      react('hello', null, 1);
+      waveOwed = true;
+    }
   }
 
   function start(r, at) {
@@ -183,7 +216,11 @@ export function createWrist({ key }) {
 
   /** The end of a moment: its reactions go first, in order, and what was already waiting plays after them. */
   function settle(now) {
-    // A warning that waited for a choice plays once the face rests.
+    // A wave's flashes, or a warning, that waited for a choice play once the face rests.
+    if (waveOwed && !silent && mode === 'rest') {
+      waveOwed = false;
+      react(null, 'wave', 1);
+    }
     if (owed.size && !silent && mode === 'rest') payOwed();
     if (!moment.length) return;
     const mine = moment.sort((a, b) => a.cls - b.cls);
@@ -235,6 +272,7 @@ export function createWrist({ key }) {
     if (!silent) react('down');
     silent = true;
     calling = false;  // NOT NOW ends a call
+    waveOwed = false;
   }
 
   /** SET, CHANGED or NOT SENT on the face, with its sound and flash. In NOT NOW a failed try to come back is silent. */
@@ -303,7 +341,8 @@ export function createWrist({ key }) {
       else if (now - link.asked >= PING_EVERY_MS) { link.asked = now; send({ t: 'ping' }); }
     }
     if (k1.down && !k1.fired && now - k1.since >= HOLD_MS) { k1.fired = true; hold(now); }
-    if (k2.down && !k2.fired && now - k2.since >= HOLD_MS) { k2.fired = true; sideHeld(now); }
+    // A SIDE hold that comes due during a wave's flashes does nothing else.
+    if (k2.down && !k2.fired && now - k2.since >= HOLD_MS) { k2.fired = true; if (!waveFlashing(now)) sideHeld(now); }
     if (quiet.pending && !quiet.sent && link.up) { send({ t: 'hold' }); quiet.sent = true; quiet.at = now; }
     if (quiet.pending && quiet.sent && now - quiet.at >= QUIET_CONFIRM_MS) quiet.pending = false;
     if (mode === 'look' && now - stepAt >= CHOOSE_MS) rest();
@@ -326,16 +365,21 @@ export function createWrist({ key }) {
     s.since = now;
     s.fired = false;
     if (k === 1 && (mode === 'look' || mode === 'choosing')) frozen = true;
+    // During a wave's flashes a key only ticks: a meeting calling underneath is answered after them.
+    const whole = waveFlashing(now);
     // The key that answers a call only answers: letting it go, or holding it, does nothing more.
-    if (blinking(now)) { calling = false; s.fired = true; }
+    if (blinking(now) && !whole) { calling = false; s.fired = true; }
     // On the letters or the check a key says where to go, and lights the letters again; nothing more.
     else if (pairingFace(now)) {
       s.fired = true;
       hintUntil = now + HINT_MS;
       if (show.kind === 'pairing') litUntil = now + PAIR_AWAKE_MS;
     }
-    // Every press is heard as it goes down; NOT NOW is silent.
-    if (!silent) react('tick');
+    // Every press is heard as it goes down; NOT NOW is silent. A tick does not end a wave's flashes.
+    if (!silent) {
+      if (!whole) react('tick');
+      else if (soundOn) due.push('tick');
+    }
     settle(now);
   }
 
@@ -344,7 +388,7 @@ export function createWrist({ key }) {
     const s = k === 1 ? k1 : k2;
     if (!s.down) return;
     s.down = false;
-    if (!s.fired) {
+    if (!s.fired && !waveFlashing(now)) {
       if (k === 2) step(now);
       else {
         if (frozen) rest();
@@ -408,6 +452,7 @@ export function createWrist({ key }) {
     const was = show;
     const wasSilent = silent;
     show = readShow(m.show);
+    waves = readWaves(m.show);
     // Reactions come from changes; a show that differs only in `sound` is no change.
     const same = !!was && JSON.stringify(was) === JSON.stringify(show);
     // A show's own switch counts for what it causes. One that is not true or false is not said.
@@ -419,6 +464,8 @@ export function createWrist({ key }) {
       silent = false;
       called = '';
       calling = false;
+      waveSeq = 0;
+      waveOwed = false;
       if (was?.kind === 'check') react('fall', null, 1);  // the check ended without YES
       if (wasPaired) playWarn();                          // unpaired; the letters end any choice, so at once
       soundOn = true;                                     // after the letters' own reactions
@@ -446,16 +493,24 @@ export function createWrist({ key }) {
     else if (!warned.away) { warned.away = true; warn('away'); }
     // NOT NOW is over: what came up in it plays once, after this moment's own reactions (rule 1).
     if (wasSilent && !silent) payOwed();
-    if (same || silent) return;
-    if (show.kind === 'check') react('ask', 'check', 1);
-    else if (show.kind === 'test') react('up', null, 1);  // paired, or TEST THE LIGHT: the white face is its flash
-    else if (show.kind === 'meet' && show.big !== called) {
-      // A number not yet called for calls until it is answered (rule 4).
-      react('jingle', null, 1);
-      called = show.big;
-      calling = true;
-      callAt = now;
+    // A wave newer than any called for calls; either way the number moves up (waves §3).
+    const newer = waves.seq > waveSeq;
+    if (newer) waveSeq = waves.seq;
+    if (silent) return;
+    // A show that differs only in its sound or its waves is no change.
+    if (!same) {
+      if (show.kind === 'check') react('ask', 'check', 1);
+      else if (show.kind === 'test') react('up', null, 1);  // paired, or TEST THE LIGHT: the white face is its flash
+      else if (show.kind === 'meet' && show.big !== called) {
+        // A number not yet called for calls until it is answered (rule 4).
+        react('jingle', null, 1);
+        called = show.big;
+        calling = true;
+        callAt = now;
+      }
     }
+    // After a meeting's jingle. A wave call already under way takes the new wave in.
+    if (newer && !waveCalling()) callWave();
   }
 
   /** The face at rest: band_logic.h faceFor(), wordsFor() and lightFor(), in that order. */

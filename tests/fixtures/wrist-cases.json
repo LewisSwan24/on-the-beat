@@ -844,6 +844,151 @@
         { "at": "1000+1200", "face": { "big": "KXRT", "light": "LIGHT_PAIR" } },
         { "at": "5000" }
       ]
+    },
+    {
+      "name": "a wave newer than any called for plays hello and flashes the HI blue three times, 500 on and 500 off",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "face": { "big": "HI :)", "light": "LIGHT_FULL" } },
+        { "at": "1000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"], "face": { "big": "", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "1499", "face": { "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "1500", "face": { "big": "HI :)", "light": "LIGHT_OFF" } },
+        { "at": "3000", "face": { "big": "", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "3999", "face": { "big": "HI :)", "light": "LIGHT_OFF" } },
+        { "at": "4000", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "field": "hi", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "during a wave's flashes a press, a release and a SIDE hold only tick, a key already down included; after them keys work again",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "500", "key2": "down", "sounds": ["tick"] },
+        { "at": "1000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"] },
+        { "at": "1200", "key2": "up", "face": { "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "1400", "press": 2, "face": { "small": "BLUE MEANS HELLO", "light": "LIGHT_OFF" } },
+        { "at": "1600", "key2": "down", "sounds": ["tick"], "face": { "light": "LIGHT_OFF" } },
+        { "at": "1600+HOLD_MS", "face": { "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "3200", "key2": "up", "face": { "field": "hi" } },
+        { "at": "4000", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "light": "LIGHT_FULL" } },
+        { "at": "4100", "press": 2, "face": { "big": "HI :)", "small": "SIDE TO CHANGE" } }
+      ]
+    },
+    {
+      "name": "a FACE hold during a wave's flashes goes NOT NOW, dark at once",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"] },
+        { "at": "1200", "key1": "down", "sounds": ["tick"] },
+        { "at": "1200+HOLD_MS", "sounds": ["down"], "sent": [{ "t": "hold" }], "face": { "big": "", "light": "LIGHT_OFF" } },
+        { "at": "3000", "key1": "up", "face": { "big": "", "light": "LIGHT_OFF" } }
+      ]
+    },
+    {
+      "name": "a meeting calling under a wave's flashes is answered by the first key after them, not before",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "sounds": ["jingle"] },
+        { "at": "2000", "show": "MEET", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"], "face": { "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "2200", "press": 1, "face": { "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "5500", "face": { "big": "27", "light": "LIGHT_OFF" } },
+        { "at": "5600", "press": 1, "face": { "big": "27", "light": "LIGHT_FULL" } },
+        { "at": "6600", "face": { "big": "27", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "a meeting and a wave in one show: jingle, then hello and the flashes, then the meeting's blink",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "show": "MEET", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["jingle"], "face": { "big": "27", "light": "LIGHT_FULL" } },
+        { "at": "1500", "face": { "big": "27", "light": "LIGHT_OFF" } },
+        { "at": "1600", "sounds": ["hello"], "face": { "big": "", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "4599", "face": { "light": "LIGHT_OFF" } },
+        { "at": "4600", "face": { "big": "27", "light": "LIGHT_OFF" } },
+        { "at": "5000", "face": { "big": "27", "field": "song", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "waves during the call join it; a waver who comes back, and the same number after a reconnect, call nothing; a newer one calls",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"] },
+        { "at": "2000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "f6a7b8c9d0", "n": 2, "seq": 1790337603005 } }, "face": { "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "3999", "face": { "light": "LIGHT_OFF" } },
+        { "at": "4000", "face": { "big": "HI :)", "light": "LIGHT_FULL" } },
+        { "at": "5000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } } },
+        { "at": "6000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "f6a7b8c9d0", "n": 2, "seq": 1790337603005 } }, "face": { "big": "HI :)", "light": "LIGHT_FULL" } },
+        { "at": "7000", "link": "down" },
+        { "at": "8000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "8100", "show": "HI", "rev": 3, "with": { "waves": { "ref": "f6a7b8c9d0", "n": 2, "seq": 1790337603005 } } },
+        { "at": "9000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "c1d2e3f4a5", "n": 3, "seq": 1790337603009 } }, "sounds": ["hello"] }
+      ]
+    },
+    {
+      "name": "a band forgets its wave number at the letters, so a new person's first wave calls; after a boot, whoever waits calls once",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "waves": { "ref": "c1d2e3f4a5", "n": 3, "seq": 1790337603009 } }, "sounds": ["hello"] },
+        { "at": "5000", "show": "PAIRING", "face": { "big": "KXRT" } },
+        { "at": "6000", "show": "HI", "rev": 4, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"] }
+      ]
+    },
+    {
+      "name": "a wave number of thirteen digits is read whole: past 2^32 the next wave still calls",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1791001362431 } }, "sounds": ["hello"] },
+        { "at": "5000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "f6a7b8c9d0", "n": 2, "seq": 1791001362432 } }, "sounds": ["hello"] }
+      ]
+    },
+    {
+      "name": "no wave calls in NOT NOW, even before the relay has heard it",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "key1": "down", "sounds": ["tick"] },
+        { "at": "1000+HOLD_MS", "sounds": ["down"], "sent": [{ "t": "hold" }] },
+        { "at": "2600", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "face": { "light": "LIGHT_OFF" } },
+        { "at": "2700", "key1": "up", "face": { "light": "LIGHT_OFF" } }
+      ]
+    },
+    {
+      "name": "with the sound switch off, a wave's flashes play and nothing sounds, not even a key's tick",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "sound": false } },
+        { "at": "1000", "show": "HI", "rev": 3, "with": { "sound": false, "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "face": { "big": "", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "1200", "press": 2, "downSounds": [], "face": { "big": "", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "1500", "face": { "big": "HI :)", "light": "LIGHT_OFF" } },
+        { "at": "4000", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "during a look, hello plays at once and the flashes wait for the resting face; a wave meanwhile joins them",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2, "face": { "small": "SIDE TO CHANGE" } },
+        { "at": "2000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"], "face": { "big": "HI :)", "small": "SIDE TO CHANGE", "light": "LIGHT_FULL" } },
+        { "at": "3000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "f6a7b8c9d0", "n": 2, "seq": 1790337603005 } }, "face": { "big": "HI :)", "small": "SIDE TO CHANGE" } },
+        { "at": "1100+CHOOSE_MS", "face": { "big": "", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "1600+CHOOSE_MS", "face": { "light": "LIGHT_OFF" } },
+        { "at": "4100+CHOOSE_MS", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "a meeting that arrives during a wave's flashes replaces them with its own call",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"] },
+        { "at": "2000", "show": "MEET", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["jingle"], "face": { "big": "27", "light": "LIGHT_FULL" } },
+        { "at": "2600", "face": { "big": "27", "light": "LIGHT_OFF" } },
+        { "at": "3000", "face": { "big": "27", "field": "song", "light": "LIGHT_FULL" } }
+      ]
     }
   ]
 }
