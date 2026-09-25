@@ -2,6 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { CODE_LETTERS, MEET_MS, bandShow, cleanCode, newCode } from '../relay/band.js';
 
 const T = Date.UTC(2026, 8, 23, 11, 0);
@@ -94,5 +95,50 @@ test("the sound switch rides on every show to its person's band, and on none tha
   for (const v of [view({ armed: 'hi' }), null]) {
     assert.equal('sound' in bandShow({ view: v, now: T }), false);
     assert.equal('sound' in bandShow({ view: v, sound: null, now: T }), false);
+  }
+});
+
+// ---------- waves (docs/superpowers/specs/2026-09-25-wrist-waves-design.md §3) ----------
+
+test('the waves waiting ride on a show about a person on SAY HI, as the newest, a count and its number', () => {
+  const m = { id: 'm1', intent: 'song', number: 27, at: T };
+  const waves = [{ handle: 'a1b2c3d4e5', n: T + 9 }, { handle: 'f6a7b8c9d0', n: T + 2 }];
+  const want = { ref: 'a1b2c3d4e5', n: 2, seq: T + 9 };
+  assert.deepEqual(bandShow({ view: view({ armed: 'hi' }), waves, now: T }).waves, want);
+  assert.deepEqual(bandShow({ view: view({ armed: 'hi' }, [m]), waves, now: T }).waves, want, 'a meeting show too');
+  for (const s of [bandShow({ view: view({ armed: 'song' }), waves, now: T }), bandShow({ view: view({ armed: 'dance' }), waves, now: T }),
+    bandShow({ view: view(), waves, now: T }), bandShow({ view: view({ armed: 'song' }, [m]), waves, now: T }),
+    bandShow({ view: view({ armed: 'hi', invisible: true }), waves, now: T }), bandShow({ view: view({ armed: 'hi' }), testUntil: T + 1, waves, now: T }),
+    bandShow({ view: view({ armed: 'hi' }), code: 'KXRT', waves, now: T }), bandShow({ view: view({ armed: 'hi' }), check: 12, waves, now: T }),
+    bandShow({ view: null, waiting: true, waves, now: T }), bandShow({ view: null, waves, now: T })]) {
+    assert.equal('waves' in s, false, JSON.stringify(s));
+  }
+  assert.equal('waves' in bandShow({ view: view({ armed: 'hi' }), waves: [], now: T }), false, 'nobody waiting: no waves');
+  assert.equal('waves' in bandShow({ view: view({ armed: 'hi' }), now: T }), false);
+});
+
+test('the longest show the relay can make fits the band, however many wait', () => {
+  // The band drops a frame longer than its buffer whole: firmware/src/main.cpp, struct Event.
+  const cpp = readFileSync(new URL('../firmware/src/main.cpp', import.meta.url), 'utf8');
+  const size = Number(cpp.match(/struct Event \{[^}]*char text\[(\d+)\]/)[1]);
+  const worst = '\u0001'.repeat(60);   // clip() keeps it, and JSON writes each one as six bytes
+  const big = Number.MAX_SAFE_INTEGER;
+  const waves = Array.from({ length: 5000 }, (_, i) => ({ handle: 'ffffffffff', n: big - i }));
+  const m = { id: 'm1', intent: 'dance', number: 99, at: T };
+  const shows = [
+    bandShow({ view: view({ armed: 'hi', pick: worst, rev: big }, [m]), battery: 1, sound: false, waves, now: T }),
+    bandShow({ view: view({ armed: 'hi', pick: worst, rev: big }), battery: 1, sound: false, waves, now: T }),
+    bandShow({ view: view({ armed: 'song', pick: worst, rev: big }), battery: 1, sound: false, now: T }),
+    bandShow({ view: view({ armed: 'dance', rev: big }), battery: 1, sound: false, now: T }),
+    bandShow({ view: view({ invisible: true, rev: big }), battery: 100, sound: false, now: T }),
+    bandShow({ view: view({ rev: big }), battery: 100, sound: false, now: T }),
+    bandShow({ view: null, battery: 100, sound: false, now: T }),
+    bandShow({ view: null, testUntil: T + 1, sound: false, now: T }),
+    bandShow({ view: null, code: 'WWWW', now: T }),
+    bandShow({ view: null, check: 99, now: T }),
+  ];
+  for (const s of shows) {
+    const bytes = Buffer.byteLength(JSON.stringify({ t: 'show', show: s }));
+    assert.ok(bytes <= size, `${bytes} bytes over ${size}: ${JSON.stringify(s).slice(0, 60)}`);
   }
 });

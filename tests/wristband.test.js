@@ -509,3 +509,109 @@ test('leave forgets the switch; the grace does not, and away carries it', async 
   assert.deepEqual(await next.until((s) => s.kind === 'test'), { kind: 'test' });
   close(again, ben, band, next);
 });
+
+// ---------- waves (docs/superpowers/specs/2026-09-25-wrist-waves-design.md §3) ----------
+
+/** Ana wears a band, and ben and cai are in her room; all three on SAY HI. Each picks their own name: that is how a row is found. */
+async function waving(venue) {
+  const { band, ana } = await wearing(venue);
+  const ben = await phone(venue);
+  const cai = await phone(venue);
+  for (const [p, who] of [[ana, 'ana'], [ben, 'ben'], [cai, 'cai']]) {
+    p.send({ t: 'pick', track: who });
+    p.send({ t: 'arm', intent: 'hi' });
+  }
+  for (const p of [ana, ben, cai]) await p.until((v) => v.near.length === 2 && v.near.every((r) => r.pick));
+  await band.until((s) => s.kind === 'hi');
+  const row = (p, who) => p.view.near.find((r) => r.pick === who);
+  return { band, ana, ben, cai, row };
+}
+
+test('a band on SAY HI is told who waits as its phone lists them: the newest, how many, its number; one show a change', async () => {
+  const { band, ana, ben, cai, row } = await waving('waves-show');
+  let shows = 0;
+  band.ws.on('message', (d) => { if (JSON.parse(String(d)).t === 'show') shows++; });
+  ben.send({ t: 'wave', handle: row(ben, 'ana').handle });
+  const one = await band.until((s) => s.waves?.n === 1);
+  await ana.until(() => row(ana, 'ben').wavedAtYou);
+  assert.equal(one.waves.ref, row(ana, 'ben').handle, "the newest, by the handle ana's own phone knows");
+  cai.send({ t: 'wave', handle: row(cai, 'ana').handle });
+  const two = await band.until((s) => s.waves?.n === 2);
+  await ana.until(() => row(ana, 'cai').wavedAtYou);
+  assert.equal(two.waves.ref, row(ana, 'cai').handle);
+  assert.ok(two.waves.seq > one.waves.seq, 'a later wave has a larger number');
+  await pause(50);
+  assert.equal(shows, 2, 'one show for each change in who waits');
+  ana.send({ t: 'arm', intent: 'song' });
+  assert.equal('waves' in (await band.until((s) => s.kind === 'song')), false, 'off SAY HI, none');
+  ana.send({ t: 'arm', intent: 'hi' });
+  assert.deepEqual((await band.until((s) => s.kind === 'hi')).waves, two.waves, 'back on it, the same');
+  ana.send({ t: 'wave', handle: row(ana, 'cai').handle });
+  const meet = await band.until((s) => s.kind === 'meet');
+  assert.deepEqual(meet.waves, { ...one.waves }, 'a meeting show carries who still waits');
+  close(ana, ben, cai, band);
+});
+
+test("a wave's number is the relay's own clock: the next is newer past a room let go while empty, and past a restart", async () => {
+  let t = new Date(2026, 8, 25, 22, 0).getTime();
+  const relays = [];
+  const start = async () => {
+    const own = await createRelay({ port: 0, host: '127.0.0.1', root: dir, clock: () => t, graceMs: 50 });
+    relays.push({ own, on: helpers(() => own.port), open: true });
+    return relays.at(-1).on;
+  };
+  /** Ana on SAY HI, and someone new in the room who waves at her. */
+  const waveAt = async (on, ana) => {
+    const ben = await on.phone('waves-clock');
+    for (const p of [ana, ben]) p.send({ t: 'arm', intent: 'hi' });
+    const { near } = await ben.until((v) => v.near.length === 1);
+    ben.send({ t: 'wave', handle: near[0].handle });
+    return ben;
+  };
+  try {
+    let on = await start();
+    const band = await on.wristband();
+    const ana = await on.phone('waves-clock');
+    await on.pairBand(ana, band);
+    t += 3_000;                                    // past the white flash a new pairing gives
+    const ben = await waveAt(on, ana);
+    const first = (await band.until((s) => s.waves)).waves.seq;
+    assert.equal(first, t, "the relay's clock");
+
+    // Everyone goes, and the room is let go. The band comes back paired, with no letters.
+    band.ws.close();
+    ana.ws.close();
+    ben.send({ t: 'leave' });
+    await pause(200);
+    assert.equal(relays[0].own.rooms.has('waves-clock'), false, 'the room was let go');
+    t += 60_000;
+    const back = await on.wristband(62, { key: band.key, secret: band.secret });
+    assert.equal(back.show.away, true, 'paired still: away, not letters');
+    const anaBack = await on.phone('waves-clock', { me: ana.me });
+    await waveAt(on, anaBack);
+    const second = (await back.until((s) => s.waves)).waves.seq;
+    assert.equal(second, t);
+    assert.ok(second > first);
+
+    // A restart: a new relay, a later clock. The band waits for its owner, and her phone claims it.
+    relays[0].on.cleanup();
+    await relays[0].own.close();
+    relays[0].open = false;
+    t += 60_000;
+    on = await start();
+    const again = await on.wristband(62, { key: band.key, secret: band.secret });
+    assert.deepEqual(again.show, { kind: 'waiting' });
+    const anaAgain = await on.phone('waves-clock', { me: ana.me });
+    anaAgain.send({ t: 'pair', band: again.id, secret: band.secret, again: true });
+    await again.until((s) => s.kind === 'off' && !s.away);
+    await waveAt(on, anaAgain);
+    const third = (await again.until((s) => s.waves)).waves.seq;
+    assert.equal(third, t);
+    assert.ok(third > second);
+  } finally {
+    for (const r of relays) {
+      r.on.cleanup();
+      if (r.open) await r.own.close();
+    }
+  }
+});
