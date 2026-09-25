@@ -523,20 +523,16 @@ after it has been tapped, so the stand-in is silent until its first tap.
 - **README** gains the reactions under "The wristband", the switch, and the
   canvas departure above.
 
-## A question for the owner
+## Settled with the owner: leaving NOT NOW
 
-On 25 Sep he held the face button again to leave NOT NOW. That is not how
-it works: leaving takes a SIDE hold, by his choice on 24 Sep, because being
-shown needs a deliberate choice of card. Two ways to go:
+On 25 Sep he held the face button again to leave NOT NOW. Leaving takes a
+SIDE hold, by his choice on 24 Sep, because being shown needs a deliberate
+choice of card. Asked while reviewing this spec, he put it down to his own
+slip, not the design: **leaving NOT NOW stays exactly as it is.**
 
-- **Keep the SIDE hold, and say it on the band (recommended).** Woken in NOT
-  NOW, the face's small line says HOLD SIDE TO COME BACK, where it shows the
-  battery today. A FACE hold there shows the same line instead of going
-  dark.
-- **Let a FACE hold leave NOT NOW too,** back to what was armed. It is
-  easier to find, but a squeeze in a pocket could show him. That goes
-  against the principle that a change which shows a person must be fresh
-  and deliberate.
+If other wearers make the same slip in testing, the change is one line:
+woken in NOT NOW, the face's small line would say HOLD SIDE TO COME BACK,
+where it shows the battery today.
 
 ## Risks
 
