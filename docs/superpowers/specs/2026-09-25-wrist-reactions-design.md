@@ -6,6 +6,8 @@ Task 26) showed how little the wristband says back. A press changed small
 words, and a face hold on an unpaired band went dark and did nothing, which
 read as "only the phone controls the band".
 
+Approved by the owner on 25 Sep 2026.
+
 The owner asked for more reactions on the band, sound and colour among them,
 and chose three kinds: **A**, confirming what the wearer does; **B**, calling
 them when something comes for them; **C**, flashing on the music's beat. This

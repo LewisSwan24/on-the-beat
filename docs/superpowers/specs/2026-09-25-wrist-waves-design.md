@@ -6,6 +6,8 @@ decisions after review"). It builds on the reactions spec
 (`2026-09-25-wrist-reactions-design.md`): its sounds, flashes, calls, sound
 switch and NOT NOW silence. Build it after that one.
 
+Approved by the owner on 25 Sep 2026.
+
 The owner said that quick finding, matching and staying in step between two
 or more wristbands matters a great deal. His flow: a WAVE sent on a phone
 reaches the other person's wristband; once they answer, both wristbands
