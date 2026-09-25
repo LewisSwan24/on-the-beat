@@ -20,6 +20,7 @@ export function load() {
     name: typeof s.name === 'string' ? s.name : '',
     contact: typeof s.contact === 'string' ? s.contact : '',
     promisesSeen: !!s.promisesSeen,
+    bandSound: s.bandSound !== false,   // the wristband's sound switch: the person's own, on unless kept off
     nights: s.nights && typeof s.nights === 'object' ? s.nights : {},
     kept: Array.isArray(s.kept) ? s.kept : [],
   };

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HUE, PROMISES, matchName, someone } from './copy.js';
+import { SOUND_SAY, soundRow } from './lib/bandsound.js';
 import { battery, buzz, toBase64 } from './lib/device.js';
 import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
 import { connect } from './lib/net.js';
@@ -146,6 +147,7 @@ export default function App() {
     // A page load says nothing new (§3): what this phone holds is kept, and re-said only as again copies.
     const st = night.state || {};
     const seq = st.seq ?? 0;
+    n.keep('sound', { t: 'sound', on: s.bandSound });
     n.keep('profile', { t: 'profile', name: s.name, contact: s.contact });
     n.keep('invisible', { t: 'invisible', on: !!st.invisible, seq });
     n.keep('arm', { t: 'arm', intent: st.armed ?? null, seq });
@@ -404,13 +406,23 @@ export default function App() {
     say('unpaired. your phone is your light again.');
   };
 
+  // The wristband's sound: the person's own, kept across nights; the relay carries it to their band.
+  const flipSound = () => {
+    const on = !s.bandSound;
+    update((prev) => ({ ...prev, bandSound: on }));
+    net.current?.say('sound', { t: 'sound', on });
+    setSheet(null);
+    say(on ? SOUND_SAY.on : SOUND_SAY.off);
+  };
+
   const bandSheet = () => setSheet({
     title: 'Your wristband', sub: bandLine(bandShown), close: 'Done',
     rows: [
       ...(bandShown?.offline ? [{ icon: 'link', label: 'PAIR AGAIN', sub: 'it has been away a while. show its letters and pair it again.', fg: '#fff',
         onTap: () => { unpair(); go('pair'); } }] : []),
-      { icon: 'flashlight_on', label: 'TEST THE LIGHT', sub: 'it flashes white for two seconds.', fg: '#fff',
+      { icon: 'flashlight_on', label: 'TEST THE LIGHT', sub: 'it flashes white for two seconds, and chirps unless its sound is off or it is in NOT NOW.', fg: '#fff',
         onTap: () => { net.current?.send({ t: 'testLight' }); setSheet(null); say('watch your wrist.'); } },
+      { ...soundRow(s.bandSound), fg: '#fff', onTap: flipSound },
       { icon: 'link_off', label: 'UNPAIR', sub: 'it forgets you, and shows new letters.', fg: 'var(--stop)', onTap: unpair },
     ],
   });
