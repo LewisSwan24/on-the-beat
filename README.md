@@ -436,7 +436,7 @@ relay could drive what a wrist shows.
 - **Proximity.** Wristbands pair and light, but nothing measures who is near
   whom: every person is still `in this room`. Nearness wants ESP-NOW between
   wristbands, which wants the hardware.
-- **The firmware has run on two wristbands, for one afternoon.** On 25 Sep
+- **The firmware has run on two wristbands, for one day.** On 25 Sep
   2026 a StickS3 and an M5StickC Plus joined an Android phone's hotspot and
   reached the relay through a quick tunnel, with that phone and a laptop
   browser as two people. From the wrist alone, the side button chose each
@@ -454,8 +454,11 @@ relay could drive what a wrist shows.
   again every 15 s, and joined by itself once the hotspot was back), and the
   console said too little to tell an UNPAIR tapped on the phone from a lost
   secret (it now says what the wrist sends and each change in what the relay
-  shows). A night's worth of battery, and the Plus's face button, are not
-  tried. CI builds both envs with PlatformIO on every push — the ESP32 image
+  shows). That evening both moved to the always-on relay with one `relay`
+  line each and no reflash; then, with no relay or tunnel on the laptop and
+  both bands off its USB, the phone paired with a band through
+  https://on-the-beat.fly.dev and the band responded. A night's worth of
+  battery, and the Plus's face button, are not tried. CI builds both envs with PlatformIO on every push — the ESP32 image
   is about 1.2 MB of its 3 MB app partition — and keeps each image to flash.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
