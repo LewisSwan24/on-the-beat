@@ -1116,6 +1116,96 @@
         { "at": "5000+HOLD_MS", "sounds": ["down"], "sent": [{ "t": "hold" }], "face": { "big": "", "light": "LIGHT_OFF" } },
         { "at": "7000", "key1": "up", "face": { "big": "", "light": "LIGHT_OFF" } }
       ]
+    },
+    {
+      "name": "a SIDE hold in the wave face waves back to the newest, from its show's rev, with a double; SENDING until the relay says it landed, then the face rests and the meeting calls",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "waves": { "ref": "c1d2e3f4a5", "n": 3, "seq": 1790337603009 } }, "sounds": ["hello"] },
+        { "at": "4000", "press": 1, "face": { "big": "SOMEONE WAVED" } },
+        { "at": "5000", "key2": "down", "sounds": ["tick"] },
+        { "at": "5000+HOLD_MS", "sent": [{ "t": "wave", "ref": "c1d2e3f4a5", "basis": 3 }], "sounds": ["double"], "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "6600", "key2": "up", "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "7000", "frame": { "t": "wave", "ok": true }, "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "7100", "show": "MEET", "rev": 3, "sounds": ["jingle"], "face": { "big": "27", "small": "MEET", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "a wave back refused changed shows CHANGED with fall and red; any other refusal NOT SENT with low and orange",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"] },
+        { "at": "4000", "press": 1, "face": { "big": "SOMEONE WAVED" } },
+        { "at": "5000", "key2": "down", "sounds": ["tick"] },
+        { "at": "5000+HOLD_MS", "sent": [{ "t": "wave", "ref": "a1b2c3d4e5", "basis": 3 }], "sounds": ["double"], "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "6600", "key2": "up", "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "7000", "frame": { "t": "wave", "ok": false, "why": "changed" }, "sounds": ["fall"], "face": { "field": "red", "light": "LIGHT_FULL" } },
+        { "at": "7700", "face": { "big": "HI :)", "small": "CHANGED" } },
+        { "at": "7000+RESULT_MS", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "11000", "press": 1, "face": { "big": "SOMEONE WAVED" } },
+        { "at": "12000", "key2": "down", "sounds": ["tick"] },
+        { "at": "12000+HOLD_MS", "sent": [{ "t": "wave", "ref": "a1b2c3d4e5", "basis": 3 }], "sounds": ["double"], "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "14000", "frame": { "t": "wave", "ok": false, "why": "gone" }, "sounds": ["low"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "15300", "face": { "big": "HI :)", "small": "NOT SENT" } }
+      ]
+    },
+    {
+      "name": "a wave back with no answer in CONFIRM_MS shows NOT SENT and drops the socket",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"] },
+        { "at": "4000", "press": 1, "face": { "big": "SOMEONE WAVED" } },
+        { "at": "5000", "key2": "down", "sounds": ["tick"] },
+        { "at": "5000+HOLD_MS", "sent": [{ "t": "wave", "ref": "a1b2c3d4e5", "basis": 3 }], "sounds": ["double"], "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "6600", "key2": "up", "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "6500+CONFIRM_MS-1", "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "6500+CONFIRM_MS", "sent": ["DROP"], "sounds": ["low"], "face": { "field": "orange" } },
+        { "at": "7700+CONFIRM_MS", "face": { "small": "NOT SENT" } }
+      ]
+    },
+    {
+      "name": "while waving back SIDE does nothing and answers of the wrong shape are ignored; a meeting jingles at once and blinks once the face rests",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"] },
+        { "at": "4000", "press": 1, "face": { "big": "SOMEONE WAVED" } },
+        { "at": "5000", "key2": "down", "sounds": ["tick"] },
+        { "at": "5000+HOLD_MS", "sent": [{ "t": "wave", "ref": "a1b2c3d4e5", "basis": 3 }], "sounds": ["double"], "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "6600", "key2": "up", "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "7000", "press": 2, "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "7200", "frame": { "t": "wave" }, "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "7300", "frame": { "t": "set", "ok": true }, "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "7500", "show": "MEET", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["jingle"], "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "8000", "frame": { "t": "wave", "ok": true }, "face": { "big": "27", "light": "LIGHT_OFF" } },
+        { "at": "8600", "face": { "big": "27", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "a FACE hold while waving back goes NOT NOW, and the answer that follows changes nothing",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"] },
+        { "at": "4000", "press": 1, "face": { "big": "SOMEONE WAVED" } },
+        { "at": "5000", "key2": "down", "sounds": ["tick"] },
+        { "at": "5000+HOLD_MS", "sent": [{ "t": "wave", "ref": "a1b2c3d4e5", "basis": 3 }], "sounds": ["double"], "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "6600", "key2": "up", "face": { "big": "WAVE BACK", "small": "SENDING", "field": "black", "ink": "hi", "light": "LIGHT_AWAKE" } },
+        { "at": "7000", "key1": "down", "sounds": ["tick"] },
+        { "at": "7000+HOLD_MS", "sounds": ["down"], "sent": [{ "t": "hold" }], "face": { "big": "", "light": "LIGHT_OFF" } },
+        { "at": "8600", "key1": "up" },
+        { "at": "9000", "frame": { "t": "wave", "ok": false, "why": "changed" }, "face": { "big": "", "light": "LIGHT_OFF" } }
+      ]
+    },
+    {
+      "name": "a ref that is not ten lower-case hex is no one to answer: the wave calls, but a FACE press opens nothing",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "waves": { "ref": "A1B2C3D4E5", "n": 1, "seq": 1790337603000 } }, "sounds": ["hello"] },
+        { "at": "4000", "press": 1, "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "5000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5\"", "n": 1, "seq": 1790337603000 } } },
+        { "at": "6000", "press": 1, "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "7000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } } },
+        { "at": "8000", "press": 1, "face": { "big": "SOMEONE WAVED" } }
+      ]
     }
   ]
 }

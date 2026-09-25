@@ -574,7 +574,13 @@ inline bool readFrame(const std::string& text, Frame& f) {
       if (k == "waves") {
         if (!r.peek('{')) return r.skip();
         return r.object([&](const std::string& w) {
-          if (w == "ref") return text_(f.waves.ref, 16);
+          if (w == "ref") {
+            if (!text_(f.waves.ref, 16)) return false;
+            // A handle is ten lower-case hex: anything else is no one the band can answer.
+            if (f.waves.ref.size() != 10 || f.waves.ref.find_first_not_of("0123456789abcdef") != std::string::npos)
+              f.waves.ref.clear();
+            return true;
+          }
           if (w != "n" && w != "seq") return r.skip();
           int64_t v = 0;
           bool whole = false;
@@ -1259,6 +1265,14 @@ class Wrist {
       if (mode_ == SENDING) result(now, f.why == "changed" ? "CHANGED" : "NOT SENT");
       return;
     }
+    // The relay's answer to a wave back. Landed: the face rests, and the meeting, if it made one, comes as a show.
+    if (f.t == "wave" && f.hasOk) {
+      if (mode_ == WAVEBACK) {
+        if (f.ok) rest();
+        else result(now, f.why == "changed" ? "CHANGED" : "NOT SENT");
+      }
+      return;
+    }
     if (f.t != "show" || !f.hasShow) return;
     // Reactions come from changes; a show that differs only in its sound switch is no change.
     const bool same = haveShow_ && show_ == f.show;
@@ -1398,6 +1412,13 @@ class Wrist {
       }
       // Hiding may arrive late; showing may not. Leaving NOT NOW failed, so hold it again.
       if (fromQuiet_) quiet_.held();
+    } else if (mode_ == WAVEBACK && now - sentAt_ >= CONFIRM_MS) {
+      // As for a choice: NOT SENT, and the socket dropped, so a wave stuck in it can no longer land.
+      result(now, "NOT SENT");
+      if (link_.up()) {
+        out_.push_back("DROP");
+        closed(now);
+      }
     } else if (mode_ == RESULT && static_cast<int32_t>(now - resultUntil_) >= 0) {
       rest();
     }
@@ -1421,6 +1442,8 @@ class Wrist {
       const std::string count = waves_.n > 9 ? "9+" : std::to_string(waves_.n);
       f = words("SOMEONE WAVED", waves_.n > 1 ? count + " WAITING - HOLD SIDE" : "HOLD SIDE: WAVE BACK", "black", "hi",
                 LIGHT_AWAKE);
+    } else if (mode_ == WAVEBACK) {
+      f = words("WAVE BACK", "SENDING", "black", "hi", LIGHT_AWAKE);
     } else {
       f = restFace(now, static_cast<int32_t>(wakeUntil_ - now) > 0 || mode_ == RESULT);
       if (mode_ == RESULT) f.small = word_;
@@ -1454,7 +1477,7 @@ class Wrist {
   }
 
  private:
-  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT, WAVES };
+  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT, WAVES, WAVEBACK };
   struct Key {
     bool down = false;
     bool fired = false;
@@ -1646,7 +1669,9 @@ class Wrist {
   }
 
   /** Someone waits on the person showing SAY HI, as the show says. */
-  bool waiting() const { return personal() && show_.armed == "hi" && !show_.quiet && waves_.n > 0; }
+  bool waiting() const {
+    return personal() && show_.armed == "hi" && !show_.quiet && waves_.n > 0 && !waves_.ref.empty();
+  }
 
   /** A FACE press on the resting HI or meeting face, with someone waiting and the link up, opens the wave face. */
   bool opensWaves() const { return mode_ == REST && link_.up() && !quiet_.dark() && waiting(); }
@@ -1699,9 +1724,17 @@ class Wrist {
     return "hi";
   }
 
+  /** A SIDE hold in the wave face: wave back to the newest waiting, from the state its show carried. */
+  void waveBack(uint32_t now) {
+    out_.push_back("{\"t\":\"wave\",\"ref\":\"" + waves_.ref + "\",\"basis\":" + std::to_string(show_.rev) + "}");
+    mode_ = WAVEBACK;
+    sentAt_ = now;
+    react("double");
+  }
+
   /** A KEY2 press let go before HOLD_MS. */
   void step(uint32_t now) {
-    if (k1_.down || frozen_ || mode_ == SENDING) return;
+    if (k1_.down || frozen_ || mode_ == SENDING || mode_ == WAVEBACK) return;
     if (mode_ == RESULT) rest();
     if (mode_ == REST) {
       wake(now);
@@ -1728,6 +1761,7 @@ class Wrist {
   void sideHeld(uint32_t now) {
     if (k1_.down || frozen_) return;
     if (mode_ == CHOOSING) commit(now, true);
+    else if (mode_ == WAVES) waveBack(now);
     else if (mode_ == LOOK) stepAt_ = now;
     else if (mode_ == REST || mode_ == RESULT) step(now);
   }

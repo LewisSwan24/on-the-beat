@@ -104,7 +104,9 @@ function readShow(s) {
 /** A show's waves, read apart from the show, as band_logic.h readFrame() reads them: nobody waiting unless said. */
 function readWaves(s) {
   const w = s.waves && typeof s.waves === 'object' ? s.waves : {};
-  return { ref: typeof w.ref === 'string' ? w.ref : '', n: Number.isInteger(w.n) ? w.n : 0, seq: Number.isInteger(w.seq) ? w.seq : 0 };
+  // A handle is ten lower-case hex: anything else is no one the band can answer.
+  const ref = typeof w.ref === 'string' && /^[a-f0-9]{10}$/.test(w.ref) ? w.ref : '';
+  return { ref, n: Number.isInteger(w.n) ? w.n : 0, seq: Number.isInteger(w.seq) ? w.seq : 0 };
 }
 
 const lit = (s) => LIT.includes(s.kind) && !!CARD_WORDS[s.intent];
@@ -121,7 +123,7 @@ export function createWrist({ key }) {
   let wakeUntil = 0;
   const k1 = { down: false, since: 0, fired: false };
   const k2 = { down: false, since: 0, fired: false };
-  let mode = 'rest';          // rest | look | choosing | sending | result | waves
+  let mode = 'rest';          // rest | look | choosing | sending | result | waves | waveback
   let preview = '';           // hi | song | dance | off
   let fromQuiet = false;
   let frozen = false;
@@ -265,7 +267,7 @@ export function createWrist({ key }) {
   }
 
   /** Someone waits on the person showing SAY HI, as the show says. */
-  const waiting = () => personal() && show.armed === 'hi' && !show.quiet && waves.n > 0;
+  const waiting = () => personal() && show.armed === 'hi' && !show.quiet && waves.n > 0 && waves.ref !== '';
 
   /** A FACE press on the resting HI or meeting face, with someone waiting and the link up, opens the wave face. */
   function opensWaves() {
@@ -308,8 +310,16 @@ export function createWrist({ key }) {
     if (held && !silent) react('double');
   }
 
+  /** A SIDE hold in the wave face: wave back to the newest waiting, from the state its show carried. */
+  function waveBack(now) {
+    send({ t: 'wave', ref: waves.ref, basis: show.rev });
+    mode = 'waveback';
+    sentAt = now;
+    react('double');
+  }
+
   function step(now) {
-    if (k1.down || frozen || mode === 'sending') return;
+    if (k1.down || frozen || mode === 'sending' || mode === 'waveback') return;
     if (mode === 'result') rest();
     if (mode === 'rest') {
       wake(now);
@@ -335,6 +345,7 @@ export function createWrist({ key }) {
   function sideHeld(now) {
     if (k1.down || frozen) return;
     if (mode === 'choosing') commit(now, true);
+    else if (mode === 'waves') waveBack(now);
     else if (mode === 'look') stepAt = now;
     else if (mode === 'rest' || mode === 'result') step(now);
   }
@@ -362,6 +373,10 @@ export function createWrist({ key }) {
       result(now, 'NOT SENT');
       if (link.up) { out.push('DROP'); closed(now); }
       if (fromQuiet) { quiet.pending = true; quiet.sent = false; }
+    } else if (mode === 'waveback' && now - sentAt >= CONFIRM_MS) {
+      // As for a choice: NOT SENT, and the socket dropped, so a wave stuck in it can no longer land.
+      result(now, 'NOT SENT');
+      if (link.up) { out.push('DROP'); closed(now); }
     } else if (mode === 'result' && now >= resultUntil) rest();
     settle(now);
   }
@@ -458,6 +473,14 @@ export function createWrist({ key }) {
     if (m.t === 'paired' && typeof m.secret === 'string') { secret = m.secret; return; }
     if (m.t === 'set' && m.ok === false) {
       if (mode === 'sending') result(now, m.why === 'changed' ? 'CHANGED' : 'NOT SENT');
+      return;
+    }
+    // The relay's answer to a wave back. Landed: the face rests, and the meeting, if it made one, comes as a show.
+    if (m.t === 'wave' && typeof m.ok === 'boolean') {
+      if (mode === 'waveback') {
+        if (m.ok) rest();
+        else result(now, m.why === 'changed' ? 'CHANGED' : 'NOT SENT');
+      }
       return;
     }
     if (m.t !== 'show' || !m.show || typeof m.show !== 'object') return;
@@ -577,6 +600,8 @@ export function createWrist({ key }) {
       // As the chooser shows HI, in its own words: that someone waved, and how many wait. Never who.
       const count = waves.n > 9 ? '9+' : String(waves.n);
       f = words('SOMEONE WAVED', waves.n > 1 ? count + ' WAITING - HOLD SIDE' : 'HOLD SIDE: WAVE BACK', 'black', 'hi', LIGHT_AWAKE);
+    } else if (mode === 'waveback') {
+      f = words('WAVE BACK', 'SENDING', 'black', 'hi', LIGHT_AWAKE);
     } else {
       f = restFace(now, wakeUntil > now || mode === 'result');
       if (mode === 'result') f = { ...f, small: word };
