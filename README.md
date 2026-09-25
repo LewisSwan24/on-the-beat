@@ -143,7 +143,7 @@ that was taken.
 
   **All three end with a check.** The relay does not pair on the letters: the
   wristband that was reached shows a two-digit number with `ON YOUR PHONE?`
-  under it, and the phone asks *Does your wristband show 27?* in a sheet that
+  over it, and the phone asks *Does your wristband show 27?* in a sheet that
   stays over any screen and comes back after a reconnect. `YES` pairs, and the
   wristband flashes white once. `NO`, or no answer within a minute, drops it and
   the wristband shows new letters; a second phone trying the same wristband
