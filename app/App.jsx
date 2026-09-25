@@ -6,6 +6,7 @@ import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
 import { connect } from './lib/net.js';
 import { phaseLine, phaseOf } from './lib/phase.js';
 import * as store from './lib/store.js';
+import { WAVES_HOW, buzzes, newWaves } from './lib/waved.js';
 import { Bar, Home } from './screens/Home.jsx';
 import { Beacon, Near, WristBeacon } from './screens/Hi.jsx';
 import { Pair, bandLine } from './screens/Band.jsx';
@@ -263,6 +264,21 @@ export default function App() {
   }, [view]);
   useEffect(() => { seen.current = null; }, [night?.me]);
 
+  // A wave at you the phone has not seen: one buzz, unless a live wristband calls instead. Seen either way.
+  const wavesSeen = useRef(null);
+  useEffect(() => {
+    if (!view.me) return;
+    const known = wavesSeen.current ?? new Set(night?.waves || []);
+    wavesSeen.current = known;
+    const fresh = newWaves(view, known);
+    if (!fresh.length) return;
+    for (const r of fresh) known.add(r.handle);
+    update((prev) => store.noteWaves(prev, fresh.map((r) => r.handle)));
+    if (buzzes(fresh, view)) buzz([90]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+  useEffect(() => { wavesSeen.current = null; }, [night?.me]);
+
   // The relay decides (§3): a view that passes rule 4 sets the cards, the screen and what is re-said.
   useEffect(() => {
     if (!view.me) return;
@@ -395,6 +411,7 @@ export default function App() {
       ...PROMISES.map((p) => ({ icon: p.icon, label: p.main, sub: p.sub, fg: '#fff', onTap: () => {} })),
       { icon: 'watch', label: 'Hold the face button on your wristband to go invisible. Hold its side button to come back.', fg: '#fff', onTap: () => {} },
       { icon: 'touch_app', label: 'Press the side button to see your card, and again to change it. Your phone follows.', fg: '#fff', onTap: () => {} },
+      { icon: 'waving_hand', label: WAVES_HOW, fg: '#fff', onTap: () => {} },
     ],
   });
 

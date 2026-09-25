@@ -70,6 +70,17 @@ export function hasEvent(s, kind) {
   return !!tonight(s)?.events.some((e) => e.kind === kind);
 }
 
+/** Waves at the person that the phone has seen tonight, by handle: each is buzzed for once at most. */
+export function noteWaves(s, handles) {
+  const key = tonightKey();
+  const n = s.nights[key];
+  if (!n) return s;
+  const had = n.waves || [];
+  const more = handles.filter((h) => !had.includes(h));
+  if (!more.length) return s;
+  return { ...s, nights: { ...s.nights, [key]: { ...n, waves: [...had, ...more] } } };
+}
+
 /** A match as the phone last saw it — kept even after the relay has forgotten it. */
 export function noteMatch(s, m) {
   const key = tonightKey();
