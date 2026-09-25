@@ -4,9 +4,9 @@
 // firmware/src/band_logic.h, plain C++, so it is built here with this
 // machine's own compiler: it runs its own checks, then the frames it sends
 // go to a real relay, and every frame the relay sends back is read by it.
-// None of this needs a wristband. The hardware round it — screen, button,
-// Wi-Fi — is only built by PlatformIO. With no C++ compiler here these say so
-// and skip.
+// None of this needs a wristband. The hardware round it — screen, buttons,
+// speaker, Wi-Fi — is only built by PlatformIO. With no C++ compiler here
+// these say so and skip.
 
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';

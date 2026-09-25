@@ -1,18 +1,18 @@
 // ON THE BEAT — the wristband: an M5StickC Plus, Plus2 or StickS3 on a strap.
 //
-// A light first and words second. It joins the relay exactly as /band does,
-// shows whatever the relay tells it to, and has two buttons. The face button
-// (KEY1): a press wakes it, a hold is NOT NOW. The side button (KEY2): a press
-// shows the card that is armed, more presses choose another, and the relay
-// decides. What it shows is decided by the relay (relay/band.js), from the
-// same view its person's phone is sent, so it can never show more than the
-// phone could.
+// A light first and words second, with a chirp unless its person has switched
+// that off. It joins the relay exactly as /band does, shows whatever the relay
+// tells it to, and has two buttons. The face button (KEY1): a press wakes it,
+// a hold is NOT NOW. The side button (KEY2): a press shows the card that is
+// armed, more presses choose another, and the relay decides. What it shows is
+// decided by the relay (relay/band.js), from the same view its person's phone
+// is sent, so it can never show more than the phone could.
 //
 // Everything that decides anything is in band_logic.h, which the tests build
 // and run on a laptop. This file is only the hardware round it: the screen,
-// the two buttons, the battery, Wi-Fi, the socket, and a serial console to say
-// which Wi-Fi and which relay. The socket has a task of its own, so nothing
-// the network does can hold up the button or the screen.
+// the speaker, the two buttons, the battery, Wi-Fi, the socket, and a serial
+// console to say which Wi-Fi and which relay. The socket has a task of its
+// own, so nothing the network does can hold up the button or the screen.
 
 #include <M5Unified.h>
 #include <Preferences.h>
@@ -65,7 +65,18 @@ std::string shown;                // what the console last said about a show
 int battery = -1;       // percent, or -1 while it will not say
 uint32_t batteryAt = 0;
 std::string drawn;      // what is on the screen now, so it is drawn again only when that changes
+int lit = -1;           // the backlight as last set
 std::string typed;      // the console line so far
+
+// Sounds play from buffers of their own, on the speaker's own task. playRaw()
+// reads a buffer for as long as it plays, so there are two, used in turn, and
+// one is written again only once the speaker has let it go.
+constexpr int SOUND_CHANNEL = 0;
+bool speaker = false;                   // the first M5StickC has none: it only lights up
+uint8_t soundBuf[2][SOUND_SAMPLES];
+std::atomic<bool> soundHeld[2];         // a sound on this buffer the speaker has not let go of yet
+int soundNext = 0;                      // the buffer the next sound goes in
+std::string soundDue;                   // the newest sound not started yet
 
 constexpr uint16_t BLACK = 0x0000;
 constexpr uint16_t WHITE = 0xFFFF;
@@ -328,17 +339,23 @@ void drawLines(const std::vector<std::string>& lines, const lgfx::IFont* font, i
   }
 }
 
+/** A small line wrapped to the width, in the largest of the small fonts it fits; none if it is empty. */
+Fit fitSmall(const std::string& text, int maxW, int maxH) {
+  if (text.empty()) return Fit{};
+  return fit(text, 3, maxW, maxH, [](int i, const std::string& s) { return widthIn(SMALL[i], s); }, smallStep);
+}
+
+/** How tall fitted small lines stand. */
+int linesHeight(const Fit& f) { return static_cast<int>(f.lines.size()) * smallStep(f.font); }
+
 /** One or two short lines, big over small, in the middle of the face. */
 void drawWords(const Words& w, uint16_t ink, float k) {
   const int W = face.width(), H = face.height();
   const int maxW = W - 2 * px(10, k);
   const Fit big = fit(w.big, 3, maxW, H * 3 / 5, [](int i, const std::string& s) { return widthIn(BIG[i], s); }, bigStep);
-  Fit small;
-  if (!w.small.empty())
-    small = fit(w.small, 3, maxW, H / 4, [](int i, const std::string& s) { return widthIn(SMALL[i], s); }, smallStep);
+  const Fit small = fitSmall(w.small, maxW, H / 4);
   const int gap = small.lines.empty() ? 0 : px(6, k);
-  int y = (H - (static_cast<int>(big.lines.size()) * bigStep(big.font) + gap +
-                static_cast<int>(small.lines.size()) * smallStep(small.font))) / 2;
+  int y = (H - (static_cast<int>(big.lines.size()) * bigStep(big.font) + gap + linesHeight(small))) / 2;
   face.setTextColor(ink);
   face.setTextDatum(lgfx::textdatum_t::top_center);
   drawLines(big.lines, BIG[big.font], bigStep(big.font), y);
@@ -346,21 +363,22 @@ void drawWords(const Words& w, uint16_t ink, float k) {
   drawLines(small.lines, SMALL[small.font], smallStep(small.font), y);
 }
 
-/** After a mutual yes: MEET, over the number both wrists show. */
+/**
+ * A number under its word: MEET after a mutual yes, or the pairing check's ON
+ * YOUR PHONE?, which is wider than the face and so is wrapped, as the hint is.
+ */
 void drawMeet(const Words& w, uint16_t ink, float k) {
   const int W = face.width(), H = face.height();
   const int maxW = W - 2 * px(10, k);
   const float size = std::min(2.0f * k, static_cast<float>(maxW) / std::max(1, widthIn(NUMBER, w.big)));
-  const int smallH = heightOf(SMALL[0]);
+  const Fit small = fitSmall(w.small, maxW, H / 4);
   const int numH = heightOf(NUMBER, size) * 3 / 4;
   const int gap = px(6, k);
-  int y = (H - (smallH + gap + numH)) / 2;
+  int y = (H - (linesHeight(small) + gap + numH)) / 2;
   face.setTextColor(ink);
   face.setTextDatum(lgfx::textdatum_t::top_center);
-  face.setFont(SMALL[0]);
-  face.setTextSize(1);
-  face.drawString(w.small.c_str(), W / 2, y);
-  y += smallH + gap;
+  drawLines(small.lines, SMALL[small.font], smallStep(small.font), y);
+  y += gap;
   face.setFont(NUMBER);
   face.setTextSize(size);
   face.drawString(w.big.c_str(), W / 2, y);
@@ -371,9 +389,10 @@ void drawMeet(const Words& w, uint16_t ink, float k) {
  * Pairing: a code to scan over the four letters to type. The code is as wide
  * as the screen allows, with four light modules round it — a tunnel address
  * is a version 4 code, and the canvas's 115 pixels would make each module two
- * pixels, too small for a phone to read off a screen this size.
+ * pixels, too small for a phone to read off a screen this size. A press puts
+ * the hint, PAIR ON YOUR PHONE, under the letters, in what height is left.
  */
-void drawPairing(const std::string& code, float k) {
+void drawPairing(const std::string& code, const std::string& hint, float k) {
   const int W = face.width(), H = face.height();
   const std::string url = relay.ok ? pairUrl(relay.origin, code) : "";
   const int version = url.empty() ? 0 : qrVersion(url.size());
@@ -385,7 +404,9 @@ void drawPairing(const std::string& code, float k) {
   const int track = advance * 12 / 100;  // the canvas spaces the letters .12em apart
   const int codeH = heightOf(CODE[font]);
   const int gap = box ? px(16, k) : 0;
-  int y = (H - (box + gap + codeH)) / 2;
+  const int hintGap = hint.empty() ? 0 : px(6, k);
+  const Fit words = fitSmall(hint, W - 2 * px(10, k), H - (box + gap + codeH + hintGap) - 2 * px(4, k));
+  int y = (H - (box + gap + codeH + hintGap + linesHeight(words))) / 2;
   if (box) {
     const int x = (W - box) / 2;
     face.fillRect(x, y, box, box, WHITE);
@@ -403,6 +424,8 @@ void drawPairing(const std::string& code, float k) {
     face.drawString(one, x, y);
     x += advance + track;
   }
+  y += codeH + hintGap;
+  drawLines(words.lines, SMALL[words.font], smallStep(words.font), y);
 }
 
 uint16_t inkOf(const std::string& ink) {
@@ -417,6 +440,8 @@ void paint(const Screen& s) {
   const float k = std::min(W / 135.0f, H / 240.0f);  // the canvas draws the wristband 135 x 240
   if (s.field == "white") {
     face.fillScreen(WHITE);
+  } else if (const Rgb* c = plainField(s.field)) {  // a flash's on step: one flat colour
+    face.fillScreen(rgb565(*c));
   } else if (const Hue* hue = hueFor(s.field)) {
     for (int y = 0; y < H; ++y)
       for (int x = 0; x < W; ++x) face.drawPixel(x, y, rgb565(glow(*hue, x, y, W, H)));
@@ -427,7 +452,7 @@ void paint(const Screen& s) {
   const Words w{s.big, s.small};
   // A number — the meeting number, or the pairing check — stands large under its word.
   const bool number = !s.big.empty() && s.big.find_first_not_of("0123456789") == std::string::npos;
-  if (!s.code.empty()) drawPairing(s.code, k);
+  if (!s.code.empty()) drawPairing(s.code, s.small, k);
   else if (number) drawMeet(w, ink, k);
   else if (!s.big.empty() || !s.small.empty()) drawWords(w, ink, k);
   if (s.bar >= 0) {  // KEEP HOLDING: how far to NOT NOW
@@ -439,13 +464,61 @@ void paint(const Screen& s) {
 
 void draw(uint32_t now) {
   const Screen s = wrist->face(now);
-  const std::string key = s.big + '|' + s.small + '|' + s.field + '|' + s.ink + '|' + std::to_string(s.light) + '|' +
-                          std::to_string(s.bar) + '|' + s.code + '|' + relay.origin;
-  if (key == drawn) return;
-  drawn = key;
-  paint(s);
-  face.pushSprite(0, 0);
-  M5.Display.setBrightness(s.light);
+  // The picture is drawn again only when it changes and can be seen. A change
+  // of light alone (a flash's off step, the meeting's blink, a face going to
+  // sleep) only turns the backlight, so a blink that goes on all night never
+  // holds up the loop and a quick tap is not missed. What lies under the dark
+  // is never seen, so it is not drawn.
+  if (s.light != LIGHT_OFF) {
+    const std::string key = s.big + '|' + s.small + '|' + s.field + '|' + s.ink + '|' + std::to_string(s.bar) + '|' +
+                            s.code + '|' + relay.origin;
+    if (key != drawn) {
+      drawn = key;
+      paint(s);
+      face.pushSprite(0, 0);
+    }
+  }
+  if (s.light != lit) {
+    lit = s.light;
+    M5.Display.setBrightness(s.light);
+  }
+}
+
+// ---------- sound ----------
+
+/** The speaker has finished reading a buffer, so it may be written again. Runs on the speaker's own task. */
+void soundReleased(void*, const void* data, uint8_t) {
+  for (int i = 0; i < 2; ++i)
+    if (data == soundBuf[i]) soundHeld[i] = false;
+}
+
+/**
+ * Starts the newest sound the wrist has due, cutting off the one playing. If
+ * the speaker still holds the buffer it goes in, it waits for the next time
+ * round. A sound cut off before it began is never let go, but never read
+ * either, so once the speaker is quiet its buffer is free.
+ */
+void playSounds() {
+  for (std::string& name : wrist->sounds()) soundDue = std::move(name);
+  if (soundDue.empty()) return;
+  if (!speaker) {
+    soundDue.clear();
+    return;
+  }
+  const int i = soundNext;
+  if (soundHeld[i]) {
+    if (M5.Speaker.isPlaying(SOUND_CHANNEL)) return;
+    soundHeld[i] = false;
+  }
+  const size_t n = render(soundDue, soundBuf[i], SOUND_SAMPLES);
+  soundHeld[i] = true;
+  if (n && M5.Speaker.playRaw(soundBuf[i], n, SOUND_RATE, false, 1, SOUND_CHANNEL, true)) {
+    Serial.printf("sound: %s\n", soundDue.c_str());
+    soundNext = 1 - i;
+  } else {
+    soundHeld[i] = false;
+  }
+  soundDue.clear();
 }
 
 // ---------- the serial console ----------
@@ -468,6 +541,9 @@ void report() {
                 charging == m5::Power_Class::is_charging      ? " (charging)"
                 : charging == m5::Power_Class::is_discharging ? " (not charging)"
                                                               : "");
+  // The Plus has no PSRAM: the sound buffers and the face leave this much for a TLS handshake.
+  Serial.printf("memory  %u bytes free, %u at the least; sound %s\n", static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getMinFreeHeap()), speaker ? "on the speaker" : "none: light only");
 }
 
 void run(const Command& c) {
@@ -541,6 +617,13 @@ void setup() {
   M5.Display.setBrightness(LIGHT_OFF);
   face.setColorDepth(16);
   face.createSprite(M5.Display.width(), M5.Display.height());
+  // The speaker, as the sound test had it: the microphone off first (on some
+  // bands the two share one I2S), then full volume. The StickC Plus plays the
+  // same samples through its buzzer.
+  M5.Mic.end();
+  M5.Speaker.setBufferReleaseCallback(nullptr, soundReleased);
+  speaker = M5.Speaker.begin();
+  M5.Speaker.setVolume(255);
 
   // The radio on before the key is made: with it on, esp_random() is true noise.
   WiFi.mode(WIFI_STA);
@@ -553,6 +636,7 @@ void setup() {
   wrist->setBattery(battery, millis());
 
   Serial.println("\nON THE BEAT wristband");
+  if (!speaker) Serial.println("no speaker on this band: it only lights up");
   help();
   events = xQueueCreate(12, sizeof(Event));
   outbox = xQueueCreate(8, sizeof(Out));
@@ -583,6 +667,7 @@ void loop() {
   watchWifi(now);
   wrist->setWifi(WiFi.status() == WL_CONNECTED);
   wrist->tick(now);
+  playSounds();  // before the frames and the face: a press's tick is heard as soon as it can be
   for (const std::string& f : wrist->take()) sendFrame(f);
   if (wrist->up() && batteryReport.due(battery, now)) {
     sendFrame(batteryFrame(battery));
