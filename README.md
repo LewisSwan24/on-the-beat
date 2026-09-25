@@ -390,6 +390,15 @@ relay could drive what a wrist shows.
 
 ## What is not done
 
+- **There is no fixed address.** `npm run tunnel` opens a Cloudflare quick
+  tunnel, and every run gets a new `*.trycloudflare.com` name. Each new name
+  means a new link for every phone, `relay <address>` typed again into every
+  wristband, and every phone starting over: a browser keeps the app's storage
+  per address, so the promises, the name, the venue and the pairing stay behind
+  with the old one. A new name is also dead for half an hour to any resolver
+  that asks before it has spread. Going live needs a name that stays: a named
+  Cloudflare Tunnel on an owned domain, with the laptop still serving, or the
+  relay on an always-on host under its own domain.
 - **Proximity.** Wristbands pair and light, but nothing measures who is near
   whom: every person is still `in this room`. Nearness wants ESP-NOW between
   wristbands, which wants the hardware.
