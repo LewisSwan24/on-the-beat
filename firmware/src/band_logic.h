@@ -40,6 +40,7 @@ constexpr uint32_t DEAF_MS = 6000;            // ...and take this much silence a
 constexpr uint32_t RETRY_MS = 1500;           // between tries to reach the relay
 constexpr uint32_t STALE_MS = 10000;          // out of reach this long, what the relay last said is not shown
 constexpr uint32_t QUIET_CONFIRM_MS = 3000;   // NOT NOW from the wrist stays dark at least until the relay answers, or this long
+constexpr uint32_t BLINK_MS = 500;            // a meeting that calls blinks: its face this long, then off this long
 constexpr uint32_t BATTERY_EVERY_MS = 30000;  // at most one battery report this often
 constexpr uint32_t BATTERY_DRIFT_MS = 300000; // a one-point change is only worth a report after this long
 constexpr uint32_t REJOIN_MS = 15000;         // without Wi-Fi this long, the radio is asked to join again
@@ -1071,6 +1072,11 @@ class Wrist {
     s.fired = false;
     // Any KEY1 press-down freezes a choice at once: no commit can fire.
     if (k == 1 && (mode_ == LOOK || mode_ == CHOOSING)) frozen_ = true;
+    // The key that answers a call only answers: letting it go, or holding it, does nothing more.
+    if (blinking(now)) {
+      calling_ = false;
+      s.fired = true;
+    }
     // Every press is heard as it goes down; NOT NOW is silent.
     if (!silent_) react("tick");
     settle(now);
@@ -1143,8 +1149,11 @@ class Wrist {
     // A show's own switch counts for what it causes.
     if (f.sound >= 0) soundOn_ = f.sound == 1;
     if (show_.kind == "pairing") {
-      secret_.clear();                            // unpaired, or nobody came for it: a new pairing
-      silent_ = false;                            // the band is nobody's: NOT NOW is over
+      // Unpaired, or nobody came for it: the band is nobody's, so NOT NOW is over and no meeting is anyone's.
+      secret_.clear();
+      silent_ = false;
+      called_.clear();
+      calling_ = false;
       if (wasCheck) react("fall", nullptr, 1);    // the check ended without YES
       soundOn_ = true;                            // after the letters' own reactions
     }
@@ -1153,6 +1162,11 @@ class Wrist {
     if (personal()) {
       if (show_.quiet) silent_ = true;
       else if (!quiet_.dark()) silent_ = false;
+      // A show about the person that is not a meeting ends a call and forgets its number.
+      if (show_.kind != "meet") {
+        called_.clear();
+        calling_ = false;
+      }
     }
     if (mode_ == LOOK || mode_ == CHOOSING) {
       // A show not about the person, or one whose rev moved, cancels the choice.
@@ -1161,11 +1175,21 @@ class Wrist {
       result(now, "SET");
     }
     if (same || silent_) return;
-    if (show_.kind == "check") react("ask", "check", 1);
-    else if (show_.kind == "test") react("up", nullptr, 1);  // paired, or TEST THE LIGHT: the white face is its flash
+    if (show_.kind == "check") {
+      react("ask", "check", 1);
+    } else if (show_.kind == "test") {
+      react("up", nullptr, 1);  // paired, or TEST THE LIGHT: the white face is its flash
+    } else if (show_.kind == "meet" && show_.big != called_) {
+      // A number not yet called for calls until it is answered (rule 4).
+      react("jingle", nullptr, 1);
+      called_ = show_.big;
+      calling_ = true;
+      callAt_ = now;
+    }
   }
 
   void ticked(uint32_t now) {
+    if (calling_ && link_.stale(now)) calling_ = false;  // a show no longer believed calls no more
     switch (link_.tick(now)) {
       case Link::DROP:
         out_.push_back("DROP");
@@ -1231,6 +1255,8 @@ class Wrist {
       f.bar = std::min<int>(99, static_cast<int>((now - k1_.since) * 100 / HOLD_MS));
       if (f.light < LIGHT_AWAKE) f.light = LIGHT_AWAKE;
     }
+    // A call blinks: the meeting face as it is, then off. A flash, while it lasts, is drawn over it.
+    if (blinking(now) && (now - callAt_) % (2 * BLINK_MS) >= BLINK_MS) f.light = LIGHT_OFF;
     return flashOver(f, now);
   }
 
@@ -1288,17 +1314,28 @@ class Wrist {
     if (r.sound && r.audible) due_.push_back(r.sound);
   }
 
-  /** The end of a moment: its reaction replaces the one playing. */
+  /** The end of a moment: its reactions go first, one after another, and what was already waiting plays after them. */
   void settle(uint32_t now) {
     if (moment_.empty()) return;
+    std::vector<Reaction> next(moment_.begin() + 1, moment_.end());
+    next.insert(next.end(), queue_.begin(), queue_.end());
+    queue_.swap(next);
     const Reaction first = moment_.front();
     moment_.clear();
     start(first, now);
   }
 
-  /** A reaction is over once its sound and its flash are. */
+  /** Each reaction starts when the one before it ends. */
   void advance(uint32_t now) {
-    if (playingOn_ && static_cast<int32_t>(now - playing_.until) >= 0) playingOn_ = false;
+    while (playingOn_ && static_cast<int32_t>(now - playing_.until) >= 0) {
+      const uint32_t at = playing_.until;
+      playingOn_ = false;
+      if (!queue_.empty()) {
+        const Reaction next = queue_.front();
+        queue_.erase(queue_.begin());
+        start(next, at);
+      }
+    }
   }
 
   static Screen words(const std::string& big, const std::string& small, const std::string& field, const std::string& ink,
@@ -1313,6 +1350,11 @@ class Wrist {
   }
 
   bool personal() const { return haveShow_ && show_.hasArmed; }
+
+  /** A call blinks on the resting face only: no look, choice, send or result on it. */
+  bool blinking(uint32_t now) const {
+    return calling_ && mode_ == REST && !link_.stale(now) && haveShow_ && show_.kind == "meet";
+  }
 
   /** NOT NOW (a hold not yet shown, or the relay's quiet), else what is armed, else "off". */
   std::string current() const {
@@ -1362,6 +1404,7 @@ class Wrist {
     // Going into NOT NOW is the one sound it makes; a hold inside NOT NOW is silent.
     if (!silent_) react("down");
     silent_ = true;
+    calling_ = false;  // NOT NOW ends a call
   }
 
   /** SET, CHANGED or NOT SENT on the face, with its sound and flash. In NOT NOW a failed try to come back is silent. */
@@ -1448,13 +1491,17 @@ class Wrist {
   uint32_t wakeUntil_ = 0, stepAt_ = 0, sentAt_ = 0, resultUntil_ = 0;
   int64_t basis_ = 0;
   std::vector<std::string> out_;
-  // Reactions (rule 6): this input's, and the one playing.
-  std::vector<Reaction> moment_;
+  // Reactions (rule 6): this input's; the one playing; those waiting their turn.
+  std::vector<Reaction> moment_, queue_;
   Reaction playing_;
   bool playingOn_ = false;
   std::vector<std::string> due_;
   bool soundOn_ = true;  // the person's switch, as the last show that said it had it (rule 3)
   bool silent_ = false;  // NOT NOW, for the sake of silence (rule 1)
+  // The meeting call (rule 4): the number last called for, whether it still calls, and since when.
+  std::string called_;
+  bool calling_ = false;
+  uint32_t callAt_ = 0;
 };
 
 // ---------- the serial console ----------

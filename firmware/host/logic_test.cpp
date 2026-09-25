@@ -526,7 +526,8 @@ std::string answer(const Command& c) {
            ",\"COMMIT_MS\":" + std::to_string(COMMIT_MS) + ",\"CONFIRM_MS\":" + std::to_string(CONFIRM_MS) +
            ",\"RESULT_MS\":" + std::to_string(RESULT_MS) + ",\"PING_EVERY_MS\":" + std::to_string(PING_EVERY_MS) +
            ",\"DEAF_MS\":" + std::to_string(DEAF_MS) + ",\"STALE_MS\":" + std::to_string(STALE_MS) +
-           ",\"QUIET_CONFIRM_MS\":" + std::to_string(QUIET_CONFIRM_MS) + ",\"LIGHT_FULL\":" + std::to_string(LIGHT_FULL) +
+           ",\"QUIET_CONFIRM_MS\":" + std::to_string(QUIET_CONFIRM_MS) + ",\"BLINK_MS\":" + std::to_string(BLINK_MS) +
+           ",\"LIGHT_FULL\":" + std::to_string(LIGHT_FULL) +
            ",\"LIGHT_DIM\":" + std::to_string(LIGHT_DIM) + ",\"LIGHT_PAIR\":" + std::to_string(LIGHT_PAIR) +
            ",\"LIGHT_AWAKE\":" + std::to_string(LIGHT_AWAKE) + ",\"LIGHT_OFF\":" + std::to_string(LIGHT_OFF) +
            ",\"CARD_WORDS\":{\"hi\":" + quote(cardWords("hi")) + ",\"song\":" + quote(cardWords("song")) +

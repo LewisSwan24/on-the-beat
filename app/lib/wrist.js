@@ -14,9 +14,10 @@
 // which state (`basis`), and shows SET, CHANGED or NOT SENT by what comes back.
 //
 // It also reacts, in sound and light (docs/superpowers/specs/
-// 2026-09-25-wrist-reactions-design.md). Each input is one moment, and its
-// reaction replaces the one playing. sounds() gives the names of the sounds
-// due to start since it was last asked.
+// 2026-09-25-wrist-reactions-design.md). Each input is one moment; a moment's
+// reactions play one after another, and a later moment's replace the one
+// playing. sounds() gives the names of the sounds due to start since it was
+// last asked.
 
 import { bandIdOf } from './sha256.js';
 
@@ -31,6 +32,7 @@ export const PING_EVERY_MS = 2000;     // ask the relay this often...
 export const DEAF_MS = 6000;           // ...and take this much silence as a dead socket
 export const STALE_MS = 10000;         // out of reach this long, what the relay last said is not shown
 export const QUIET_CONFIRM_MS = 3000;  // NOT NOW stays dark at least until the relay answers, or this long
+export const BLINK_MS = 500;           // a meeting that calls blinks: its face this long, then off this long
 
 export const LIGHT_FULL = 255;
 export const LIGHT_DIM = 128;
@@ -46,7 +48,7 @@ const LIT = ['hi', 'song', 'dance', 'meet'];
 /** Every constant above, by name: the fixtures' times are written in these. */
 export const CONSTS = {
   WAKE_MS, HOLD_MS, BAR_MS, CHOOSE_MS, COMMIT_MS, CONFIRM_MS, RESULT_MS, PING_EVERY_MS, DEAF_MS,
-  STALE_MS, QUIET_CONFIRM_MS, LIGHT_FULL, LIGHT_DIM, LIGHT_PAIR, LIGHT_AWAKE, LIGHT_OFF, CARD_WORDS,
+  STALE_MS, QUIET_CONFIRM_MS, BLINK_MS, LIGHT_FULL, LIGHT_DIM, LIGHT_PAIR, LIGHT_AWAKE, LIGHT_OFF, CARD_WORDS,
 };
 
 /** Every sound the wrist makes, as notes: [Hz, ms], 0 Hz a rest. band_logic.h SOUNDS is the same table. */
@@ -108,16 +110,23 @@ export function createWrist({ key }) {
   let choice = '';            // what was sent: a card, or '' for off
   let word = '';
   let out = [];
-  // Reactions (rule 6): this input's, and the one playing.
+  // Reactions (rule 6): this input's; the one playing; those waiting their turn.
   let moment = [];
   let playing = null;         // { sound, flash, colour, cls, audible, at, until }
+  let queue = [];
   let due = [];               // sounds started since sounds() was last asked
   let soundOn = true;         // the person's switch, as the last show that said it had it (rule 3)
   let silent = false;         // NOT NOW, for the sake of silence (rule 1)
+  // The meeting call (rule 4): the number last called for, whether it still calls, and since when.
+  let called = '';
+  let calling = false;
+  let callAt = 0;
 
   const send = (m) => out.push(JSON.stringify(m));
   const stale = (now) => !link.up && (!link.ever || now - link.lost >= STALE_MS);
   const personal = () => !!show && show.hasArmed;
+  // A call blinks on the resting face only: no look, choice, send or result on it.
+  const blinking = (now) => calling && mode === 'rest' && !stale(now) && show?.kind === 'meet';
   const current = () => (quiet.pending || show?.quiet ? 'notnow' : show?.armed || 'off');
   const pct = () => (battery >= 0 ? battery + '%' : '');
 
@@ -133,17 +142,23 @@ export function createWrist({ key }) {
     if (r.sound && r.audible) due.push(r.sound);
   }
 
-  /** The end of a moment: its reaction replaces the one playing. */
+  /** The end of a moment: its reactions go first, one after another, and what was already waiting plays after them. */
   function settle(now) {
     if (!moment.length) return;
-    const first = moment[0];
+    const mine = moment;
     moment = [];
-    start(first, now);
+    queue = [...mine.slice(1), ...queue];
+    start(mine[0], now);
   }
 
-  /** A reaction is over once its sound and its flash are. */
+  /** Each reaction starts when the one before it ends. */
   function advance(now) {
-    if (playing && now >= playing.until) playing = null;
+    while (playing && now >= playing.until) {
+      const next = queue.shift();
+      const at = playing.until;
+      playing = null;
+      if (next) start(next, at);
+    }
   }
 
   function noSignal() {
@@ -172,6 +187,7 @@ export function createWrist({ key }) {
     // Going into NOT NOW is the one sound it makes; a hold inside NOT NOW is silent.
     if (!silent) react('down');
     silent = true;
+    calling = false;  // NOT NOW ends a call
   }
 
   /** SET, CHANGED or NOT SENT on the face, with its sound and flash. In NOT NOW a failed try to come back is silent. */
@@ -231,6 +247,7 @@ export function createWrist({ key }) {
 
   function tick(now) {
     advance(now);
+    if (calling && stale(now)) calling = false;  // a show no longer believed calls no more
     if (link.up) {
       if (now - link.heard > DEAF_MS) { out.push('DROP'); closed(now); }
       else if (now - link.asked >= PING_EVERY_MS) { link.asked = now; send({ t: 'ping' }); }
@@ -259,6 +276,8 @@ export function createWrist({ key }) {
     s.since = now;
     s.fired = false;
     if (k === 1 && (mode === 'look' || mode === 'choosing')) frozen = true;
+    // The key that answers a call only answers: letting it go, or holding it, does nothing more.
+    if (blinking(now)) { calling = false; s.fired = true; }
     // Every press is heard as it goes down; NOT NOW is silent.
     if (!silent) react('tick');
     settle(now);
@@ -324,8 +343,11 @@ export function createWrist({ key }) {
     // A show's own switch counts for what it causes. One that is not true or false is not said.
     if (typeof m.show.sound === 'boolean') soundOn = m.show.sound;
     if (show.kind === 'pairing') {
+      // The band is nobody's: NOT NOW is over, and no meeting is anyone's.
       secret = '';
-      silent = false;                                     // the band is nobody's: NOT NOW is over
+      silent = false;
+      called = '';
+      calling = false;
       if (was?.kind === 'check') react('fall', null, 1);  // the check ended without YES
       soundOn = true;                                     // after the letters' own reactions
     }
@@ -334,6 +356,8 @@ export function createWrist({ key }) {
     if (personal()) {
       if (show.quiet) silent = true;
       else if (!quiet.pending) silent = false;
+      // A show about the person that is not a meeting ends a call and forgets its number.
+      if (show.kind !== 'meet') { called = ''; calling = false; }
     }
     if (mode === 'look' || mode === 'choosing') {
       if (!personal() || show.rev !== basis) rest();
@@ -343,6 +367,13 @@ export function createWrist({ key }) {
     if (same || silent) return;
     if (show.kind === 'check') react('ask', 'check', 1);
     else if (show.kind === 'test') react('up', null, 1);  // paired, or TEST THE LIGHT: the white face is its flash
+    else if (show.kind === 'meet' && show.big !== called) {
+      // A number not yet called for calls until it is answered (rule 4).
+      react('jingle', null, 1);
+      called = show.big;
+      calling = true;
+      callAt = now;
+    }
   }
 
   /** The face at rest: band_logic.h faceFor(), wordsFor() and lightFor(), in that order. */
@@ -394,6 +425,8 @@ export function createWrist({ key }) {
     if (k1.down && !k1.fired && now - k1.since >= BAR_MS) {
       f = { ...f, small: 'KEEP HOLDING', bar: Math.min(99, Math.floor(((now - k1.since) * 100) / HOLD_MS)), light: Math.max(f.light, LIGHT_AWAKE) };
     }
+    // A call blinks: the meeting face as it is, then off. A flash, while it lasts, is drawn over it.
+    if (blinking(now) && (now - callAt) % (2 * BLINK_MS) >= BLINK_MS) f = { ...f, light: LIGHT_OFF };
     return flashOver(f, now);
   }
 
