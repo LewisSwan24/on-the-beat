@@ -1,0 +1,9 @@
+# Only what the image is built from goes to the builder, and nothing else:
+# above all never firmware/src/secrets.h (a Wi-Fi password) or CLAUDE.md.
+*
+!package.json
+!package-lock.json
+!vendor
+!vite.config.js
+!app
+!relay

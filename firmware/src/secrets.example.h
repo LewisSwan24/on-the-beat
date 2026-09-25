@@ -7,9 +7,10 @@
 #define OTB_WIFI_SSID ""
 #define OTB_WIFI_PASS ""
 
-// The address `npm run tunnel` prints (https://....trycloudflare.com), or
-// ws://<the laptop's address>:8790 on the same network.
-#define OTB_RELAY ""
+// The always-on relay, or the address `npm run tunnel` prints
+// (https://....trycloudflare.com), or ws://<the laptop's address>:8790 on the
+// same network.
+#define OTB_RELAY "https://on-the-beat.fly.dev"
 
 // Optional: the root certificate(s), PEM, that sign the relay's certificate.
 // Without it the connection to a https relay is encrypted, but the wristband

@@ -43,6 +43,30 @@ are all refused on plain http, so a phone on the LAN gets an app with no
 camera. `npm start` and then `npm run tunnel` gives every phone the same https
 address and the same room.
 
+**Always on, at https://on-the-beat.fly.dev.** The relay runs on one Fly.io
+machine in Sydney (`fly.toml`, `Dockerfile`), so phones and wristbands need no
+laptop: a phone opens the address, and a wristband is told it once with
+`relay https://on-the-beat.fly.dev`. To ship a change:
+
+```
+flyctl auth login                        # once, in your own terminal
+flyctl deploy --ha=false --remote-only   # built on Fly's builder; the one machine restarts on it
+```
+
+- **Exactly one machine.** Every room lives in the relay's memory, so a second
+  machine would split phones from their wristbands. `--ha=false` keeps a
+  deploy from starting two; `flyctl scale count 1` puts it back if it ever does.
+- **A deploy is a restart.** Rooms, pairings and clips go with the old
+  process, and phones and wristbands come back as after any restart: a
+  wristband waits with `OPEN YOUR PHONE` until its phone claims it back.
+  Deploy between nights.
+- **Only what the image is built from reaches the builder.** `.dockerignore`
+  lets through `package.json`, `package-lock.json`, `vendor/`,
+  `vite.config.js`, `app/` and `relay/`, and nothing else: never
+  `firmware/src/secrets.h`. The first deploy sent 465 kB.
+- `fly.toml` sets `NIGHT_TZ=Australia/Brisbane` and
+  `CLIENT_IP_HEADER=fly-client-ip` (see Abuse resistance).
+
 **Showing it with one phone.** `node scripts/crowd.mjs [venue] [how many]`
 puts a few demo people in a venue: they show blue, pick tracks, wave back at
 anyone who waves, like every pick and keep every match. Every one of them has
@@ -94,7 +118,9 @@ never becomes a match.
   - A dropped socket is not leaving: a person stays in the room for two
     minutes, so a locked screen does not cost them their place.
   - Clips are kept in memory, one on the floor per person, for an hour —
-    the canvas says "it loops on the floor for an hour", and it does.
+    the canvas says "it loops on the floor for an hour", and it does. Every
+    room's clips together stay under 96 MB, what a small always-on machine
+    can hold: past that the oldest go first, in whichever room they are.
   - Reports are written to the relay's log. A venue would send them to its
     own team's radio or dashboard.
   - `relay/shows.json` is tonight's shows: times, quiet corners to meet at,
@@ -228,10 +254,11 @@ pio device monitor      # its console: ssid, pass, relay, show, forget
 pio run -e m5sticks3 -t upload    # the same, for a StickS3
 ```
 
-Tell it the venue's Wi-Fi and the relay at the console — `relay` takes the
-address `npm run tunnel` prints — or copy `src/secrets.example.h` to
-`src/secrets.h`, which git ignores, to build them in. What is typed is kept
-across restarts, which matters: a quick tunnel's address changes every run.
+Tell it the venue's Wi-Fi and the relay at the console — `relay` takes
+`https://on-the-beat.fly.dev`, or the address `npm run tunnel` prints — or
+copy `src/secrets.example.h` to `src/secrets.h`, which git ignores, to build
+them in. What is typed is kept across restarts, which matters: a quick
+tunnel's address changes every run.
 Off the Wi-Fi, it asks the radio to join again every 15 s. The console says
 what the band is doing: the Wi-Fi coming and going and the reason the radio
 gave, each hello and whether it carries its secret (never the secret), each
@@ -321,16 +348,19 @@ shows.
 
 ## Abuse resistance
 
-The relay is a standing public process (behind a tunnel), so the pairing surface
+The relay is a standing public process (on Fly.io, or behind a tunnel), so the pairing surface
 was red-teamed and hardened. A red/blue pass found and closed:
 
 - **Guessing a wristband's four letters.** The code space is only 279,841, and
   one socket could once walk it in about fifteen seconds and take a stranger's
   wristband. Now every pairing attempt, right letters or wrong, and every
   unproven claim is throttled: five per socket and twenty per address
-  a minute. Behind the tunnel the address is the real client (from
-  `cf-connecting-ip`, trusted only because the socket is on loopback), so one
-  attacker cannot spend the whole room's budget.
+  a minute. The address is the real client, so one attacker cannot spend the
+  whole room's budget. On Fly.io it is `fly-client-ip`, which Fly's proxy sets
+  from the connection it accepted, read only because `CLIENT_IP_HEADER` names
+  it; that the proxy also replaces one a client sends is reported by others,
+  not measured here. Behind the tunnel it is `cf-connecting-ip`, trusted only
+  because the socket is on loopback.
 - **Piling up placeholder claims.** A phone claims a wristband by id and
   secret, which a restarted relay must accept before the wristband is back. A
   claim nothing answers is a placeholder, one per person, forgotten after the
@@ -396,15 +426,13 @@ relay could drive what a wrist shows.
 
 ## What is not done
 
-- **There is no fixed address.** `npm run tunnel` opens a Cloudflare quick
-  tunnel, and every run gets a new `*.trycloudflare.com` name. Each new name
-  means a new link for every phone, `relay <address>` typed again into every
-  wristband, and every phone starting over: a browser keeps the app's storage
-  per address, so the promises, the name, the venue and the pairing stay behind
-  with the old one. A new name is also dead for half an hour to any resolver
-  that asks before it has spread. Going live needs a name that stays: a named
-  Cloudflare Tunnel on an owned domain, with the laptop still serving, or the
-  relay on an always-on host under its own domain.
+- **One machine, and its memory is everything.** The relay has a fixed
+  address now, https://on-the-beat.fly.dev, but every room, pairing and clip
+  lives in one machine's memory: a deploy or any restart empties it, and
+  everyone finds their way back as after any restart. More people than one
+  small machine holds, or a restart nobody notices, needs the rooms kept
+  outside the process first. A phone that used a tunnel address starts over
+  at the fixed one: a browser keeps the app's storage per address.
 - **Proximity.** Wristbands pair and light, but nothing measures who is near
   whom: every person is still `in this room`. Nearness wants ESP-NOW between
   wristbands, which wants the hardware.

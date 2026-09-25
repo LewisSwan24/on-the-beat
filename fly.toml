@@ -1,0 +1,39 @@
+# ON THE BEAT — the relay on Fly.io: one machine, always on, in Sydney.
+#
+# Exactly one machine: every room lives in its memory, so a second machine
+# would split the phones from their wristbands. Deploy with --ha=false.
+
+app = "on-the-beat"
+primary_region = "syd"
+
+[env]
+  PORT = "8080"
+  # The night turns over at 06:00 where the venue is, not where the machine is.
+  NIGHT_TZ = "Australia/Brisbane"
+  # Fly's proxy is the only way in, and it names each client here.
+  CLIENT_IP_HEADER = "fly-client-ip"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Never asleep: a wristband should never find its relay stopped.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # Every phone and wristband holds a socket open all night.
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 2000
+    hard_limit = 2500
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
