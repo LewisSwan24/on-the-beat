@@ -7,3 +7,5 @@
 #include "arduino_macros.h"
 
 #include "../src/band_logic.h"
+
+static_assert(otb::SOUND_SAMPLES > 0, "the sound buffers are sized when the band is built");

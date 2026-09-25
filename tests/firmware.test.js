@@ -11,7 +11,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,7 @@ import WebSocket from 'ws';
 import { createRelay, WS_PATH } from '../relay/server.js';
 import { HUE } from '../app/copy.js';
 import { codeFrom, pairUrl } from '../app/lib/pairing.js';
-import { CONSTS, FLASHES, SOUNDS } from '../app/lib/wrist.js';
+import { CONSTS, FLASH_COLOURS, FLASHES, SOUNDS } from '../app/lib/wrist.js';
 import { TABLE, lines, check } from './wrist-table.js';
 
 const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).digest('hex').slice(0, 32);
@@ -117,6 +117,13 @@ test('the colours on the wrist are the colours on the phone', { skip }, () => {
   const [hues] = speak(['hues']);
   const phone = Object.fromEntries(Object.entries(HUE).map(([id, h]) => [id, { c: h.c.toUpperCase(), g: h.g.toUpperCase() }]));
   assert.deepEqual(JSON.parse(hues), phone);
+});
+
+test("the flashes' red and orange are the stand-in's, and red is the phone's own --stop", { skip }, () => {
+  const [colours] = speak(['flashcolours']);
+  assert.deepEqual(JSON.parse(colours), FLASH_COLOURS);
+  const css = readFileSync(new URL('../app/styles.css', import.meta.url), 'utf8');
+  assert.equal(FLASH_COLOURS.red, css.match(/--stop:\s*(#[0-9A-Fa-f]{6})/)[1].toUpperCase());
 });
 
 test("the firmware hashes as node:crypto does, and its id is its key's hash", { skip }, () => {

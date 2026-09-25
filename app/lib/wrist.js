@@ -75,6 +75,12 @@ export const FLASHES = {
   check: { colour: 'white', count: 2, on: 150, off: 100 },
 };
 
+/**
+ * The flash fields' colours. Red is the phone's own --stop. Orange is not its --warn, which on the band reads
+ * as FIRST SONG's yellow. band_logic.h plainField().
+ */
+export const FLASH_COLOURS = { red: '#FF6B6B', orange: '#FF8A00' };
+
 const soundMs = (name) => (name ? SOUNDS[name].reduce((ms, [, len]) => ms + len, 0) : 0);
 const flashMs = (f) => (f ? f.count * (f.on + f.off) : 0);
 

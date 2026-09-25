@@ -94,12 +94,59 @@ inline const Sound* soundFor(const std::string& name) {
   return nullptr;
 }
 
+// The band's compiler takes C++11, where a constexpr function is one return
+// statement: so these sums recurse rather than loop.
+
+/** How long `count` notes last, in ms. */
+constexpr uint32_t notesMs(const Note* notes, size_t count) {
+  return count ? notes->ms + notesMs(notes + 1, count - 1) : 0;
+}
+
 inline uint32_t soundMs(const char* name) {
   const Sound* s = name ? soundFor(name) : nullptr;
-  uint32_t ms = 0;
-  if (s)
-    for (size_t i = 0; i < s->count; ++i) ms += s->notes[i].ms;
-  return ms;
+  return s ? notesMs(s->notes, s->count) : 0;
+}
+
+// A sound is played as one buffer of samples, so painting the face, which holds
+// the loop for tens of milliseconds, cannot bend a tune's rhythm.
+
+constexpr uint32_t SOUND_RATE = 16000;  // samples a second
+
+constexpr uint32_t longerOf(uint32_t a, uint32_t b) { return a > b ? a : b; }
+
+/** The longest sound in the table from the i-th on, in ms: from 0, what one buffer must hold. */
+constexpr uint32_t longestSoundMs(size_t i = 0) {
+  return i == sizeof(SOUNDS) / sizeof(SOUNDS[0]) ? 0
+                                                 : longerOf(notesMs(SOUNDS[i].notes, SOUNDS[i].count), longestSoundMs(i + 1));
+}
+
+constexpr size_t SOUND_SAMPLES = longestSoundMs() * (SOUND_RATE / 1000);  // one buffer
+
+/**
+ * A sound's notes as one triangle wave, 8 bits unsigned at SOUND_RATE, as
+ * M5.Speaker.playRaw() takes it: 128 is silence, and a rest is silence. Each
+ * note starts at the middle of its wave, so it does not click in. Writes at
+ * most `cap` samples; returns how many.
+ */
+inline size_t render(const std::string& name, uint8_t* out, size_t cap) {
+  const Sound* s = soundFor(name);
+  size_t n = 0;
+  if (!s) return 0;
+  for (size_t k = 0; k < s->count; ++k) {
+    const Note& note = s->notes[k];
+    const size_t samples = size_t(note.ms) * (SOUND_RATE / 1000);
+    for (size_t i = 0; i < samples && n < cap; ++i) {
+      if (!note.hz) {
+        out[n++] = 128;
+        continue;
+      }
+      // Where in its wave this sample is, from 0 to SOUND_RATE; a quarter in, the wave crosses the middle going up.
+      const int64_t phase = static_cast<int64_t>((uint64_t(i) * note.hz + SOUND_RATE / 4) % SOUND_RATE);
+      const int64_t v = phase < SOUND_RATE / 2 ? 4 * phase - SOUND_RATE : 3 * int64_t(SOUND_RATE) - 4 * phase;
+      out[n++] = static_cast<uint8_t>(128 + v * 127 / int64_t(SOUND_RATE));
+    }
+  }
+  return n;
 }
 
 /** A flash: its colour, then count × on / off ms. "card" is the card chosen, white for OFF. */
@@ -145,6 +192,18 @@ constexpr Hue HUES[] = {
 
 constexpr Rgb INK = {0x04, 0x14, 0x18};     // words on a lit face
 constexpr Rgb TEXT_2 = {0x9A, 0x99, 0xA4};  // words on a dark one
+
+// A flash's own colours (app/lib/wrist.js FLASH_COLOURS). Red is the phone's
+// --stop. Orange is not its --warn, which on this screen reads as FIRST SONG's yellow.
+constexpr Rgb RED = {0xFF, 0x6B, 0x6B};
+constexpr Rgb ORANGE = {0xFF, 0x8A, 0x00};
+
+/** A field that is one flat colour, or nullptr: black, white and the cards' glow are drawn another way. */
+inline const Rgb* plainField(const std::string& field) {
+  if (field == "red") return &RED;
+  if (field == "orange") return &ORANGE;
+  return nullptr;
+}
 
 inline const Hue* hueFor(const std::string& intent) {
   for (const Hue& h : HUES)

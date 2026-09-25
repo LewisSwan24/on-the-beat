@@ -367,6 +367,40 @@ void colour() {
   }
 }
 
+void sound() {
+  static uint8_t buf[SOUND_SAMPLES];
+  const size_t ms = SOUND_RATE / 1000;  // samples a millisecond
+  // One buffer holds the longest sound, jingle and warn at 0.6 s, and so every sound.
+  CHECK(SOUND_SAMPLES == 600 * ms);
+  for (const Sound& s : SOUNDS) CHECK(soundMs(s.name) * ms <= SOUND_SAMPLES);
+  // A sound is as long as its notes.
+  CHECK(render("tick", buf, sizeof buf) == 25 * ms);
+  CHECK(render("jingle", buf, sizeof buf) == SOUND_SAMPLES);
+  // A rest is silence, the middle of the range.
+  CHECK(render("double", buf, sizeof buf) == 110 * ms);
+  bool rest = true;
+  for (size_t i = 25 * ms; i < 85 * ms; ++i) rest = rest && buf[i] == 128;
+  CHECK(rest);
+  // A note is a triangle over the whole range, never 0, starting from the middle so it does not click in.
+  render("tick", buf, sizeof buf);
+  uint8_t lo = 255, hi = 0;
+  int ups = 0;
+  for (size_t i = 0; i < 25 * ms; ++i) {
+    lo = std::min(lo, buf[i]);
+    hi = std::max(hi, buf[i]);
+    if (i > 0 && buf[i - 1] < 128 && buf[i] >= 128) ++ups;
+  }
+  CHECK(buf[0] == 128 && lo >= 1 && lo <= 8 && hi >= 247);
+  CHECK(ups >= 44 && ups <= 45);  // 1800 Hz for 25 ms: 45 waves
+  // No more than the room it is given, and nothing for a name it does not know.
+  CHECK(render("jingle", buf, 100) == 100);
+  CHECK(render("hum", buf, sizeof buf) == 0);
+  // The flash colours: plain fills. Black, white and the cards are drawn another way.
+  CHECK(plainField("red") && *plainField("red") == (Rgb{0xFF, 0x6B, 0x6B}));
+  CHECK(plainField("orange") && *plainField("orange") == (Rgb{0xFF, 0x8A, 0x00}));
+  CHECK(!plainField("black") && !plainField("white") && !plainField("hi"));
+}
+
 void pairing() {
   CHECK(pairUrl("https://a.example//", "KXRT") == "https://a.example/pair/KXRT");
   CHECK(qrVersion(17) == 1 && qrVersion(18) == 2 && qrVersion(53) == 3 && qrVersion(78) == 4);
@@ -553,6 +587,10 @@ std::string answer(const Command& c) {
              ",\"count\":" + std::to_string(f.count) + ",\"on\":" + std::to_string(f.on) + ",\"off\":" + std::to_string(f.off) + "}";
     return out + "}";
   }
+  if (c.verb == "flashcolours") {
+    // The flash fields, as app/lib/wrist.js FLASH_COLOURS has them.
+    return "{\"red\":" + quote(hex(*plainField("red"))) + ",\"orange\":" + quote(hex(*plainField("orange"))) + "}";
+  }
   if (c.verb == "hues") {
     std::string out = "{";
     for (const Hue& h : HUES)
@@ -651,6 +689,7 @@ int main(int argc, char** argv) {
   text();
   face();
   colour();
+  sound();
   pairing();
   relay();
   rejoin();
