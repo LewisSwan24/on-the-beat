@@ -93,7 +93,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
       const show = shows.find((s) => s.id === key);
       const spots = Array.isArray(show?.spots) && show.spots.length ? show.spots.map(String) : SPOTS;
-      rooms.set(key, { key, room: createRoom({ spots }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map() });
+      // sound: each person's sound switch, as their phone last said it. Leaving forgets it; the grace does not.
+      rooms.set(key, { key, room: createRoom({ spots }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(), sound: new Map() });
     }
     return rooms.get(key);
   }
@@ -189,8 +190,10 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
 
   function showBand(b, now = clock()) {
     if (!b.ws) return;
-    const view = b.key ? rooms.get(b.key)?.room.viewFor(b.person) ?? null : null;
-    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, waiting: b.waiting, testUntil: b.testUntil, now }) });
+    const r = b.key ? rooms.get(b.key) : null;
+    const view = r?.room.viewFor(b.person) ?? null;
+    const sound = r?.sound.get(b.person) ?? null;
+    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, waiting: b.waiting, testUntil: b.testUntil, sound, now }) });
     if (text !== b.lastShow) { b.lastShow = text; b.ws.send(text); }
   }
 
@@ -468,6 +471,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         if (b) { b.testUntil = now() + 2000; showBand(b); }
         break;
       }
+      case 'sound':
+        // The person's own switch, for their own band's shows. Like TEST THE LIGHT it reaches nobody else's.
+        if (typeof m.on !== 'boolean') return;
+        r.sound.set(me, m.on);
+        break;
       case 'pick': room.pick(me, m.track); break;
       case 'wave': room.wave(me, m.handle); break;
       case 'like': room.like(me, m.handle); break;
@@ -497,6 +505,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         const b = bandOf(r.key, me);
         if (b) unpairBand(b);
         stopGrace(r, me);
+        r.sound.delete(me);
         room.leave(me);
         r.sockets.delete(ws);
         ws.r = null;

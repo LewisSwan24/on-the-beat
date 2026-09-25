@@ -26,6 +26,7 @@ const short = (s, n) => {
  * @param {number|null} p.check   set while a pairing waits for YES: the number the phone asks about
  * @param {boolean} p.waiting     after a relay restart, until its owner's phone claims it
  * @param {number} p.testUntil    TEST THE LIGHT runs until this time
+ * @param {boolean|null} p.sound  the person's sound switch, once their phone has said it; null before
  * @param {number} p.now
  *
  * A show made from the person's view carries `armed` (null for none) and the
@@ -33,15 +34,22 @@ const short = (s, n) => {
  * that is not, and names the state a choice was made from. The others —
  * pairing, the check, the test light, waiting, and not in a room — carry
  * neither.
+ *
+ * Once the relay has heard the person's sound switch, every show to their band
+ * carries it: their own, the test light (the white face that ends a pairing,
+ * and TEST THE LIGHT) and not in a room. Letters, the check and waiting carry
+ * none: those bands are nobody's yet, or not known to be whose. A show made
+ * without a known switch is exactly the show made before there was one.
  */
-export function bandShow({ view = null, battery = null, code = null, check = null, waiting = false, testUntil = 0, now = Date.now() }) {
+export function bandShow({ view = null, battery = null, code = null, check = null, waiting = false, testUntil = 0, sound = null, now = Date.now() }) {
   if (check) return { kind: 'check', big: String(check) };
   if (code) return { kind: 'pairing', code };
   if (waiting) return { kind: 'waiting' };
-  if (testUntil > now) return { kind: 'test' };
+  const said = sound === null ? {} : { sound };
+  if (testUntil > now) return { kind: 'test', ...said };
   const dim = battery !== null && battery <= DIM_AT;
-  if (!view) return { kind: 'off', battery, away: true };
-  const about = { armed: view.me.armed ?? null, rev: view.me.rev ?? 0 };
+  if (!view) return { kind: 'off', battery, away: true, ...said };
+  const about = { armed: view.me.armed ?? null, rev: view.me.rev ?? 0, ...said };
   // NOT NOW is black, completely. Nothing broadcasting, and nothing to read.
   if (view.me.invisible) return { kind: 'off', battery, quiet: true, ...about };
   const meet = view.matches

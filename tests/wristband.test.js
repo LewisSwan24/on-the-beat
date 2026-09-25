@@ -414,3 +414,98 @@ test('more than one set a second is refused too fast; a second on, the wrist may
     await own.close();
   }
 });
+
+// ---------- the sound switch (docs/superpowers/specs/2026-09-25-wrist-reactions-design.md §3) ----------
+
+test("a phone's sound switch rides on its band's shows: one show a flip, and none when nothing changed", async () => {
+  const { band, ana } = await wearing('sound-flip');
+  assert.equal('sound' in band.show, false, 'before the phone says it, the show is as it was');
+  let shows = 0;
+  band.ws.on('message', (d) => { if (JSON.parse(String(d)).t === 'show') shows++; });
+  ana.send({ t: 'sound', on: false });
+  await band.until((s) => s.sound === false);
+  ana.send({ t: 'sound', on: false });
+  ana.send({ t: 'profile', name: 'Ana' });
+  await pause(150);
+  assert.equal(shows, 1, 'the same again sends nothing');
+  ana.send({ t: 'sound', on: true });
+  await band.until((s) => s.sound === true);
+  await pause(50);
+  assert.equal(shows, 2);
+  close(ana, band);
+});
+
+test('a malformed sound is dropped', async () => {
+  const { band, ana } = await wearing('sound-bad');
+  for (const m of [{ t: 'sound' }, { t: 'sound', on: 'no' }, { t: 'sound', on: 0 }, { t: 'sound', on: 1 }, { t: 'sound', on: null }]) {
+    ana.send(m);
+    await pause(80);
+    assert.equal('sound' in band.show, false, JSON.stringify(m));
+  }
+  ana.send({ t: 'sound', on: false });
+  await band.until((s) => s.sound === false);
+  close(ana, band);
+});
+
+test("one person's switch never reaches another's band", async () => {
+  const { band, ana } = await wearing('sound-two');
+  const other = await wristband();
+  const ben = await phone('sound-two');
+  await pairBand(ben, other);
+  await other.until((s) => s.kind === 'off');
+  ana.send({ t: 'sound', on: false });
+  await band.until((s) => s.sound === false);
+  await pause(100);
+  assert.equal('sound' in other.show, false);
+  close(ana, ben, band, other);
+});
+
+test('a band paired with the switch off gets it in its pairing flash; letters and the check carry none', async () => {
+  const band = await wristband();
+  const ana = await phone('sound-pair');
+  ana.send({ t: 'sound', on: false });
+  await pause(50);
+  assert.equal('sound' in band.show, false, 'letters are nobody\'s');
+  ana.send({ t: 'pair', code: band.show.code });
+  await ana.until((v) => v.me.check);
+  assert.equal('sound' in (await band.until((s) => s.kind === 'check')), false);
+  ana.send({ t: 'confirm', yes: true });
+  assert.deepEqual(await band.until((s) => s.kind === 'test'), { kind: 'test', sound: false });
+  close(ana, band);
+});
+
+test("after a restart, a switch said before the claim is on the claimed band's first show; waiting carries none", async () => {
+  const secret = newKey();
+  const band = await wristband(62, { secret });
+  assert.deepEqual(band.show, { kind: 'waiting' });
+  const shows = [];
+  band.ws.on('message', (d) => { const m = JSON.parse(String(d)); if (m.t === 'show') shows.push(m.show); });
+  const ana = await phone('sound-claim');
+  ana.send({ t: 'sound', on: false });
+  ana.send({ t: 'pair', band: band.id, secret, again: true });
+  await band.until((s) => s.kind === 'off');
+  assert.equal(shows[0].sound, false, JSON.stringify(shows));
+  close(ana, band);
+});
+
+test('leave forgets the switch; the grace does not, and away carries it', async () => {
+  const { band, ana } = await wearing('sound-away');
+  const ben = await phone('sound-away');   // someone stays, so the room itself is never let go
+  ana.send({ t: 'sound', on: false });
+  await band.until((s) => s.sound === false);
+  ana.ws.close();
+  await pause(100);
+  relay.expire(Date.now() + BAND_ALONE_MS + 1_000);   // held only by the wristband, for the hour: out
+  assert.equal((await band.until((s) => s.away)).sound, false);
+  // Back, and gone for good: a band paired after leave hears nothing of the old switch.
+  const back = await phone('sound-away', { me: ana.me });
+  back.send({ t: 'leave' });
+  await reply(back, 'left');
+  const again = await phone('sound-away', { me: ana.me });
+  const next = await wristband();
+  again.send({ t: 'pair', code: next.show.code });
+  await again.until((v) => v.me.check);
+  again.send({ t: 'confirm', yes: true });
+  assert.deepEqual(await next.until((s) => s.kind === 'test'), { kind: 'test' });
+  close(again, ben, band, next);
+});

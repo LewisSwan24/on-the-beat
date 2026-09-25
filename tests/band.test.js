@@ -76,3 +76,23 @@ test('a show made from the view names what is armed and its rev; the others name
     assert.equal('armed' in s || 'rev' in s, false, JSON.stringify(s));
   }
 });
+
+test("the sound switch rides on every show to its person's band, and on none that is nobody's yet", () => {
+  const m = { id: 'm1', intent: 'song', number: 27, at: T };
+  for (const sound of [true, false]) {
+    for (const s of [bandShow({ view: view({ armed: 'hi' }), sound, now: T }), bandShow({ view: view(), sound, now: T }),
+      bandShow({ view: view({ invisible: true }), sound, now: T }), bandShow({ view: view({ armed: 'hi' }, [m]), sound, now: T }),
+      bandShow({ view: view(), testUntil: T + 1, sound, now: T }), bandShow({ view: null, sound, now: T })]) {
+      assert.equal(s.sound, sound, JSON.stringify(s));
+    }
+    for (const s of [bandShow({ view: view(), code: 'KXRT', sound, now: T }), bandShow({ view: view(), check: 12, sound, now: T }),
+      bandShow({ view: null, waiting: true, sound, now: T })]) {
+      assert.equal('sound' in s, false, JSON.stringify(s));
+    }
+  }
+  // A switch the relay has not heard makes exactly the show it made before there was one.
+  for (const v of [view({ armed: 'hi' }), null]) {
+    assert.equal('sound' in bandShow({ view: v, now: T }), false);
+    assert.equal('sound' in bandShow({ view: v, sound: null, now: T }), false);
+  }
+});
