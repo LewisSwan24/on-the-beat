@@ -532,6 +532,25 @@ std::string answer(const Command& c) {
            ",\"CARD_WORDS\":{\"hi\":" + quote(cardWords("hi")) + ",\"song\":" + quote(cardWords("song")) +
            ",\"dance\":" + quote(cardWords("dance")) + "}}";
   }
+  if (c.verb == "sounds") {
+    // SOUNDS, as app/lib/wrist.js has it: {"tick":[[1800,25]],...}
+    std::string out = "{";
+    for (const Sound& s : SOUNDS) {
+      out += std::string(out.size() > 1 ? "," : "") + quote(s.name) + ":[";
+      for (size_t i = 0; i < s.count; ++i)
+        out += std::string(i ? "," : "") + "[" + std::to_string(s.notes[i].hz) + "," + std::to_string(s.notes[i].ms) + "]";
+      out += "]";
+    }
+    return out + "}";
+  }
+  if (c.verb == "flashes") {
+    // FLASHES, as app/lib/wrist.js has it: {"set":{"colour":"card","count":2,"on":150,"off":100},...}
+    std::string out = "{";
+    for (const Flash& f : FLASHES)
+      out += std::string(out.size() > 1 ? "," : "") + quote(f.name) + ":{\"colour\":" + quote(f.colour) +
+             ",\"count\":" + std::to_string(f.count) + ",\"on\":" + std::to_string(f.on) + ",\"off\":" + std::to_string(f.off) + "}";
+    return out + "}";
+  }
   if (c.verb == "hues") {
     std::string out = "{";
     for (const Hue& h : HUES)
@@ -602,10 +621,11 @@ int runWrist() {
     else if (verb == "frame") w->frame(arg, t);
     else if (verb == "battery") w->setBattery(std::atoi(arg.c_str()));
     else if (verb == "wifi") w->setWifi(arg == "1");
-    std::string sent;
+    std::string sent, sounds;
     for (const std::string& f : w->take()) sent += (sent.empty() ? "" : ",") + (f == "DROP" ? std::string("\"DROP\"") : f);
+    for (const std::string& n : w->sounds()) sounds += (sounds.empty() ? "" : ",") + quote(n);
     const Screen s = w->face(t);
-    std::cout << "{\"sent\":[" << sent << "],\"face\":{\"big\":" << quote(s.big) << ",\"small\":" << quote(s.small)
+    std::cout << "{\"sent\":[" << sent << "],\"sounds\":[" << sounds << "],\"face\":{\"big\":" << quote(s.big) << ",\"small\":" << quote(s.small)
               << ",\"field\":" << quote(s.field) << ",\"ink\":" << quote(s.ink) << ",\"light\":" << int(s.light)
               << ",\"bar\":" << s.bar << ",\"code\":" << quote(s.code) << "}}\n";
   }

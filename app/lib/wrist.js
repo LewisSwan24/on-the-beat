@@ -12,6 +12,11 @@
 // after the last press, or at once on a KEY2 hold. Leaving NOT NOW takes a
 // KEY2 hold. The relay decides; the wrist only says what was chosen, and from
 // which state (`basis`), and shows SET, CHANGED or NOT SENT by what comes back.
+//
+// It also reacts, in sound and light (docs/superpowers/specs/
+// 2026-09-25-wrist-reactions-design.md). Each input is one moment, and its
+// reaction replaces the one playing. sounds() gives the names of the sounds
+// due to start since it was last asked.
 
 import { bandIdOf } from './sha256.js';
 
@@ -43,6 +48,31 @@ export const CONSTS = {
   WAKE_MS, HOLD_MS, BAR_MS, CHOOSE_MS, COMMIT_MS, CONFIRM_MS, RESULT_MS, PING_EVERY_MS, DEAF_MS,
   STALE_MS, QUIET_CONFIRM_MS, LIGHT_FULL, LIGHT_DIM, LIGHT_PAIR, LIGHT_AWAKE, LIGHT_OFF, CARD_WORDS,
 };
+
+/** Every sound the wrist makes, as notes: [Hz, ms], 0 Hz a rest. band_logic.h SOUNDS is the same table. */
+export const SOUNDS = {
+  tick: [[1800, 25]],
+  double: [[1800, 25], [0, 60], [1800, 25]],
+  down: [[1047, 90], [784, 180]],
+  up: [[1047, 70], [1319, 70], [1568, 70], [2093, 140]],
+  fall: [[1568, 100], [1047, 200]],
+  low: [[784, 120], [523, 220]],
+  ask: [[1319, 80], [0, 50], [1760, 160]],
+  jingle: [[1319, 80], [1568, 80], [2637, 80], [2093, 80], [2349, 80], [3136, 200]],
+  warn: [[880, 150], [698, 150], [880, 150], [698, 150]],
+};
+
+/** Every flash: its colour, then count × on / off ms. `card` is the card chosen, white for OFF. band_logic.h FLASHES. */
+export const FLASHES = {
+  set: { colour: 'card', count: 2, on: 150, off: 100 },
+  changed: { colour: 'red', count: 3, on: 120, off: 90 },
+  notsent: { colour: 'orange', count: 2, on: 350, off: 250 },
+  warn: { colour: 'orange', count: 2, on: 350, off: 250 },
+  check: { colour: 'white', count: 2, on: 150, off: 100 },
+};
+
+const soundMs = (name) => (name ? SOUNDS[name].reduce((ms, [, len]) => ms + len, 0) : 0);
+const flashMs = (f) => (f ? f.count * (f.on + f.off) : 0);
 
 /** A relay show, read the way band_logic.h readFrame() reads it: wrong types fall back to defaults. */
 function readShow(s) {
@@ -78,12 +108,39 @@ export function createWrist({ key }) {
   let choice = '';            // what was sent: a card, or '' for off
   let word = '';
   let out = [];
+  // Reactions (rule 6): this input's, and the one playing.
+  let moment = [];
+  let playing = null;         // { sound, flash, cls, audible, at, until }
+  let due = [];               // sounds started since sounds() was last asked
 
   const send = (m) => out.push(JSON.stringify(m));
   const stale = (now) => !link.up && (!link.ever || now - link.lost >= STALE_MS);
   const personal = () => !!show && show.hasArmed;
   const current = () => (quiet.pending || show?.quiet ? 'notnow' : show?.armed || 'off');
   const pct = () => (battery >= 0 ? battery + '%' : '');
+
+  /** A reaction of this moment. cls: 0 a key or a result, 1 a call, 2 a warning. */
+  function react(sound, flash = null, cls = 0) {
+    moment.push({ sound, flash, cls, audible: true });
+  }
+
+  function start(r, at) {
+    playing = { ...r, at, until: at + Math.max(soundMs(r.sound), flashMs(r.flash)) };
+    if (r.sound && r.audible) due.push(r.sound);
+  }
+
+  /** The end of a moment: its reaction replaces the one playing. */
+  function settle(now) {
+    if (!moment.length) return;
+    const first = moment[0];
+    moment = [];
+    start(first, now);
+  }
+
+  /** A reaction is over once its sound and its flash are. */
+  function advance(now) {
+    if (playing && now >= playing.until) playing = null;
+  }
 
   function noSignal() {
     const why = wifi ? 'NO RELAY' : 'NO WI-FI';
@@ -108,6 +165,7 @@ export function createWrist({ key }) {
     quiet.sent = false;
     rest();
     wakeUntil = now;
+    react('down');
   }
 
   function result(now, w) {
@@ -118,13 +176,16 @@ export function createWrist({ key }) {
     frozen = false;
   }
 
-  function commit(now) {
+  /** `held`: a KEY2 hold sends it at once, and says so with a double tick, except from NOT NOW, which is silent. */
+  function commit(now, held = false) {
     if (frozen) return;
     if (preview === current() || !link.up) { rest(); return; }
+    const silent = current() === 'notnow';
     choice = preview === 'off' ? '' : preview;
     send({ t: 'set', intent: choice || null, basis });
     mode = 'sending';
     sentAt = now;
+    if (held && !silent) react('double');
   }
 
   function step(now) {
@@ -153,12 +214,13 @@ export function createWrist({ key }) {
 
   function sideHeld(now) {
     if (k1.down || frozen) return;
-    if (mode === 'choosing') commit(now);
+    if (mode === 'choosing') commit(now, true);
     else if (mode === 'look') stepAt = now;
     else if (mode === 'rest' || mode === 'result') step(now);
   }
 
   function tick(now) {
+    advance(now);
     if (link.up) {
       if (now - link.heard > DEAF_MS) { out.push('DROP'); closed(now); }
       else if (now - link.asked >= PING_EVERY_MS) { link.asked = now; send({ t: 'ping' }); }
@@ -176,28 +238,39 @@ export function createWrist({ key }) {
       if (link.up) { out.push('DROP'); closed(now); }
       if (fromQuiet) { quiet.pending = true; quiet.sent = false; }
     } else if (mode === 'result' && now >= resultUntil) rest();
+    settle(now);
   }
 
   function keyDown(k, now) {
+    advance(now);
     const s = k === 1 ? k1 : k2;
     if (s.down) return;
     s.down = true;
     s.since = now;
     s.fired = false;
     if (k === 1 && (mode === 'look' || mode === 'choosing')) frozen = true;
+    // Every press is heard as it goes down; NOT NOW is silent.
+    if (current() !== 'notnow') react('tick');
+    settle(now);
   }
 
   function keyUp(k, now) {
+    advance(now);
     const s = k === 1 ? k1 : k2;
     if (!s.down) return;
     s.down = false;
-    if (s.fired) return;
-    if (k === 2) { step(now); return; }
-    if (frozen) rest();
-    wakeUntil = now + WAKE_MS;
+    if (!s.fired) {
+      if (k === 2) step(now);
+      else {
+        if (frozen) rest();
+        wakeUntil = now + WAKE_MS;
+      }
+    }
+    settle(now);
   }
 
   function linkUp(now) {
+    advance(now);
     if (stale(now)) show = null;
     link.up = true;
     link.ever = true;
@@ -208,9 +281,22 @@ export function createWrist({ key }) {
     if (quiet.pending) { hello.quiet = true; quiet.sent = true; quiet.at = now; }
     if (battery >= 0) hello.battery = battery;
     send(hello);
+    settle(now);
+  }
+
+  function linkDown(now) {
+    advance(now);
+    closed(now);
+    settle(now);
   }
 
   function frame(text, now) {
+    advance(now);
+    heardFrame(text, now);
+    settle(now);
+  }
+
+  function heardFrame(text, now) {
     link.heard = now;
     let m;
     try { m = JSON.parse(text); } catch { return; }
@@ -290,7 +376,7 @@ export function createWrist({ key }) {
     keyDown,
     keyUp,
     linkUp,
-    linkDown: (now) => closed(now),
+    linkDown,
     heard: (now) => { link.heard = now; },
     frame,
     tick,
@@ -298,6 +384,8 @@ export function createWrist({ key }) {
     setWifi: (on) => { wifi = !!on; },
     /** Everything to send since the last take: frame text, or 'DROP' to drop the socket. */
     take: () => { const o = out; out = []; return o; },
+    /** The names of the sounds due to start since the last ask: the player plays the newest. */
+    sounds: () => { const d = due; due = []; return d; },
     face,
   };
 }

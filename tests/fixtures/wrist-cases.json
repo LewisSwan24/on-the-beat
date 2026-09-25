@@ -38,12 +38,12 @@
         { "at": "0", "battery": 62 },
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
         { "at": "0", "show": "OFF", "rev": 1, "face": { "light": "LIGHT_OFF" } },
-        { "at": "1000", "key1": "down" },
+        { "at": "1000", "key1": "down", "sounds": ["tick"] },
         { "at": "1000+HOLD_MS-500", "key1": "up", "face": { "big": "READY", "small": "62%", "light": "LIGHT_AWAKE" } },
-        { "at": "10000", "key1": "down" },
+        { "at": "10000", "key1": "down", "sounds": ["tick"] },
         { "at": "10000+HOLD_MS-100", "key1": "up", "face": { "big": "READY", "light": "LIGHT_AWAKE" } },
-        { "at": "20000", "key1": "down" },
-        { "at": "20000+HOLD_MS", "key1": "up", "sent": [{ "t": "hold" }], "face": { "big": "", "light": "LIGHT_OFF" } }
+        { "at": "20000", "key1": "down", "sounds": ["tick"] },
+        { "at": "20000+HOLD_MS", "key1": "up", "sent": [{ "t": "hold" }], "face": { "big": "", "light": "LIGHT_OFF" }, "sounds": ["down"] }
       ]
     },
     {
@@ -52,13 +52,13 @@
         { "at": "0", "battery": 62 },
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
         { "at": "0", "show": "OFF", "rev": 1 },
-        { "at": "1000", "key1": "down", "face": { "small": "", "bar": -1, "light": "LIGHT_OFF" } },
+        { "at": "1000", "key1": "down", "face": { "small": "", "bar": -1, "light": "LIGHT_OFF" }, "sounds": ["tick"] },
         { "at": "1000+BAR_MS-1", "face": { "small": "", "bar": -1, "light": "LIGHT_OFF" } },
         { "at": "1000+BAR_MS", "face": { "big": "", "small": "KEEP HOLDING", "bar": 20, "light": "LIGHT_AWAKE" } },
         { "at": "1000+HOLD_MS-1", "face": { "small": "KEEP HOLDING", "bar": 99 } },
         { "at": "1000+HOLD_MS-1", "key1": "up", "face": { "big": "READY", "small": "62%", "bar": -1, "light": "LIGHT_AWAKE" } },
         { "at": "5000", "show": "HI", "rev": 2 },
-        { "at": "6000", "key1": "down" },
+        { "at": "6000", "key1": "down", "sounds": ["tick"] },
         { "at": "6000+BAR_MS", "face": { "big": "HI :)", "small": "KEEP HOLDING", "field": "hi", "light": "LIGHT_FULL" } },
         { "at": "6000+BAR_MS", "key1": "up", "face": { "small": "BLUE MEANS HELLO", "bar": -1 } }
       ]
@@ -67,12 +67,12 @@
       "name": "NOT NOW with no relay is dark, rides in the next hello, and a press then says NOT NOW",
       "steps": [
         { "at": "0", "battery": 62 },
-        { "at": "0", "key1": "down" },
-        { "at": "HOLD_MS", "face": { "light": "LIGHT_OFF" } },
+        { "at": "0", "key1": "down", "sounds": ["tick"] },
+        { "at": "HOLD_MS", "face": { "light": "LIGHT_OFF" }, "sounds": ["down"] },
         { "at": "HOLD_MS", "key1": "up", "face": { "light": "LIGHT_OFF" } },
         { "at": "5000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "quiet": true, "battery": 62 }] },
         { "at": "5100", "show": "QUIET", "rev": 2 },
-        { "at": "6000", "press": 1, "face": { "big": "NOT NOW", "small": "62%", "field": "black", "light": "LIGHT_AWAKE" } }
+        { "at": "6000", "press": 1, "face": { "big": "NOT NOW", "small": "62%", "field": "black", "light": "LIGHT_AWAKE" }, "downSounds": [] }
       ]
     },
     {
@@ -107,12 +107,12 @@
       "steps": [
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
         { "at": "0", "show": "HI", "rev": 3 },
-        { "at": "1000", "key2": "down" },
+        { "at": "1000", "key2": "down", "sounds": ["tick"] },
         { "at": "1000+HOLD_MS", "face": { "big": "HI :)", "small": "SIDE TO CHANGE" } },
         { "at": "1000+HOLD_MS", "key2": "up" },
         { "at": "3000", "press": 2, "face": { "big": "FIRST SONG?" } },
-        { "at": "4000", "key2": "down" },
-        { "at": "4000+HOLD_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }], "face": { "big": "FIRST SONG?", "small": "SENDING" } },
+        { "at": "4000", "key2": "down", "sounds": ["tick"] },
+        { "at": "4000+HOLD_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }], "face": { "big": "FIRST SONG?", "small": "SENDING" }, "sounds": ["double"] },
         { "at": "4000+HOLD_MS", "key2": "up" },
         { "at": "4000+HOLD_MS+100", "press": 2, "face": { "small": "SENDING" } }
       ]
@@ -136,12 +136,12 @@
       "steps": [
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
         { "at": "0", "show": "QUIET", "rev": 6 },
-        { "at": "1000", "press": 2, "face": { "big": "NOT NOW", "small": "SIDE TO CHANGE", "light": "LIGHT_AWAKE" } },
-        { "at": "2000", "press": 2, "face": { "big": "HI :)", "small": "HOLD SIDE TO SHOW", "field": "black", "ink": "hi" } },
+        { "at": "1000", "press": 2, "face": { "big": "NOT NOW", "small": "SIDE TO CHANGE", "light": "LIGHT_AWAKE" }, "downSounds": [] },
+        { "at": "2000", "press": 2, "face": { "big": "HI :)", "small": "HOLD SIDE TO SHOW", "field": "black", "ink": "hi" }, "downSounds": [] },
         { "at": "2100+COMMIT_MS", "face": { "small": "HOLD SIDE TO SHOW" } },
         { "at": "2100+CHOOSE_MS", "face": { "light": "LIGHT_OFF" } },
-        { "at": "10000", "press": 2, "face": { "big": "NOT NOW" } },
-        { "at": "11000", "press": 2, "face": { "big": "HI :)", "small": "HOLD SIDE TO SHOW" } },
+        { "at": "10000", "press": 2, "face": { "big": "NOT NOW" }, "downSounds": [] },
+        { "at": "11000", "press": 2, "face": { "big": "HI :)", "small": "HOLD SIDE TO SHOW" }, "downSounds": [] },
         { "at": "12000", "key2": "down" },
         { "at": "12000+HOLD_MS", "sent": [{ "t": "set", "intent": "hi", "basis": 6 }], "face": { "big": "HI :)", "small": "SENDING" } },
         { "at": "12000+HOLD_MS", "key2": "up" },
@@ -155,9 +155,9 @@
         { "at": "0", "show": "HI", "rev": 3 },
         { "at": "1000", "press": 2 },
         { "at": "2000", "press": 2, "face": { "big": "FIRST SONG?" } },
-        { "at": "4100", "key1": "down" },
+        { "at": "4100", "key1": "down", "sounds": ["tick"] },
         { "at": "2100+COMMIT_MS", "face": { "big": "FIRST SONG?" } },
-        { "at": "4100+HOLD_MS", "sent": [{ "t": "hold" }], "face": { "light": "LIGHT_OFF" } },
+        { "at": "4100+HOLD_MS", "sent": [{ "t": "hold" }], "face": { "light": "LIGHT_OFF" }, "sounds": ["down"] },
         { "at": "4100+HOLD_MS", "key1": "up", "face": { "light": "LIGHT_OFF" } }
       ]
     },
@@ -240,8 +240,8 @@
         { "at": "0", "battery": 62 },
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
         { "at": "0", "show": "QUIET", "rev": 6 },
-        { "at": "1000", "press": 2 },
-        { "at": "2000", "press": 2 },
+        { "at": "1000", "press": 2, "downSounds": [] },
+        { "at": "2000", "press": 2, "downSounds": [] },
         { "at": "3000", "key2": "down" },
         { "at": "3000+HOLD_MS", "sent": [{ "t": "set", "intent": "hi", "basis": 6 }] },
         { "at": "3000+HOLD_MS", "key2": "up" },
@@ -257,8 +257,8 @@
         { "at": "1000", "press": 2 },
         { "at": "2000", "press": 2 },
         { "at": "2100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
-        { "at": "5200", "key1": "down" },
-        { "at": "5200+HOLD_MS", "sent": [{ "t": "hold" }], "face": { "light": "LIGHT_OFF" } },
+        { "at": "5200", "key1": "down", "sounds": ["tick"] },
+        { "at": "5200+HOLD_MS", "sent": [{ "t": "hold" }], "face": { "light": "LIGHT_OFF" }, "sounds": ["down"] },
         { "at": "5200+HOLD_MS", "key1": "up" },
         { "at": "7000", "show": "SONG", "rev": 4, "face": { "small": "", "light": "LIGHT_OFF" } }
       ]

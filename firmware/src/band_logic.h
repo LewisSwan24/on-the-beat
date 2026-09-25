@@ -51,6 +51,75 @@ constexpr uint8_t LIGHT_PAIR = 160;   // bright enough to scan, not so bright th
 constexpr uint8_t LIGHT_AWAKE = 110;  // a woken face, and every face read up close
 constexpr uint8_t LIGHT_OFF = 0;
 
+// ---------- what the wrist plays ----------
+//
+// The same tables as app/lib/wrist.js SOUNDS and FLASHES; tests/firmware.test.js
+// holds them equal. A note is Hz and ms, 0 Hz a rest.
+
+struct Note {
+  uint16_t hz, ms;
+};
+struct Sound {
+  const char* name;
+  const Note* notes;
+  size_t count;
+};
+
+namespace detail {
+constexpr Note TICK[] = {{1800, 25}};
+constexpr Note DOUBLE[] = {{1800, 25}, {0, 60}, {1800, 25}};
+constexpr Note DOWN[] = {{1047, 90}, {784, 180}};
+constexpr Note UP[] = {{1047, 70}, {1319, 70}, {1568, 70}, {2093, 140}};
+constexpr Note FALL[] = {{1568, 100}, {1047, 200}};
+constexpr Note LOW_TONE[] = {{784, 120}, {523, 220}};  // not LOW: Arduino.h makes LOW a macro
+constexpr Note ASK[] = {{1319, 80}, {0, 50}, {1760, 160}};
+constexpr Note JINGLE[] = {{1319, 80}, {1568, 80}, {2637, 80}, {2093, 80}, {2349, 80}, {3136, 200}};
+constexpr Note WARN[] = {{880, 150}, {698, 150}, {880, 150}, {698, 150}};
+template <size_t N>
+constexpr Sound sound(const char* name, const Note (&notes)[N]) { return {name, notes, N}; }
+}  // namespace detail
+
+constexpr Sound SOUNDS[] = {
+    detail::sound("tick", detail::TICK),     detail::sound("double", detail::DOUBLE), detail::sound("down", detail::DOWN),
+    detail::sound("up", detail::UP),         detail::sound("fall", detail::FALL),     detail::sound("low", detail::LOW_TONE),
+    detail::sound("ask", detail::ASK),       detail::sound("jingle", detail::JINGLE), detail::sound("warn", detail::WARN),
+};
+
+inline const Sound* soundFor(const std::string& name) {
+  for (const Sound& s : SOUNDS)
+    if (name == s.name) return &s;
+  return nullptr;
+}
+
+inline uint32_t soundMs(const char* name) {
+  const Sound* s = name ? soundFor(name) : nullptr;
+  uint32_t ms = 0;
+  if (s)
+    for (size_t i = 0; i < s->count; ++i) ms += s->notes[i].ms;
+  return ms;
+}
+
+/** A flash: its colour, then count × on / off ms. "card" is the card chosen, white for OFF. */
+struct Flash {
+  const char* name;
+  const char* colour;
+  uint8_t count;
+  uint16_t on, off;
+};
+
+constexpr Flash FLASHES[] = {
+    {"set", "card", 2, 150, 100},       {"changed", "red", 3, 120, 90}, {"notsent", "orange", 2, 350, 250},
+    {"warn", "orange", 2, 350, 250},    {"check", "white", 2, 150, 100},
+};
+
+inline const Flash* flashFor(const std::string& name) {
+  for (const Flash& f : FLASHES)
+    if (name == f.name) return &f;
+  return nullptr;
+}
+
+inline uint32_t flashMs(const Flash* f) { return f ? uint32_t(f->count) * (f->on + f->off) : 0; }
+
 // ---------- colour ----------
 
 struct Rgb {
@@ -977,7 +1046,15 @@ class Wrist {
     return o;
   }
 
+  /** The names of the sounds due to start since the last ask: the player plays the newest. */
+  std::vector<std::string> sounds() {
+    std::vector<std::string> d;
+    d.swap(due_);
+    return d;
+  }
+
   void keyDown(int k, uint32_t now) {
+    advance(now);
     Key& s = k == 1 ? k1_ : k2_;
     if (s.down) return;
     s.down = true;
@@ -985,33 +1062,58 @@ class Wrist {
     s.fired = false;
     // Any KEY1 press-down freezes a choice at once: no commit can fire.
     if (k == 1 && (mode_ == LOOK || mode_ == CHOOSING)) frozen_ = true;
+    // Every press is heard as it goes down; NOT NOW is silent.
+    if (current() != "notnow") react("tick");
+    settle(now);
   }
 
   void keyUp(int k, uint32_t now) {
+    advance(now);
     Key& s = k == 1 ? k1_ : k2_;
     if (!s.down) return;
     s.down = false;
-    if (s.fired) return;
-    if (k == 2) {
-      step(now);
-      return;
+    if (!s.fired) {
+      if (k == 2) {
+        step(now);
+      } else {
+        if (frozen_) rest();
+        wakeUntil_ = now + WAKE_MS;
+      }
     }
-    if (frozen_) rest();
-    wakeUntil_ = now + WAKE_MS;
+    settle(now);
   }
 
   void linkUp(uint32_t now) {
+    advance(now);
     if (link_.stale(now)) haveShow_ = false;
     link_.opened(now);
     // A hold not yet heard rides on the hello: the relay applies it before anything else.
     const bool quiet = quiet_.dark();
     if (quiet) quiet_.sent(now);
     out_.push_back(helloFrame(id_, key_, battery_, secret_, quiet));
+    settle(now);
   }
 
-  void linkDown(uint32_t now) { closed(now); }
+  void linkDown(uint32_t now) {
+    advance(now);
+    closed(now);
+    settle(now);
+  }
 
   void frame(const std::string& text, uint32_t now) {
+    advance(now);
+    heardFrame(text, now);
+    settle(now);
+  }
+
+  void tick(uint32_t now) {
+    advance(now);
+    ticked(now);
+    settle(now);
+  }
+
+ private:
+  void heardFrame(const std::string& text, uint32_t now) {
     link_.heard(now);
     Frame f;
     if (!readFrame(text, f)) return;
@@ -1036,7 +1138,7 @@ class Wrist {
     }
   }
 
-  void tick(uint32_t now) {
+  void ticked(uint32_t now) {
     switch (link_.tick(now)) {
       case Link::DROP:
         out_.push_back("DROP");
@@ -1080,6 +1182,7 @@ class Wrist {
     }
   }
 
+ public:
   Screen face(uint32_t now) const {
     Screen f;
     if (mode_ == LOOK) {
@@ -1111,6 +1214,43 @@ class Wrist {
     bool fired = false;
     uint32_t since = 0;
   };
+  /** One reaction. cls: 0 a key or a result, 1 a call, 2 a warning. */
+  struct Reaction {
+    const char* sound = nullptr;
+    const Flash* flash = nullptr;
+    int cls = 0;
+    bool audible = true;
+    uint32_t at = 0, until = 0;
+  };
+
+  void react(const char* sound, const Flash* flash = nullptr, int cls = 0) {
+    Reaction r;
+    r.sound = sound;
+    r.flash = flash;
+    r.cls = cls;
+    moment_.push_back(r);
+  }
+
+  void start(Reaction r, uint32_t at) {
+    r.at = at;
+    r.until = at + std::max(soundMs(r.sound), flashMs(r.flash));
+    playing_ = r;
+    playingOn_ = true;
+    if (r.sound && r.audible) due_.push_back(r.sound);
+  }
+
+  /** The end of a moment: its reaction replaces the one playing. */
+  void settle(uint32_t now) {
+    if (moment_.empty()) return;
+    const Reaction first = moment_.front();
+    moment_.clear();
+    start(first, now);
+  }
+
+  /** A reaction is over once its sound and its flash are. */
+  void advance(uint32_t now) {
+    if (playingOn_ && static_cast<int32_t>(now - playing_.until) >= 0) playingOn_ = false;
+  }
 
   static Screen words(const std::string& big, const std::string& small, const std::string& field, const std::string& ink,
                       uint8_t light) {
@@ -1170,6 +1310,7 @@ class Wrist {
     quiet_.held();
     rest();
     wakeUntil_ = now;
+    react("down");
   }
 
   void result(uint32_t now, const char* w) {
@@ -1180,18 +1321,21 @@ class Wrist {
     frozen_ = false;
   }
 
-  void commit(uint32_t now) {
+  /** `held`: a KEY2 hold sends it at once, and says so with a double tick, except from NOT NOW, which is silent. */
+  void commit(uint32_t now, bool held = false) {
     if (frozen_) return;
     // "In force" is checked again: a preview equal to what is armed sends nothing.
     if (preview_ == current() || !link_.up()) {
       rest();
       return;
     }
+    const bool silent = current() == "notnow";
     choice_ = preview_ == "off" ? "" : preview_;
     out_.push_back("{\"t\":\"set\",\"intent\":" + (choice_.empty() ? std::string("null") : "\"" + choice_ + "\"") +
                    ",\"basis\":" + std::to_string(basis_) + "}");
     mode_ = SENDING;
     sentAt_ = now;
+    if (held && !silent) react("double");
   }
 
   static std::string after(const std::string& card) {
@@ -1229,7 +1373,7 @@ class Wrist {
   /** KEY2 held for HOLD_MS: send now in a choice; with no preview yet, only wake. */
   void sideHeld(uint32_t now) {
     if (k1_.down || frozen_) return;
-    if (mode_ == CHOOSING) commit(now);
+    if (mode_ == CHOOSING) commit(now, true);
     else if (mode_ == LOOK) stepAt_ = now;
     else if (mode_ == REST || mode_ == RESULT) step(now);
   }
@@ -1248,6 +1392,11 @@ class Wrist {
   uint32_t wakeUntil_ = 0, stepAt_ = 0, sentAt_ = 0, resultUntil_ = 0;
   int64_t basis_ = 0;
   std::vector<std::string> out_;
+  // Reactions (rule 6): this input's, and the one playing.
+  std::vector<Reaction> moment_;
+  Reaction playing_;
+  bool playingOn_ = false;
+  std::vector<std::string> due_;
 };
 
 // ---------- the serial console ----------

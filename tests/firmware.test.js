@@ -20,7 +20,7 @@ import WebSocket from 'ws';
 import { createRelay, WS_PATH } from '../relay/server.js';
 import { HUE } from '../app/copy.js';
 import { codeFrom, pairUrl } from '../app/lib/pairing.js';
-import { CONSTS } from '../app/lib/wrist.js';
+import { CONSTS, FLASHES, SOUNDS } from '../app/lib/wrist.js';
 import { TABLE, lines, check } from './wrist-table.js';
 
 const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).digest('hex').slice(0, 32);
@@ -28,6 +28,8 @@ const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).diges
 const here = fileURLToPath(new URL('..', import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'otb-fw-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
+
+let cxxUsed = null;  // the compiler that built it
 
 /** The logic, built by the first compiler this machine has, under the sanitizers where it can be. */
 function build() {
@@ -37,7 +39,10 @@ function build() {
     for (const extra of [['-fsanitize=address,undefined', '-fno-sanitize-recover=all'], []]) {
       const r = spawnSync(cxx, [...extra, ...args], { encoding: 'utf8' });
       if (r.error) break;
-      if (r.status === 0) return out;
+      if (r.status === 0) {
+        cxxUsed = cxx;
+        return out;
+      }
       if (!extra.length) throw new Error(cxx + ' could not build the firmware logic:\n' + r.stderr);
     }
   }
@@ -99,6 +104,13 @@ test('the wristband logic passes its own checks', { skip }, () => {
   const r = spawnSync(bin, [], { encoding: 'utf8', env });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /^ok: \d+ checks/);
+});
+
+test("the wristband logic compiles as the band's compiler takes it: C++11, after Arduino's macros", { skip }, () => {
+  if (broken) throw broken;
+  const r = spawnSync(cxxUsed, ['-std=gnu++11', '-fsyntax-only', '-Wall', '-Wextra', '-Werror',
+    join(here, 'firmware', 'host', 'as_band.cpp')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
 });
 
 test('the colours on the wrist are the colours on the phone', { skip }, () => {
@@ -240,6 +252,12 @@ test('what the firmware says, the relay takes; what the relay says, the firmware
 test('the firmware and the stand-in keep the same constants, by name', { skip }, () => {
   const [consts] = speak(['consts']);
   assert.deepEqual(JSON.parse(consts), CONSTS);
+});
+
+test('the firmware and the stand-in play the same notes and the same flashes', { skip }, () => {
+  const [sounds, flashes] = speak(['sounds', 'flashes']);
+  assert.deepEqual(JSON.parse(sounds), SOUNDS);
+  assert.deepEqual(JSON.parse(flashes), FLASHES);
 });
 
 // The stand-in's table of cases (tests/wrist.test.js), run through band_logic.h's Wrist.
