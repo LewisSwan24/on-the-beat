@@ -303,6 +303,60 @@ test('a missed code is throttled on the same counter as an id-claim', async () =
   close(ana);
 });
 
+/** A phone that only guesses: its own headers, joined to a venue, sending id-claims nothing answers. */
+async function guesser(port, headers, venue) {
+  const ws = new WebSocket('ws://127.0.0.1:' + port + WS_PATH, { headers });
+  clients.add(ws);
+  await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject); });
+  ws.send(JSON.stringify({ t: 'join', venue, me: randomBytes(16).toString('hex') }));
+  return { ws, claim: () => ws.send(JSON.stringify({ t: 'pair', band: randomBytes(16).toString('hex'), secret: newKey() })) };
+}
+
+/** Twenty unproven attempts from one address, over four sockets: the address's whole allowance. */
+async function spend(at, ip, venue) {
+  for (let s = 0; s < 4; s += 1) {
+    const g = await at(ip, venue + '-' + s);
+    for (let i = 0; i < 5; i += 1) {
+      const ok = reply(g, 'claim');
+      g.claim();
+      assert.equal((await ok).why, 'waiting', 'attempt ' + (s * 5 + i) + ' should be answered');
+    }
+    g.ws.close();
+  }
+}
+
+test('behind a proxy that names each client, the named address is what the limit counts', async () => {
+  // On Fly.io every socket comes from its proxy, which names the client in
+  // Fly-Client-IP. Counted by the proxy's own address, one guesser would lock
+  // every phone out of pairing; told the header, the relay counts each apart.
+  const proxied = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist'), clientIpHeader: 'fly-client-ip' });
+  const at = (ip, venue) => guesser(proxied.port, { 'fly-client-ip': ip }, venue);
+  try {
+    await spend(at, '203.0.113.50', 'proxied');
+    const same = await at('203.0.113.50', 'proxied-4');
+    const blocked = reply(same, 'error');
+    same.claim();
+    assert.equal((await blocked).why, 'too many tries', 'the named address has had its twenty');
+    const other = await at('203.0.113.51', 'proxied-5');
+    const ok = reply(other, 'claim');
+    other.claim();
+    assert.equal((await ok).why, 'waiting', 'another client behind the same proxy is counted apart');
+  } finally {
+    await proxied.close();
+  }
+});
+
+test('without that setting, a client-address header is a claim anyone can make', async () => {
+  relay.expire(Date.now() + 61_000);
+  const at = (ip, venue) => guesser(relay.port, { 'fly-client-ip': ip }, venue);
+  await spend(at, '203.0.113.60', 'unproxied');
+  const other = await at('203.0.113.61', 'unproxied-4');
+  const blocked = reply(other, 'error');
+  other.claim();
+  assert.equal((await blocked).why, 'too many tries', "the socket's own address stands, whatever the header says");
+  relay.expire(Date.now() + 61_000);
+});
+
 test('id-claims with no wristband behind them are swept, so they cannot pile up', async () => {
   // One person holds one band, so a real pile-up needs many sockets: three
   // phones make three placeholders, and the sweep clears every one.

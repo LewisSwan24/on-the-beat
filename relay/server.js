@@ -67,7 +67,8 @@ export function loadShows(file) {
  * the night; the machine's own by default.
  */
 export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile, maxBands = 5_000, maxRooms = 5_000,
-  clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS, graceMs = GRACE_MS, nightTz } = {}) {
+  clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS, graceMs = GRACE_MS, nightTz,
+  clientIpHeader } = {}) {
   const now = () => clock();
   // A misspelt zone throws here, when the relay starts, not at its first sweep in the middle of the night.
   nightOf(now(), nightTz);
@@ -532,10 +533,14 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   /**
    * Who is guessing. Behind the tunnel every socket comes from this machine and
    * cloudflared names the real address; a header from anywhere else is a claim
-   * anyone can make, so there the socket's own address stands.
+   * anyone can make, so there the socket's own address stands. On a host whose
+   * proxy is the only way in and names each client (`clientIpHeader`, e.g.
+   * Fly.io's fly-client-ip), that name is the address.
    */
   function addressOf(req) {
     const a = req.socket.remoteAddress || '';
+    const named = clientIpHeader ? req.headers[clientIpHeader] : undefined;
+    if (named) return String(named).slice(0, 64);
     const cf = req.headers['cf-connecting-ip'];
     return cf && (a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1') ? String(cf).slice(0, 64) : a;
   }
@@ -674,6 +679,10 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === normalize(process.argv[1])) {
-  const relay = await createRelay({ port: Number(process.env.PORT) || 8790, nightTz: process.env.NIGHT_TZ || undefined });
+  const relay = await createRelay({
+    port: Number(process.env.PORT) || 8790,
+    nightTz: process.env.NIGHT_TZ || undefined,
+    clientIpHeader: process.env.CLIENT_IP_HEADER ? process.env.CLIENT_IP_HEADER.toLowerCase() : undefined,
+  });
   console.log('ON THE BEAT relay on http://localhost:' + relay.port + '/');
 }
