@@ -459,6 +459,7 @@ void console() {
   CHECK(saidLine(helloFrame(id, key, 62, secret, true)) == "hello to the relay, with its secret");
   CHECK(saidLine("{\"t\":\"set\",\"intent\":\"hi\",\"basis\":7}") == "a choice from the wrist: HI :)");
   CHECK(saidLine("{\"t\":\"set\",\"intent\":null,\"basis\":7}") == "a choice from the wrist: OFF");
+  CHECK(saidLine("{\"t\":\"wave\",\"ref\":\"a1b2c3d4e5\",\"basis\":7}") == "a wave back from the wrist");
 
   std::string shown;
   const auto heard = [&shown](const std::string& text) {
@@ -482,6 +483,14 @@ void console() {
   CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"meet\",\"intent\":\"hi\",\"big\":\"42\",\"small\":\"MEET\"}}") == "the relay shows: meet 42");
   CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"waiting\"}}") == "the relay shows: waiting");
   CHECK(heard("{\"t\":\"ping\"}").empty());
+  // Who waits is part of what it shows, as a count; never the handle.
+  const std::string hi = "{\"t\":\"show\",\"show\":{\"kind\":\"hi\",\"intent\":\"hi\",\"armed\":\"hi\",\"rev\":7";
+  CHECK(heard(hi + "}}") == "the relay shows: hi");
+  const std::string two = heard(hi + ",\"waves\":{\"ref\":\"a1b2c3d4e5\",\"n\":2,\"seq\":1790337603000}}}");
+  CHECK(two == "the relay shows: hi (2 waiting)" && two.find("a1b2") == std::string::npos);
+  CHECK(heard(hi + ",\"waves\":{\"ref\":\"f6a7b8c9d0\",\"n\":2,\"seq\":1790337603005}}}").empty());
+  CHECK(heard("{\"t\":\"wave\",\"ok\":true}") == "the relay took the wave back");
+  CHECK(heard("{\"t\":\"wave\",\"ok\":false,\"why\":\"gone\"}") == "the relay did not take the wave back: gone");
 }
 
 void said() {
