@@ -384,6 +384,8 @@ export function createRoom({
     has: (id) => people.has(id),
     /** The rev a wristband's `set` must name (rule 1), or null for someone not here. */
     revOf: (id) => people.get(id)?.rev ?? null,
+    /** What a wristband's wave back needs its person to show: SAY HI. */
+    armedOf: (id) => people.get(id)?.armed ?? null,
     reports: () => reports.slice(),
     size: () => people.size,
   };

@@ -57,7 +57,7 @@ export function helpers(port) {
       const m = JSON.parse(String(data));
       if (m.t === 'show') b.show = m.show;
       if (m.t === 'paired') b.secret = m.secret;
-      if (m.t === 'set' || m.t === 'error') b.replies.push(m);
+      if (m.t === 'set' || m.t === 'wave' || m.t === 'error') b.replies.push(m);
       b.waiters = b.waiters.filter((w) => !w());
     });
     await new Promise((resolve) => ws.once('open', resolve));

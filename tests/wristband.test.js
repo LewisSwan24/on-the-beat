@@ -512,20 +512,49 @@ test('leave forgets the switch; the grace does not, and away carries it', async 
 
 // ---------- waves (docs/superpowers/specs/2026-09-25-wrist-waves-design.md §3) ----------
 
-/** Ana wears a band, and ben and cai are in her room; all three on SAY HI. Each picks their own name: that is how a row is found. */
-async function waving(venue) {
-  const { band, ana } = await wearing(venue);
-  const ben = await phone(venue);
-  const cai = await phone(venue);
+/**
+ * Ana wears a band, and ben and cai are in her room; all three on SAY HI. Each
+ * picks their own name: that is how a row is found. `on` and `clock` are for
+ * a relay of a test's own, whose held clock is moved past the pairing flash.
+ */
+async function waving(venue, on = { phone, wristband, pairBand }, clock = null) {
+  const band = await on.wristband();
+  const ana = await on.phone(venue);
+  await on.pairBand(ana, band);
+  if (clock) clock.t += 3_000;                    // past the white flash a new pairing gives
+  const ben = await on.phone(venue);
+  const cai = await on.phone(venue);
   for (const [p, who] of [[ana, 'ana'], [ben, 'ben'], [cai, 'cai']]) {
     p.send({ t: 'pick', track: who });
     p.send({ t: 'arm', intent: 'hi' });
   }
   for (const p of [ana, ben, cai]) await p.until((v) => v.near.length === 2 && v.near.every((r) => r.pick));
-  await band.until((s) => s.kind === 'hi');
+  await band.until((s) => s.kind === 'hi', 5000);
   const row = (p, who) => p.view.near.find((r) => r.pick === who);
   return { band, ana, ben, cai, row };
 }
+
+/** A relay of a test's own, with its clock held: a second is the relay's, not the machine's. */
+async function heldRelay(fn) {
+  const clock = { t: new Date(2026, 8, 25, 23, 0).getTime() };
+  const own = await createRelay({ port: 0, host: '127.0.0.1', root: dir, clock: () => clock.t });
+  const on = helpers(() => own.port);
+  try {
+    await fn(on, clock, own);
+  } finally {
+    on.cleanup();
+    await own.close();
+  }
+}
+
+/** A band's own wave back, and the relay's answer. */
+async function waveBack(band, ref, basis) {
+  const before = band.replies.length;
+  band.send({ t: 'wave', ref, basis });
+  await band.until((s, b) => b.replies.length > before);
+  return band.replies.at(-1);
+}
+const refused = (why) => ({ t: 'wave', ok: false, why });
 
 test('a band on SAY HI is told who waits as its phone lists them: the newest, how many, its number; one show a change', async () => {
   const { band, ana, ben, cai, row } = await waving('waves-show');
@@ -614,4 +643,146 @@ test("a wave's number is the relay's own clock: the next is newer past a room le
       if (r.open) await r.own.close();
     }
   }
+});
+
+test("a band's wave back makes the match: it is answered ok, and both bands and both phones show the meeting", async () => {
+  const { band, ana, ben, cai, row } = await waving('waves-back');
+  const his = await wristband();
+  await pairBand(ben, his);
+  await his.until((s) => s.kind === 'hi', 5000);
+  ben.send({ t: 'wave', handle: row(ben, 'ana').handle });
+  const s = await band.until((x) => x.waves);
+  assert.deepEqual(await waveBack(band, s.waves.ref, s.rev), { t: 'wave', ok: true });
+  const [a, b] = await Promise.all([band.until((x) => x.kind === 'meet'), his.until((x) => x.kind === 'meet')]);
+  assert.equal(a.big, b.big, 'one number on both wrists');
+  const [m] = (await ana.until((v) => v.matches.length === 1)).matches;
+  assert.equal(String(m.number), a.big, "and on ana's phone");
+  assert.equal(String((await ben.until((v) => v.matches.length === 1)).matches[0].number), a.big, "and on ben's");
+  close(ana, ben, cai, band, his);
+});
+
+test('a malformed wave from a band is dropped unanswered; the rest are refused unpaired, no room, and too fast before anything is looked up', async () => {
+  await heldRelay(async (on, clock, own) => {
+    const loose = await on.wristband();
+    for (const m of [{ t: 'wave' }, { t: 'wave', ref: 'a1b2c3d4e5' }, { t: 'wave', ref: 'a1b2c3d4e5', basis: '1' },
+      { t: 'wave', ref: 'a1b2c3d4e5', basis: 1.5 }, { t: 'wave', ref: 'A1B2C3D4E5', basis: 1 }, { t: 'wave', ref: 'a1b2c3d4e', basis: 1 },
+      { t: 'wave', ref: 'a1b2c3d4e5f', basis: 1 }, { t: 'wave', ref: 'g1b2c3d4e5', basis: 1 }, { t: 'wave', ref: 1234567890, basis: 1 }]) {
+      loose.send(m);
+      await pause(40);
+      assert.deepEqual(loose.replies, [], JSON.stringify(m));
+    }
+    // None of those was stamped: this one, in the same second, is looked at.
+    assert.deepEqual(await waveBack(loose, 'a1b2c3d4e5', 1), refused('unpaired'));
+    assert.deepEqual(await waveBack(loose, 'b1b2c3d4e5', 1), refused('too fast'), 'the last was refused, and still stamped');
+    clock.t += 1_000;
+    assert.deepEqual(await waveBack(loose, 'b1b2c3d4e5', 1), refused('unpaired'), 'a second on');
+
+    const band = await on.wristband();
+    const ana = await on.phone('waves-noroom');
+    await on.pairBand(ana, band);
+    clock.t += 3_000;                              // past the white flash a new pairing gives
+    ana.ws.close();
+    await pause(100);
+    own.expire(clock.t + BAND_ALONE_MS + 1_000);   // held only by the wristband, for the hour
+    await band.until((s) => s.away);
+    assert.deepEqual(await waveBack(band, 'a1b2c3d4e5', 1), refused('no room'));
+  });
+});
+
+test("a band's wave is refused changed when its person's rev moved, or they left SAY HI or went NOT NOW", async () => {
+  await heldRelay(async (on, clock) => {
+    const { band, ana, ben, row } = await waving('waves-changed', on, clock);
+    ben.send({ t: 'wave', handle: row(ben, 'ana').handle });
+    const s = await band.until((x) => x.waves);
+    ana.send({ t: 'arm', intent: 'song' });
+    ana.send({ t: 'arm', intent: 'hi' });
+    await band.until((x) => x.kind === 'hi' && x.rev === s.rev + 2);
+    assert.deepEqual(await waveBack(band, s.waves.ref, s.rev), refused('changed'), 'a rev that moved');
+    clock.t += 1_000;
+    ana.send({ t: 'arm', intent: 'song' });
+    const song = await band.until((x) => x.kind === 'song');
+    assert.deepEqual(await waveBack(band, s.waves.ref, song.rev), refused('changed'), 'not on SAY HI');
+    clock.t += 1_000;
+    ana.send({ t: 'invisible', on: true });
+    const quiet = await band.until((x) => x.quiet);
+    assert.deepEqual(await waveBack(band, s.waves.ref, quiet.rev), refused('changed'), 'NOT NOW');
+    await pause(50);
+    assert.deepEqual([ana.view.matches, ben.view.matches], [[], []]);
+  });
+});
+
+test("a band's wave is refused gone for anyone not waiting on its person, a block reading exactly as leaving; a refused one tells nobody", async () => {
+  await heldRelay(async (on, clock) => {
+    const { band, ana, ben, cai, row } = await waving('waves-gone', on, clock);
+    const hi = band.show;
+    // A band never starts a wave: cai never waved, so nothing is recorded and nothing reaches his phone.
+    assert.deepEqual(await waveBack(band, row(ana, 'cai').handle, hi.rev), refused('gone'), 'not a waver');
+    await pause(50);
+    assert.equal(row(cai, 'ana').wavedAtYou, false, 'nothing reached cai');
+    clock.t += 1_000;
+    assert.deepEqual(await waveBack(band, 'a1b2c3d4e5', hi.rev), refused('gone'), 'a made-up ref');
+    assert.deepEqual(await waveBack(band, 'b1b2c3d4e5', hi.rev), refused('too fast'), 'a second made-up ref in the same second');
+
+    /** Ben back on SAY HI, and the ref ana's band is given for his wave. */
+    const ref = async () => { ben.send({ t: 'arm', intent: 'hi' }); return (await band.until((x) => x.waves)).waves.ref; };
+    ben.send({ t: 'wave', handle: row(ben, 'ana').handle });
+    let r = await ref();
+    ben.send({ t: 'arm', intent: 'song' });
+    await band.until((x) => !x.waves);
+    await pause(50);
+    let heard = 0;
+    const count = () => { heard += 1; };
+    ben.ws.on('message', count);
+    clock.t += 1_000;
+    assert.deepEqual(await waveBack(band, r, hi.rev), refused('gone'), 'the waver stopped showing blue');
+    await pause(50);
+    ben.ws.off('message', count);
+    assert.equal(heard, 0, "a refused wave sends nothing to the waver's phone");
+    r = await ref();
+    ben.send({ t: 'invisible', on: true });
+    await band.until((x) => !x.waves);
+    clock.t += 1_000;
+    assert.deepEqual(await waveBack(band, r, hi.rev), refused('gone'), 'the waver went NOT NOW');
+    r = await ref();
+    ben.send({ t: 'leave' });
+    await band.until((x) => !x.waves);
+    clock.t += 1_000;
+    const left = await waveBack(band, r, hi.rev);
+    assert.deepEqual(left, refused('gone'), 'the waver left');
+    cai.send({ t: 'wave', handle: row(cai, 'ana').handle });
+    r = (await band.until((x) => x.waves)).waves.ref;
+    cai.send({ t: 'block', handle: row(cai, 'ana').handle });
+    await band.until((x) => !x.waves);
+    clock.t += 1_000;
+    assert.deepEqual(await waveBack(band, r, hi.rev), left, 'blocked reads exactly as left');
+    assert.deepEqual(ana.view.matches, []);
+  });
+});
+
+test('a hello without the pairing secret cannot wave for anyone', async () => {
+  const { band, ana, ben, cai, row } = await waving('waves-secret');
+  ben.send({ t: 'wave', handle: row(ben, 'ana').handle });
+  const s = await band.until((x) => x.waves);
+  const fake = await hello({ t: 'wristband', id: band.id, key: band.key, v: 2 });
+  assert.deepEqual([fake.reply.why, fake.closed], ['bad band', 4001], "ana's band without its secret");
+  const stranger = await wristband();
+  assert.deepEqual(await waveBack(stranger, s.waves.ref, s.rev), refused('unpaired'), "another band, with ana's ref and rev");
+  await pause(50);
+  assert.deepEqual([ana.view.matches, ben.view.matches, band.show.waves.n], [[], [], 1]);
+  close(ana, ben, cai, band, stranger);
+});
+
+test("two people already matched tonight: a band's wave back is answered ok, and makes no second meeting", async () => {
+  const { band, ana, ben, cai, row } = await waving('waves-matched');
+  const wall = (p, who) => p.view.wall.find((r) => r.pick === who).handle;
+  ana.send({ t: 'like', handle: wall(ana, 'ben') });
+  ben.send({ t: 'like', handle: wall(ben, 'ana') });
+  const [m] = (await ana.until((v) => v.matches.length === 1)).matches;
+  await band.until((x) => x.kind === 'meet');
+  ben.send({ t: 'wave', handle: row(ben, 'ana').handle });
+  const s = await band.until((x) => x.waves);
+  assert.deepEqual(await waveBack(band, s.waves.ref, s.rev), { t: 'wave', ok: true });
+  await pause(100);
+  assert.deepEqual(ana.view.matches.map((x) => [x.id, x.number]), [[m.id, m.number]], 'the match they had, and no other');
+  close(ana, ben, cai, band);
 });

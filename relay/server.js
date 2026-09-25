@@ -30,6 +30,7 @@ const CLIP_TTL_MS = 3_600_000;        // "it loops on the floor for an hour"
 const PING_MS = 15_000;
 const BAND_GRACE_MS = 60_000;         // a wristband that drops keeps its letters this long
 const SET_GAP_MS = 1000;              // a wristband may change its person at most once a second
+const WAVE_GAP_MS = 1000;             // and wave back at most once a second, on a stamp of its own
 const TRIES_MS = 60_000;              // the window pairing attempts are counted in
 const SOCKET_TRIES = 5;               // pairing attempts one socket may make in it
 const ADDRESS_TRIES = 20;             // pairing attempts one address may make in it, over every socket
@@ -167,6 +168,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     waitingAt: 0,
     quiet: false,       // a hold with nobody in a room to hide, kept until they are
     setAt: 0,           // when this wristband last changed its person (rule 1)
+    waveAt: 0,          // when it last waved back, landed or not
   });
 
   // How long a record has been dead weight: a live wristband is never that, a
@@ -257,6 +259,29 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     return true;
   }
 
+  /**
+   * A wave back from the wrist, to the newest who waved at its person
+   * (docs/superpowers/specs/2026-09-25-wrist-waves-design.md §3). The relay
+   * answers ok, or no and why; a refused wave changes nothing and tells
+   * nobody else. Returns whether it landed.
+   */
+  function waveFromBand(ws, b, m) {
+    // Dropped whole, unanswered and unstamped, unless it is exactly a wave.
+    if (typeof m.ref !== 'string' || !/^[a-f0-9]{10}$/.test(m.ref) || !Number.isInteger(m.basis)) return false;
+    const answer = (why) => { ws.send(JSON.stringify(why ? { t: 'wave', ok: false, why } : { t: 'wave', ok: true })); return !why; };
+    // Stamped before anything is looked up, refused or not: finding a handle is a pass over the room.
+    if (now() - b.waveAt < WAVE_GAP_MS) return answer('too fast');
+    b.waveAt = now();
+    if (!b.person) return answer('unpaired');
+    const room = rooms.get(b.key)?.room;
+    if (!room?.has(b.person)) return answer('no room');
+    if (m.basis !== room.revOf(b.person) || room.armedOf(b.person) !== 'hi') return answer('changed');
+    // Not someone who waved at its person, or no longer someone it may wave at. A block must read exactly as
+    // leaving (promise 4). A band never starts a wave: with none to answer, nothing is recorded.
+    if (!room.wavedAtYou(b.person, m.ref) || room.wave(b.person, m.ref) === false) return answer('gone');
+    return answer(null);
+  }
+
   function handleBand(ws, m) {
     const b = bands.get(ws.band);
     // Only from the wristband's current socket: a set stuck in a replaced one must not land.
@@ -265,6 +290,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // Held: NOT NOW, from the wrist. The phone follows.
     if (m.t === 'hold') holdOn(b);
     if (m.t === 'set' && !setFromBand(ws, b, m)) return;
+    if (m.t === 'wave' && !waveFromBand(ws, b, m)) return;
     const r = b.key ? rooms.get(b.key) : null;
     if (r) push(r); else showBand(b);
   }
