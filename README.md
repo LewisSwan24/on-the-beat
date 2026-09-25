@@ -232,6 +232,11 @@ Tell it the venue's Wi-Fi and the relay at the console — `relay` takes the
 address `npm run tunnel` prints — or copy `src/secrets.example.h` to
 `src/secrets.h`, which git ignores, to build them in. What is typed is kept
 across restarts, which matters: a quick tunnel's address changes every run.
+Off the Wi-Fi, it asks the radio to join again every 15 s. The console says
+what the band is doing: the Wi-Fi coming and going and the reason the radio
+gave, each hello and whether it carries its secret (never the secret), each
+choice sent from the wrist, each refusal, and each change in what the relay
+shows.
 
 - **Everything that decides anything is in `src/band_logic.h`**, plain C++ with
   no hardware in it; `src/main.cpp` is only the screen, the two buttons, the
@@ -302,7 +307,8 @@ across restarts, which matters: a quick tunnel's address changes every run.
 - **A second button, and other timings.** Revision 6 gives the wristband a
   single button — a 3 s wake, and a 1 s hold for NOT NOW — and no second
   action. The owner chose on 24 Sep 2026: the side button (KEY2,
-  M5Unified's `BtnB` on every supported board; the power button is never used)
+  M5Unified's `BtnB` on every supported board, as a StickS3 and a StickC Plus
+  bore out; the power button is never used)
   changes the armed card, so the phone can stay in a pocket; a press wakes the
   face for six seconds, long enough to read a preview; NOT NOW is a hold of
   1.5 s, longer than a bump in a crowd. Every timing is a named constant, in
@@ -402,14 +408,27 @@ relay could drive what a wrist shows.
 - **Proximity.** Wristbands pair and light, but nothing measures who is near
   whom: every person is still `in this room`. Nearness wants ESP-NOW between
   wristbands, which wants the hardware.
-- **The firmware has run on one wristband.** A StickS3 joined a phone's
-  hotspot, reached the relay through a quick tunnel, and was paired by
-  scanning its code from a real Android phone: the phone showed its battery,
-  a card armed on the phone lit the wrist in its colour, and a hold on the
-  wrist took the phone to the invisible screen. That is one band and one
-  phone; two wrists meeting, and a night's worth of battery, are not tried.
-  CI builds both envs with PlatformIO on every push — the ESP32 image is about
-  1.2 MB of its 3 MB app partition — and keeps each image to flash.
+- **The firmware has run on two wristbands, for one afternoon.** On 25 Sep
+  2026 a StickS3 and an M5StickC Plus joined an Android phone's hotspot and
+  reached the relay through a quick tunnel, with that phone and a laptop
+  browser as two people. From the wrist alone, the side button chose each
+  card and OFF and the phone followed, saying *Armed from your wristband*; a
+  face hold went NOT NOW and a side hold came back. With the phone locked for
+  over two minutes, SAY HI chosen on the band reached the other person's
+  WHO'S NEAR, and the phone woke with it still armed and no toast saying a tap
+  failed — but its socket stayed open all the while, so a band holding its
+  person with the phone truly gone is still untried. After a relay restart
+  the band waited with `OPEN YOUR PHONE` until the phone claimed it back
+  without letters, and when the laptop's own internet dropped for 80 s both
+  bands found the relay again by themselves. Two wrists met: both showed
+  `MEET 22` in the same second. Two things did not work, and are fixed: a
+  band that booted before the hotspot was on never joined it (it now begins
+  again every 15 s, and joined by itself once the hotspot was back), and the
+  console said too little to tell an UNPAIR tapped on the phone from a lost
+  secret (it now says what the wrist sends and each change in what the relay
+  shows). A night's worth of battery, and the Plus's face button, are not
+  tried. CI builds both envs with PlatformIO on every push — the ESP32 image
+  is about 1.2 MB of its 3 MB app partition — and keeps each image to flash.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was
