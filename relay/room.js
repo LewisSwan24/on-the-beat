@@ -60,7 +60,10 @@ export function createRoom({
 } = {}) {
   const people = new Map();   // id -> person
   const blocks = new Map();   // id -> Set of ids they blocked; outlives leave()
-  const waves = new Set();    // 'a>b': a waved at b (SAY HI)
+  // 'a>b' -> its number: a waved at b (SAY HI). The number is the time it was made, and at least one past
+  // the last wave b was sent, so a wristband that kept the number it last called for is called by the next.
+  const waves = new Map();
+  const latest = new Map();   // id -> the number of the last wave they were sent; outlives leave()
   const likes = new Set();    // 'a>b': a liked b's pick (FIRST SONG?)
   const dances = new Map();   // 'a>b' -> clip ref: a danced back to b (LET'S DANCE!)
   const matches = new Map();  // pairKey -> match
@@ -233,8 +236,20 @@ export function createRoom({
   function wave(viewer, h) {
     const t = target(viewer, h);
     if (!t || people.get(t).armed !== 'hi') return false;
-    waves.add(viewer + '>' + t);
-    return matchIfMutual((k) => waves.has(k), viewer, t, 'hi');
+    const k = viewer + '>' + t;
+    // A second wave keeps the first one's number: it is not newer.
+    if (!waves.has(k)) {
+      const n = Math.max(now(), (latest.get(t) ?? 0) + 1);
+      latest.set(t, n);
+      waves.set(k, n);
+    }
+    return matchIfMutual((x) => waves.has(x), viewer, t, 'hi');
+  }
+
+  /** Has the person behind this handle waved at the viewer? */
+  function wavedAtYou(viewer, h) {
+    const t = resolve(viewer, h);
+    return !!t && waves.has(t + '>' + viewer);
   }
 
   function like(viewer, h) {
@@ -306,12 +321,27 @@ export function createRoom({
     }
   }
 
+  /** Everyone a person may see right now: nobody while they are NOT NOW. */
+  const seen = (id) => (people.get(id)?.invisible ? [] : [...people.values()].filter((p) => shows(id, p.id)));
+  /** SAY HI's list: who is showing blue to this person. The phone's list and wavesAt() both come from here. */
+  const blue = (id) => seen(id).filter((p) => p.armed === 'hi');
+
+  /**
+   * The waves a person's phone lists as waved at them and not yet waved back,
+   * newest first, each with its number: what their wristband is told.
+   */
+  function wavesAt(id) {
+    return blue(id)
+      .filter((p) => waves.has(p.id + '>' + id) && !waves.has(id + '>' + p.id))
+      .map((p) => ({ handle: handle(id, p.id), n: waves.get(p.id + '>' + id) }))
+      .sort((a, b) => b.n - a.n);
+  }
+
   /** Everything one phone may know, and nothing else. */
   function viewFor(id) {
     const me = people.get(id);
     if (!me) return null;
-    const quiet = me.invisible;
-    const others = quiet ? [] : [...people.values()].filter((p) => shows(id, p.id));
+    const others = seen(id);
     const row = (p) => ({ handle: handle(id, p.id), band: p.band });
     return {
       me: {
@@ -319,7 +349,7 @@ export function createRoom({
         rev: me.rev, seq: me.seq, by: me.by, fresh: me.by === 'relay',
       },
       // SAY HI: who is showing blue, as a band and at most a pick — and whether they waved at you.
-      near: others.filter((p) => p.armed === 'hi').map((p) => ({
+      near: blue(id).map((p) => ({
         ...row(p), pick: p.pick, waved: waves.has(id + '>' + p.id), wavedAtYou: waves.has(p.id + '>' + id),
       })),
       // FIRST SONG?: everyone's answer, liked as an answer, never as a face.
@@ -348,7 +378,7 @@ export function createRoom({
 
   return {
     join, leave, setBand, setProfile, arm, setInvisible, fromPhone, pick, postClip,
-    wave, like, unlike, danceBack, block, report, keep, viewFor,
+    wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, viewFor,
     /** For the relay: who is here, so it knows whose view to push. */
     ids: () => [...people.keys()],
     has: (id) => people.has(id),

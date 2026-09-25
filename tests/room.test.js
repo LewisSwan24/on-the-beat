@@ -74,6 +74,93 @@ test('you can only wave at someone showing blue, and never while invisible', () 
   assert.equal(room.viewFor('ben').near[0].wavedAtYou, false, 'neither wave landed');
 });
 
+/** The rows a phone shows as waved at its person and not waved back: what the wristband is told about. */
+const waiting = (room, id) => room.viewFor(id).near.filter((p) => p.wavedAtYou && !p.waved).map((p) => p.handle);
+
+test("wavesAt() is the phone's waiting rows, newest first, each numbered by the clock", () => {
+  const { room, handleOf, tick } = night();
+  const t0 = Date.UTC(2026, 8, 23, 11, 4);
+  for (const id of ['ana', 'ben', 'cai']) room.arm(id, 'hi');
+  room.wave('ana', handleOf('ana', 'ben'));
+  tick(5);
+  room.wave('cai', handleOf('cai', 'ben'));
+  assert.deepEqual(room.wavesAt('ben'), [
+    { handle: handleOf('ben', 'cai'), n: t0 + 5 },
+    { handle: handleOf('ben', 'ana'), n: t0 },
+  ]);
+  assert.deepEqual(room.wavesAt('ben').map((w) => w.handle).sort(), waiting(room, 'ben').sort(), 'exactly the rows the phone lists');
+  room.wave('ben', handleOf('ben', 'cai'));
+  assert.deepEqual(room.wavesAt('ben').map((w) => w.handle), [handleOf('ben', 'ana')], 'one waved back to is not waiting');
+  assert.deepEqual(room.wavesAt('ana'), [], 'a wave tells its sender nothing');
+});
+
+test('wavesAt() leaves out whoever the phone leaves out, and everyone while its person is NOT NOW', () => {
+  const { room, handleOf } = night();
+  for (const id of ['ana', 'ben', 'cai']) room.arm(id, 'hi');
+  const [ana, cai] = [handleOf('ben', 'ana'), handleOf('ben', 'cai')];
+  room.wave('ana', handleOf('ana', 'ben'));
+  room.wave('cai', handleOf('cai', 'ben'));
+  const only = (list, why) => {
+    assert.deepEqual(room.wavesAt('ben').map((w) => w.handle), list, why);
+    assert.deepEqual(waiting(room, 'ben').sort(), [...list].sort(), why + ', as the phone lists');
+  };
+  only([cai, ana], 'both wait');
+  room.setInvisible('ana', true);
+  only([cai], 'a waver in NOT NOW');
+  room.arm('ana', 'song');
+  only([cai], 'a waver not on SAY HI');
+  room.arm('ana', 'hi');
+  only([cai, ana], 'back, with the same wave');
+  room.leave('ana');
+  only([cai], 'a waver who left');
+  room.join('ana');
+  room.arm('ana', 'hi');
+  room.setInvisible('ben', true);
+  only([], 'nobody while ben is NOT NOW');
+  room.arm('ben', 'hi');
+  only([cai, ana], 'and both again when he is back');
+  room.block('ben', cai);
+  only([ana], 'a waver ben blocked');
+  room.block('ana', handleOf('ana', 'ben'));
+  only([], 'a waver who blocked ben');
+});
+
+test('wave numbers only go up: two in one millisecond differ, a second wave keeps its number, and they outlast leaving', () => {
+  const { room, handleOf, tick } = night();
+  for (const id of ['ana', 'ben', 'cai']) room.arm(id, 'hi');
+  room.wave('ana', handleOf('ana', 'ben'));
+  room.wave('cai', handleOf('cai', 'ben'));
+  const numberOf = (who) => room.wavesAt('ben').find((w) => w.handle === handleOf('ben', who)).n;
+  const first = numberOf('ana');
+  assert.equal(numberOf('cai'), first + 1, 'two waves in one millisecond still differ');
+  tick(1000);
+  room.wave('ana', handleOf('ana', 'ben'));
+  assert.equal(numberOf('ana'), first, 'a second wave by the same person keeps its number');
+  tick(-1000);
+  // Ben leaves and comes back within the millisecond; the next wave he is sent is still the newest.
+  room.leave('ben');
+  room.join('ben', { band: 'by the stage' });
+  room.arm('ben', 'hi');
+  room.join('dee', { band: 'near the bar' });
+  room.arm('dee', 'hi');
+  room.wave('dee', room.viewFor('dee').near.find((p) => p.band === 'by the stage').handle);
+  assert.equal(room.wavesAt('ben')[0].n, first + 2);
+});
+
+test('wavedAtYou() says whether the person behind a handle waved at the viewer, and nothing else', () => {
+  const { room, handleOf } = night();
+  for (const id of ['ana', 'ben', 'cai']) room.arm(id, 'hi');
+  room.wave('ana', handleOf('ana', 'ben'));
+  assert.equal(room.wavedAtYou('ben', handleOf('ben', 'ana')), true);
+  assert.equal(room.wavedAtYou('ana', handleOf('ana', 'ben')), false, 'a wave is not a wave back');
+  assert.equal(room.wavedAtYou('ben', handleOf('ben', 'cai')), false, 'someone who never waved');
+  assert.equal(room.wavedAtYou('ben', 'ffffffffff'), false, 'a made-up handle');
+  room.wave('ben', handleOf('ben', 'ana'));
+  assert.equal(room.wavedAtYou('ben', handleOf('ben', 'ana')), true, 'still true once they match');
+  room.block('ben', room.viewFor('ben').matches[0].id);
+  assert.equal(room.wavedAtYou('ben', handleOf('ben', 'ana')), false, 'a block takes the wave away');
+});
+
 test('two waves make a match, and only then a name, a meeting spot and one shared number', () => {
   const { room, handleOf } = night();
   meet(room, handleOf, 'ana', 'ben');
