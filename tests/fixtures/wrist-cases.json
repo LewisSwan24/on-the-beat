@@ -269,15 +269,15 @@
       ]
     },
     {
-      "name": "the check, waiting for its owner, and not in a room; KEY2 on them only wakes",
+      "name": "the check, waiting for its owner, and not in a room; KEY2 on the check says where to go, on the others only wakes",
       "steps": [
         { "at": "0", "battery": 62 },
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
         { "at": "0", "show": "CHECK", "sounds": ["ask"], "face": { "big": "", "field": "white", "light": "LIGHT_FULL" } },
         { "at": "500", "face": { "big": "27", "small": "ON YOUR PHONE?", "field": "black", "ink": "white", "light": "LIGHT_PAIR" } },
-        { "at": "1000", "press": 2, "face": { "big": "27", "small": "ON YOUR PHONE?" } },
+        { "at": "1000", "press": 2, "face": { "big": "27", "small": "PAIR ON YOUR PHONE" } },
         { "at": "2000", "show": "WAITING", "face": { "big": "OPEN YOUR PHONE", "small": "OR SWITCH ME OFF", "light": "LIGHT_AWAKE" } },
-        { "at": "3000", "show": "AWAY", "face": { "big": "OPEN YOUR PHONE", "small": "TO COME BACK", "light": "LIGHT_AWAKE" } },
+        { "at": "3000", "show": "AWAY", "face": { "big": "", "light": "LIGHT_OFF" } },
         { "at": "10000", "face": { "big": "", "light": "LIGHT_OFF" } },
         { "at": "11000", "press": 1, "face": { "big": "OPEN YOUR PHONE", "small": "TO COME BACK", "light": "LIGHT_AWAKE" } },
         { "at": "12000", "press": 2, "face": { "small": "TO COME BACK" } },
@@ -634,6 +634,58 @@
         { "at": "4000", "show": "TEST", "sounds": ["up"] },
         { "at": "5000", "show": "MEET", "rev": 1, "sounds": ["jingle"], "face": { "big": "27", "light": "LIGHT_FULL" } },
         { "at": "5000+BLINK_MS", "face": { "big": "27", "light": "LIGHT_OFF" } }
+      ]
+    },
+    {
+      "name": "new letters light for PAIR_AWAKE_MS, then go dark; a press of either key lights them again from the press and says PAIR ON YOUR PHONE for HINT_MS; a hold there is no hold",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "PAIRING", "face": { "big": "KXRT", "small": "", "code": "KXRT", "light": "LIGHT_PAIR" } },
+        { "at": "PAIR_AWAKE_MS-1", "face": { "light": "LIGHT_PAIR" } },
+        { "at": "PAIR_AWAKE_MS", "face": { "big": "KXRT", "code": "KXRT", "light": "LIGHT_OFF" } },
+        { "at": "200000", "key1": "down", "sounds": ["tick"], "face": { "big": "KXRT", "small": "PAIR ON YOUR PHONE", "light": "LIGHT_PAIR" } },
+        { "at": "200000+BAR_MS", "face": { "small": "PAIR ON YOUR PHONE", "bar": -1 } },
+        { "at": "200000+HOLD_MS", "face": { "small": "PAIR ON YOUR PHONE", "light": "LIGHT_PAIR" } },
+        { "at": "200000+HINT_MS", "key1": "up", "face": { "big": "KXRT", "small": "", "light": "LIGHT_PAIR" } },
+        { "at": "200000+PAIR_AWAKE_MS-1", "face": { "light": "LIGHT_PAIR" } },
+        { "at": "200000+PAIR_AWAKE_MS", "face": { "light": "LIGHT_OFF" } },
+        { "at": "330000", "link": "down" },
+        { "at": "330000+STALE_MS+5000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "330000+STALE_MS+5100", "show": "PAIRING", "face": { "big": "KXRT", "light": "LIGHT_OFF" } },
+        { "at": "400000", "press": 2, "face": { "big": "KXRT", "small": "PAIR ON YOUR PHONE", "light": "LIGHT_PAIR" } },
+        { "at": "400000+HINT_MS", "face": { "small": "", "light": "LIGHT_PAIR" } }
+      ]
+    },
+    {
+      "name": "the check stays lit; a press there says PAIR ON YOUR PHONE in place of ON YOUR PHONE? and a hold does nothing; the letters after it light, even with the same code",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "PAIRING" },
+        { "at": "1000", "show": "CHECK", "sounds": ["ask"] },
+        { "at": "1000+PAIR_AWAKE_MS", "face": { "big": "27", "small": "ON YOUR PHONE?", "light": "LIGHT_PAIR" } },
+        { "at": "130000", "key2": "down", "sounds": ["tick"], "face": { "big": "27", "small": "PAIR ON YOUR PHONE", "light": "LIGHT_PAIR" } },
+        { "at": "130000+HOLD_MS", "face": { "big": "27", "small": "PAIR ON YOUR PHONE" } },
+        { "at": "130000+HOLD_MS", "key2": "up", "face": { "small": "PAIR ON YOUR PHONE" } },
+        { "at": "130000+HINT_MS", "face": { "big": "27", "small": "ON YOUR PHONE?" } },
+        { "at": "140000", "show": "PAIRING", "sounds": ["fall"], "face": { "big": "KXRT", "small": "", "light": "LIGHT_PAIR" } }
+      ]
+    },
+    {
+      "name": "the waiting face lights for PAIR_AWAKE_MS when it starts and again after a press; its keys work as today",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 1 },
+        { "at": "1000", "show": "WAITING", "face": { "big": "OPEN YOUR PHONE", "light": "LIGHT_AWAKE" } },
+        { "at": "1000+PAIR_AWAKE_MS-1", "face": { "light": "LIGHT_AWAKE" } },
+        { "at": "1000+PAIR_AWAKE_MS", "face": { "big": "OPEN YOUR PHONE", "light": "LIGHT_OFF" } },
+        { "at": "130000", "show": "WAITING", "face": { "light": "LIGHT_OFF" } },
+        { "at": "140000", "press": 2, "face": { "big": "OPEN YOUR PHONE", "small": "OR SWITCH ME OFF", "light": "LIGHT_AWAKE" } },
+        { "at": "140100+PAIR_AWAKE_MS-1", "face": { "light": "LIGHT_AWAKE" } },
+        { "at": "140100+PAIR_AWAKE_MS", "face": { "light": "LIGHT_OFF" } },
+        { "at": "270000", "key1": "down", "sounds": ["tick"] },
+        { "at": "270000+BAR_MS", "face": { "small": "KEEP HOLDING", "light": "LIGHT_AWAKE" } },
+        { "at": "270000+HOLD_MS", "sent": [{ "t": "hold" }], "sounds": ["down"], "face": { "light": "LIGHT_OFF" } },
+        { "at": "270000+HOLD_MS", "key1": "up" }
       ]
     }
   ]

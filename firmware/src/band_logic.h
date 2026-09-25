@@ -41,6 +41,8 @@ constexpr uint32_t RETRY_MS = 1500;           // between tries to reach the rela
 constexpr uint32_t STALE_MS = 10000;          // out of reach this long, what the relay last said is not shown
 constexpr uint32_t QUIET_CONFIRM_MS = 3000;   // NOT NOW from the wrist stays dark at least until the relay answers, or this long
 constexpr uint32_t BLINK_MS = 500;            // a meeting that calls blinks: its face this long, then off this long
+constexpr uint32_t HINT_MS = 3000;            // a press on the letters or the check says PAIR ON YOUR PHONE this long
+constexpr uint32_t PAIR_AWAKE_MS = 120000;    // new letters, or the waiting face, stay lit this long; so does a press on them
 constexpr uint32_t BATTERY_EVERY_MS = 30000;  // at most one battery report this often
 constexpr uint32_t BATTERY_DRIFT_MS = 300000; // a one-point change is only worth a report after this long
 constexpr uint32_t REJOIN_MS = 15000;         // without Wi-Fi this long, the radio is asked to join again
@@ -1076,6 +1078,11 @@ class Wrist {
     if (blinking(now)) {
       calling_ = false;
       s.fired = true;
+    } else if (pairingFace(now)) {
+      // On the letters or the check a key says where to go, and lights the letters again; nothing more.
+      s.fired = true;
+      hintUntil_ = now + HINT_MS;
+      if (show_.kind == "pairing") litUntil_ = now + PAIR_AWAKE_MS;
     }
     // Every press is heard as it goes down; NOT NOW is silent.
     if (!silent_) react("tick");
@@ -1092,7 +1099,7 @@ class Wrist {
         step(now);
       } else {
         if (frozen_) rest();
-        wakeUntil_ = now + WAKE_MS;
+        wake(now);
       }
     }
     settle(now);
@@ -1156,6 +1163,21 @@ class Wrist {
       calling_ = false;
       if (wasCheck) react("fall", nullptr, 1);    // the check ended without YES
       soundOn_ = true;                            // after the letters' own reactions
+      // New letters light for PAIR_AWAKE_MS; the same letters again (a reconnect) do not.
+      if (show_.code != pairCode_) {
+        pairCode_ = show_.code;
+        litUntil_ = now + PAIR_AWAKE_MS;
+      }
+    } else {
+      pairCode_.clear();
+    }
+    // The waiting face lights when waiting starts. Losing the relay does not end it.
+    if (show_.kind != "waiting") {
+      waiting_ = false;
+    } else if (!waiting_) {
+      waiting_ = true;
+      waitAt_ = now;
+      litUntil_ = now + PAIR_AWAKE_MS;
     }
     quiet_.shown(show_);
     // NOT NOW's silence starts and ends only with a show about the person (rule 1).
@@ -1356,6 +1378,17 @@ class Wrist {
     return calling_ && mode_ == REST && !link_.stale(now) && haveShow_ && show_.kind == "meet";
   }
 
+  /** The letters or the check on the face: the band is nobody's yet, and a key only says where to go. */
+  bool pairingFace(uint32_t now) const {
+    return !link_.stale(now) && !quiet_.dark() && haveShow_ && (show_.kind == "pairing" || show_.kind == "check");
+  }
+
+  /** A press shows the face for WAKE_MS; the waiting face, which sleeps, stays lit PAIR_AWAKE_MS from it. */
+  void wake(uint32_t now) {
+    wakeUntil_ = now + WAKE_MS;
+    if (haveShow_ && show_.kind == "waiting") litUntil_ = now + PAIR_AWAKE_MS;
+  }
+
   /** NOT NOW (a hold not yet shown, or the relay's quiet), else what is armed, else "off". */
   std::string current() const {
     if (quiet_.dark() || (haveShow_ && show_.quiet)) return "notnow";
@@ -1382,6 +1415,12 @@ class Wrist {
     out.field = s.kind == "test" ? "white" : lit(s) ? s.intent : "black";
     out.ink = s.kind == "test" || lit(s) ? "ink" : s.kind == "pairing" || s.kind == "check" ? "white" : "text2";
     if (s.kind == "pairing") out.code = s.code;
+    // Rule 5, over what the relay says: a press on the letters or the check says where to go, and the
+    // letters and the waiting face sleep. Asleep, only the light goes: the picture stays for the next press.
+    if ((s.kind == "pairing" || s.kind == "check") && static_cast<int32_t>(hintUntil_ - now) > 0)
+      out.small = "PAIR ON YOUR PHONE";
+    if ((s.kind == "pairing" || s.kind == "waiting") && static_cast<int32_t>(now - litUntil_) >= 0)
+      out.light = LIGHT_OFF;
     return out;
   }
 
@@ -1449,7 +1488,7 @@ class Wrist {
     if (k1_.down || frozen_ || mode_ == SENDING) return;
     if (mode_ == RESULT) rest();
     if (mode_ == REST) {
-      wakeUntil_ = now + WAKE_MS;
+      wake(now);
       if (!personal()) return;  // not about the person: KEY2 only wakes
       mode_ = LOOK;
       stepAt_ = now;
@@ -1502,6 +1541,13 @@ class Wrist {
   std::string called_;
   bool calling_ = false;
   uint32_t callAt_ = 0;
+  // Rule 5: the letters and the waiting face sleep. Until when they are lit, which letters lit them, when
+  // waiting began, and until when a press says where to go.
+  uint32_t litUntil_ = 0;
+  std::string pairCode_;
+  bool waiting_ = false;
+  uint32_t waitAt_ = 0;
+  uint32_t hintUntil_ = 0;
 };
 
 // ---------- the serial console ----------

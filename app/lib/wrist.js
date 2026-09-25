@@ -33,6 +33,8 @@ export const DEAF_MS = 6000;           // ...and take this much silence as a dea
 export const STALE_MS = 10000;         // out of reach this long, what the relay last said is not shown
 export const QUIET_CONFIRM_MS = 3000;  // NOT NOW stays dark at least until the relay answers, or this long
 export const BLINK_MS = 500;           // a meeting that calls blinks: its face this long, then off this long
+export const HINT_MS = 3000;           // a press on the letters or the check says PAIR ON YOUR PHONE this long
+export const PAIR_AWAKE_MS = 120000;   // new letters, or the waiting face, stay lit this long; so does a press on them
 
 export const LIGHT_FULL = 255;
 export const LIGHT_DIM = 128;
@@ -48,7 +50,7 @@ const LIT = ['hi', 'song', 'dance', 'meet'];
 /** Every constant above, by name: the fixtures' times are written in these. */
 export const CONSTS = {
   WAKE_MS, HOLD_MS, BAR_MS, CHOOSE_MS, COMMIT_MS, CONFIRM_MS, RESULT_MS, PING_EVERY_MS, DEAF_MS,
-  STALE_MS, QUIET_CONFIRM_MS, BLINK_MS, LIGHT_FULL, LIGHT_DIM, LIGHT_PAIR, LIGHT_AWAKE, LIGHT_OFF, CARD_WORDS,
+  STALE_MS, QUIET_CONFIRM_MS, BLINK_MS, HINT_MS, PAIR_AWAKE_MS, LIGHT_FULL, LIGHT_DIM, LIGHT_PAIR, LIGHT_AWAKE, LIGHT_OFF, CARD_WORDS,
 };
 
 /** Every sound the wrist makes, as notes: [Hz, ms], 0 Hz a rest. band_logic.h SOUNDS is the same table. */
@@ -121,12 +123,20 @@ export function createWrist({ key }) {
   let called = '';
   let calling = false;
   let callAt = 0;
+  // Rule 5: the letters and the waiting face sleep. Until when they are lit, which letters lit them, when
+  // waiting began, and until when a press says where to go.
+  let litUntil = 0;
+  let pairCode = '';
+  let waitAt = null;
+  let hintUntil = 0;
 
   const send = (m) => out.push(JSON.stringify(m));
   const stale = (now) => !link.up && (!link.ever || now - link.lost >= STALE_MS);
   const personal = () => !!show && show.hasArmed;
   // A call blinks on the resting face only: no look, choice, send or result on it.
   const blinking = (now) => calling && mode === 'rest' && !stale(now) && show?.kind === 'meet';
+  // The letters or the check on the face: the band is nobody's yet, and a key only says where to go.
+  const pairingFace = (now) => !stale(now) && !quiet.pending && (show?.kind === 'pairing' || show?.kind === 'check');
   const current = () => (quiet.pending || show?.quiet ? 'notnow' : show?.armed || 'off');
   const pct = () => (battery >= 0 ? battery + '%' : '');
 
@@ -164,6 +174,12 @@ export function createWrist({ key }) {
   function noSignal() {
     const why = wifi ? 'NO RELAY' : 'NO WI-FI';
     return words('NO SIGNAL', pct() ? why + ' - ' + pct() : why, 'black', 'text2', LIGHT_AWAKE);
+  }
+
+  /** A press shows the face for WAKE_MS; the waiting face, which sleeps, stays lit PAIR_AWAKE_MS from it. */
+  function wake(now) {
+    wakeUntil = now + WAKE_MS;
+    if (show?.kind === 'waiting') litUntil = now + PAIR_AWAKE_MS;
   }
 
   function rest() {
@@ -218,7 +234,7 @@ export function createWrist({ key }) {
     if (k1.down || frozen || mode === 'sending') return;
     if (mode === 'result') rest();
     if (mode === 'rest') {
-      wakeUntil = now + WAKE_MS;
+      wake(now);
       if (!personal()) return;
       mode = 'look';
       stepAt = now;
@@ -278,6 +294,12 @@ export function createWrist({ key }) {
     if (k === 1 && (mode === 'look' || mode === 'choosing')) frozen = true;
     // The key that answers a call only answers: letting it go, or holding it, does nothing more.
     if (blinking(now)) { calling = false; s.fired = true; }
+    // On the letters or the check a key says where to go, and lights the letters again; nothing more.
+    else if (pairingFace(now)) {
+      s.fired = true;
+      hintUntil = now + HINT_MS;
+      if (show.kind === 'pairing') litUntil = now + PAIR_AWAKE_MS;
+    }
     // Every press is heard as it goes down; NOT NOW is silent.
     if (!silent) react('tick');
     settle(now);
@@ -292,7 +314,7 @@ export function createWrist({ key }) {
       if (k === 2) step(now);
       else {
         if (frozen) rest();
-        wakeUntil = now + WAKE_MS;
+        wake(now);
       }
     }
     settle(now);
@@ -350,7 +372,12 @@ export function createWrist({ key }) {
       calling = false;
       if (was?.kind === 'check') react('fall', null, 1);  // the check ended without YES
       soundOn = true;                                     // after the letters' own reactions
-    }
+      // New letters light for PAIR_AWAKE_MS; the same letters again (a reconnect) do not.
+      if (show.code !== pairCode) { pairCode = show.code; litUntil = now + PAIR_AWAKE_MS; }
+    } else pairCode = '';
+    // The waiting face lights when waiting starts. Losing the relay does not end it.
+    if (show.kind !== 'waiting') waitAt = null;
+    else if (waitAt === null) { waitAt = now; litUntil = now + PAIR_AWAKE_MS; }
     if (quiet.pending && quiet.sent && !lit(show)) quiet.pending = false;
     // NOT NOW's silence starts and ends only with a show about the person (rule 1).
     if (personal()) {
@@ -393,10 +420,14 @@ export function createWrist({ key }) {
       else if (s.away) { big = 'OPEN YOUR PHONE'; small = 'TO COME BACK'; }
       else { big = 'READY'; small = pct(); }
     }
-    const light = s.kind === 'test' ? LIGHT_FULL
+    let light = s.kind === 'test' ? LIGHT_FULL
       : lit(s) ? (s.dim ? LIGHT_DIM : LIGHT_FULL)
       : s.kind === 'pairing' || s.kind === 'check' ? LIGHT_PAIR
       : s.kind === 'waiting' || awake ? LIGHT_AWAKE : LIGHT_OFF;
+    // Rule 5, over what the relay says: a press on the letters or the check says where to go, and the
+    // letters and the waiting face sleep. Asleep, only the light goes: the picture stays for the next press.
+    if ((s.kind === 'pairing' || s.kind === 'check') && hintUntil > now) small = 'PAIR ON YOUR PHONE';
+    if ((s.kind === 'pairing' || s.kind === 'waiting') && now >= litUntil) light = LIGHT_OFF;
     return {
       big, small, light, bar: -1,
       field: s.kind === 'test' ? 'white' : lit(s) ? s.intent : 'black',
