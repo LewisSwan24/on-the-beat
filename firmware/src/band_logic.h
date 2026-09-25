@@ -42,6 +42,7 @@ constexpr uint32_t STALE_MS = 10000;          // out of reach this long, what th
 constexpr uint32_t QUIET_CONFIRM_MS = 3000;   // NOT NOW from the wrist stays dark at least until the relay answers, or this long
 constexpr uint32_t BATTERY_EVERY_MS = 30000;  // at most one battery report this often
 constexpr uint32_t BATTERY_DRIFT_MS = 300000; // a one-point change is only worth a report after this long
+constexpr uint32_t REJOIN_MS = 15000;         // without Wi-Fi this long, the radio is asked to join again
 constexpr const char* WS_PATH = "/api/ws";
 
 constexpr uint8_t LIGHT_FULL = 255;   // a card, from across a dark room
@@ -716,6 +717,32 @@ class BatteryReport {
   uint32_t at_ = 0;
 };
 
+/**
+ * When to ask the radio to join the Wi-Fi again. The core's own reconnect is
+ * not enough: a StickS3 that booted while its hotspot was off never joined it
+ * once it came on, and one WiFi.begin() then joined in 12 s (25 Sep 2026).
+ * So while a network is set and not joined, the loop begins again every
+ * REJOIN_MS, counted from the last time it was joined or begun.
+ */
+class Rejoin {
+ public:
+  /** `set`: a network name is saved; `joined`: the radio is on it. True when it is time to begin again. */
+  bool due(bool set, bool joined, uint32_t now) {
+    if (!set || joined) {
+      since_ = now;
+      return false;
+    }
+    if (now - since_ < REJOIN_MS) return false;
+    since_ = now;
+    return true;
+  }
+  /** WiFi.begin() was just called for another reason: the wait starts again. */
+  void began(uint32_t now) { since_ = now; }
+
+ private:
+  uint32_t since_ = 0;
+};
+
 // ---------- where the relay is ----------
 
 struct Relay {
@@ -1243,5 +1270,6 @@ inline Command readCommand(const std::string& line) {
   if (sp != std::string::npos) c.arg = s.substr(sp + 1);
   return c;
 }
+
 
 }  // namespace otb

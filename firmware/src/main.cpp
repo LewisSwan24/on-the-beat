@@ -57,6 +57,9 @@ Relay relay;
 Wrist* wrist = nullptr;  // made in setup(), once the radio is on and the key is truly random
 bool keyA = false, keyB = false;  // KEY1 (BtnA, the face) and KEY2 (BtnB, the side), as last read
 BatteryReport batteryReport;
+Rejoin rejoin;
+std::atomic<uint8_t> wifiWhy{0};  // why the radio last dropped, as the Wi-Fi task heard it; 0 until it has
+bool onWifi = false;              // joined, as the console last said
 
 int battery = -1;       // percent, or -1 while it will not say
 uint32_t batteryAt = 0;
@@ -267,6 +270,29 @@ void startWifi() {
     return;
   }
   WiFi.begin(ssid.c_str(), pass.empty() ? nullptr : pass.c_str());
+  rejoin.began(millis());
+}
+
+/** Why the radio last dropped, as the console says it: its number and, when the core has one, its name. */
+std::string wifiReason() {
+  const uint8_t why = wifiWhy.load();
+  if (!why) return "no reason given yet";
+  const char* name = WiFi.disconnectReasonName(static_cast<wifi_err_reason_t>(why));
+  return "reason " + std::to_string(why) + (*name ? std::string(" ") + name : std::string());
+}
+
+/** Says when the Wi-Fi comes and goes, and begins again while a network is set and not joined (see Rejoin). */
+void watchWifi(uint32_t now) {
+  const bool joined = WiFi.status() == WL_CONNECTED;
+  if (joined != onWifi) {
+    onWifi = joined;
+    if (joined) Serial.printf("on the wi-fi: %s\n", WiFi.localIP().toString().c_str());
+    else Serial.printf("lost the wi-fi (%s)\n", wifiReason().c_str());
+  }
+  if (rejoin.due(!ssid.empty(), joined, now)) {
+    Serial.printf("no wi-fi (%s); trying %s again\n", wifiReason().c_str(), ssid.c_str());
+    startWifi();
+  }
 }
 
 // ---------- the screen ----------
@@ -526,6 +552,13 @@ void setup() {
   help();
   events = xQueueCreate(12, sizeof(Event));
   outbox = xQueueCreate(8, sizeof(Out));
+  // Why the radio drops, kept for the console. Leaving on purpose (a new begin, a new network) is not a reason.
+  WiFi.onEvent(
+      [](arduino_event_id_t, arduino_event_info_t info) {
+        const uint8_t why = info.wifi_sta_disconnected.reason;
+        if (why != WIFI_REASON_ASSOC_LEAVE) wifiWhy = why;
+      },
+      ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   startWifi();
   startRelay();
   // On the core the Wi-Fi runs on, with the deep stack a TLS handshake wants.
@@ -543,6 +576,7 @@ void loop() {
   const bool a = M5.BtnA.isPressed(), b = M5.BtnB.isPressed();
   if (a != keyA) { keyA = a; a ? wrist->keyDown(1, now) : wrist->keyUp(1, now); }
   if (b != keyB) { keyB = b; b ? wrist->keyDown(2, now) : wrist->keyUp(2, now); }
+  watchWifi(now);
   wrist->setWifi(WiFi.status() == WL_CONNECTED);
   wrist->tick(now);
   for (const std::string& f : wrist->take()) sendFrame(f);

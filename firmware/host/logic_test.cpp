@@ -396,6 +396,25 @@ void relay() {
     CHECK(!parseRelay(bad).ok);
 }
 
+void rejoin() {
+  Rejoin r;
+  CHECK(!r.due(false, false, 0) && !r.due(false, false, 999999));  // no network set: nothing to join
+  r.began(1000);                                    // setup began it
+  CHECK(!r.due(true, false, 1000 + REJOIN_MS - 1));
+  CHECK(r.due(true, false, 1000 + REJOIN_MS));      // no link for REJOIN_MS: begin again
+  CHECK(!r.due(true, false, 1000 + REJOIN_MS + 1)); // and wait again
+  CHECK(r.due(true, false, 1000 + 2 * REJOIN_MS));
+  CHECK(!r.due(true, true, 90000));                 // joined: nothing to do...
+  CHECK(!r.due(true, false, 90000 + REJOIN_MS - 1)); // ...and after a drop, the wait runs from the last time it was joined
+  CHECK(r.due(true, false, 90000 + REJOIN_MS));
+  r.began(200000);                                  // a console command began it
+  CHECK(!r.due(true, false, 200000 + REJOIN_MS - 1));
+  Rejoin w;                                         // across the wrap of millis()
+  w.began(0xFFFFFFFFu - 1000);
+  CHECK(!w.due(true, false, REJOIN_MS - 1002));
+  CHECK(w.due(true, false, REJOIN_MS - 1001));
+}
+
 void said() {
   CHECK(validId("0123456789abcdef") && !validId("0123456789abcde") && !validId("0123456789ABCDEF"));
   CHECK(!validId(std::string(65, 'a')) && validId(std::string(64, 'a')));
@@ -577,6 +596,7 @@ int main(int argc, char** argv) {
   colour();
   pairing();
   relay();
+  rejoin();
   said();
   std::printf("ok: %d checks\n", checks);
   return 0;
