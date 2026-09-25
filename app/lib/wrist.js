@@ -110,8 +110,10 @@ export function createWrist({ key }) {
   let out = [];
   // Reactions (rule 6): this input's, and the one playing.
   let moment = [];
-  let playing = null;         // { sound, flash, cls, audible, at, until }
+  let playing = null;         // { sound, flash, colour, cls, audible, at, until }
   let due = [];               // sounds started since sounds() was last asked
+  let soundOn = true;         // the person's switch, as the last show that said it had it (rule 3)
+  let silent = false;         // NOT NOW, for the sake of silence (rule 1)
 
   const send = (m) => out.push(JSON.stringify(m));
   const stale = (now) => !link.up && (!link.ever || now - link.lost >= STALE_MS);
@@ -123,7 +125,7 @@ export function createWrist({ key }) {
   function react(sound, flash = null, cls = 0, card = '') {
     const f = flash ? FLASHES[flash] : null;
     const colour = f ? (f.colour === 'card' ? card || 'white' : f.colour) : '';
-    moment.push({ sound, flash: f, colour, cls, audible: true });
+    moment.push({ sound, flash: f, colour, cls, audible: soundOn });
   }
 
   function start(r, at) {
@@ -167,7 +169,9 @@ export function createWrist({ key }) {
     quiet.sent = false;
     rest();
     wakeUntil = now;
-    react('down');
+    // Going into NOT NOW is the one sound it makes; a hold inside NOT NOW is silent.
+    if (!silent) react('down');
+    silent = true;
   }
 
   /** SET, CHANGED or NOT SENT on the face, with its sound and flash. In NOT NOW a failed try to come back is silent. */
@@ -177,7 +181,7 @@ export function createWrist({ key }) {
     resultUntil = now + RESULT_MS;
     preview = '';
     frozen = false;
-    if (current() === 'notnow') return;
+    if (silent) return;
     if (w === 'SET') react('up', 'set', 0, choice);
     else if (w === 'CHANGED') react('fall', 'changed');
     else react('low', 'notsent');
@@ -187,7 +191,6 @@ export function createWrist({ key }) {
   function commit(now, held = false) {
     if (frozen) return;
     if (preview === current() || !link.up) { rest(); return; }
-    const silent = current() === 'notnow';
     choice = preview === 'off' ? '' : preview;
     send({ t: 'set', intent: choice || null, basis });
     mode = 'sending';
@@ -257,7 +260,7 @@ export function createWrist({ key }) {
     s.fired = false;
     if (k === 1 && (mode === 'look' || mode === 'choosing')) frozen = true;
     // Every press is heard as it goes down; NOT NOW is silent.
-    if (current() !== 'notnow') react('tick');
+    if (!silent) react('tick');
     settle(now);
   }
 
@@ -314,14 +317,32 @@ export function createWrist({ key }) {
       return;
     }
     if (m.t !== 'show' || !m.show || typeof m.show !== 'object') return;
+    const was = show;
     show = readShow(m.show);
-    if (show.kind === 'pairing') secret = '';
+    // Reactions come from changes; a show that differs only in `sound` is no change.
+    const same = !!was && JSON.stringify(was) === JSON.stringify(show);
+    // A show's own switch counts for what it causes. One that is not true or false is not said.
+    if (typeof m.show.sound === 'boolean') soundOn = m.show.sound;
+    if (show.kind === 'pairing') {
+      secret = '';
+      silent = false;                                     // the band is nobody's: NOT NOW is over
+      if (was?.kind === 'check') react('fall', null, 1);  // the check ended without YES
+      soundOn = true;                                     // after the letters' own reactions
+    }
     if (quiet.pending && quiet.sent && !lit(show)) quiet.pending = false;
+    // NOT NOW's silence starts and ends only with a show about the person (rule 1).
+    if (personal()) {
+      if (show.quiet) silent = true;
+      else if (!quiet.pending) silent = false;
+    }
     if (mode === 'look' || mode === 'choosing') {
       if (!personal() || show.rev !== basis) rest();
     } else if (mode === 'sending' && personal() && show.rev > basis && show.armed === choice && !show.quiet) {
       result(now, 'SET');
     }
+    if (same || silent) return;
+    if (show.kind === 'check') react('ask', 'check', 1);
+    else if (show.kind === 'test') react('up', null, 1);  // paired, or TEST THE LIGHT: the white face is its flash
   }
 
   /** The face at rest: band_logic.h faceFor(), wordsFor() and lightFor(), in that order. */

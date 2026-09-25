@@ -21,7 +21,9 @@
 // A step's `sent` and `sounds` are exact, and empty unless the step says
 // otherwise, so a stray frame or sound anywhere fails. A `press` is a key down
 // and, PRESS ms later, its key up: the step's `sent`, `sounds` and `face` are
-// the key up's, and `downSounds` (["tick"] unless said) the key down's.
+// the key up's, and `downSounds` (["tick"] unless said) the key down's. A
+// `show` step sends one of the table's shows, with its `rev` and any fields in
+// `with` laid over it.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -49,7 +51,7 @@ export function at(expr, consts) {
 /** A case as protocol lines, each with what it must answer (null: not checked). */
 export function lines(c, consts) {
   const out = [{ line: 'key ' + TABLE.key, expect: null }];
-  const showOf = (s) => ({ t: 'show', show: { ...TABLE.shows[s.show], ...(s.rev !== undefined ? { rev: s.rev } : {}) } });
+  const showOf = (s) => ({ t: 'show', show: { ...TABLE.shows[s.show], ...(s.rev !== undefined ? { rev: s.rev } : {}), ...s.with } });
   let last = -Infinity;
   for (const s of c.steps) {
     const t = at(s.at ?? '0', consts);

@@ -273,7 +273,8 @@
       "steps": [
         { "at": "0", "battery": 62 },
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
-        { "at": "0", "show": "CHECK", "face": { "big": "27", "small": "ON YOUR PHONE?", "field": "black", "ink": "white", "light": "LIGHT_PAIR" } },
+        { "at": "0", "show": "CHECK", "sounds": ["ask"], "face": { "big": "", "field": "white", "light": "LIGHT_FULL" } },
+        { "at": "500", "face": { "big": "27", "small": "ON YOUR PHONE?", "field": "black", "ink": "white", "light": "LIGHT_PAIR" } },
         { "at": "1000", "press": 2, "face": { "big": "27", "small": "ON YOUR PHONE?" } },
         { "at": "2000", "show": "WAITING", "face": { "big": "OPEN YOUR PHONE", "small": "OR SWITCH ME OFF", "light": "LIGHT_AWAKE" } },
         { "at": "3000", "show": "AWAY", "face": { "big": "OPEN YOUR PHONE", "small": "TO COME BACK", "light": "LIGHT_AWAKE" } },
@@ -281,7 +282,7 @@
         { "at": "11000", "press": 1, "face": { "big": "OPEN YOUR PHONE", "small": "TO COME BACK", "light": "LIGHT_AWAKE" } },
         { "at": "12000", "press": 2, "face": { "small": "TO COME BACK" } },
         { "at": "13000", "show": "PAIRING", "face": { "big": "KXRT", "code": "KXRT", "light": "LIGHT_PAIR" } },
-        { "at": "14000", "show": "TEST", "face": { "field": "white", "light": "LIGHT_FULL" } }
+        { "at": "14000", "show": "TEST", "sounds": ["up"], "face": { "field": "white", "light": "LIGHT_FULL" } }
       ]
     },
     {
@@ -374,6 +375,154 @@
         { "at": "6000", "key2": "down", "sounds": ["tick"] },
         { "at": "6000+HOLD_MS", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "light": "LIGHT_FULL" } },
         { "at": "6000+HOLD_MS", "key2": "up" }
+      ]
+    },
+    {
+      "name": "the sound switch off: presses and SET play nothing and SET still flashes; switched on, the next press ticks",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "sound": false } },
+        { "at": "1000", "press": 2, "downSounds": [], "face": { "big": "HI :)", "small": "SIDE TO CHANGE" } },
+        { "at": "2000", "press": 2, "downSounds": [], "face": { "big": "FIRST SONG?", "small": "SIDE: NEXT" } },
+        { "at": "2100+COMMIT_MS", "sent": [{ "t": "set", "intent": "song", "basis": 3 }] },
+        { "at": "6000", "show": "SONG", "rev": 4, "with": { "sound": false }, "face": { "big": "", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "6000+500", "face": { "big": "FIRST SONG?", "small": "SET", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "7000", "show": "SONG", "rev": 4, "with": { "sound": true }, "face": { "big": "FIRST SONG?", "small": "SET", "light": "LIGHT_FULL" } },
+        { "at": "8000", "press": 1 }
+      ]
+    },
+    {
+      "name": "a show that differs from the last only in its sound causes nothing, but the switch still follows it",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "TEST", "with": { "sound": false }, "face": { "field": "white", "light": "LIGHT_FULL" } },
+        { "at": "500", "show": "TEST", "with": { "sound": true }, "face": { "field": "white", "light": "LIGHT_FULL" } },
+        { "at": "1000", "show": "HI", "rev": 1 },
+        { "at": "2000", "show": "TEST", "sounds": ["up"] }
+      ]
+    },
+    {
+      "name": "a sound that is not true or false is not said: the switch stays as it was",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 1, "with": { "sound": false } },
+        { "at": "1000", "show": "TEST", "with": { "sound": "on" } },
+        { "at": "2000", "show": "HI", "rev": 1, "with": { "sound": 1 } },
+        { "at": "3000", "show": "TEST", "with": { "sound": null } },
+        { "at": "4000", "show": "HI", "rev": 1, "with": { "sound": true } },
+        { "at": "5000", "show": "TEST", "with": { "sound": 0 }, "sounds": ["up"] },
+        { "at": "6000", "show": "HI", "rev": 1, "with": { "sound": "false" } },
+        { "at": "7000", "show": "TEST", "with": { "sound": [] }, "sounds": ["up"] }
+      ]
+    },
+    {
+      "name": "the check number plays ask and flashes white twice, 150 on and 100 off; YES plays up on the white face",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "PAIRING", "face": { "big": "KXRT", "code": "KXRT", "light": "LIGHT_PAIR" } },
+        { "at": "1000", "show": "CHECK", "sounds": ["ask"], "face": { "big": "", "small": "", "field": "white", "light": "LIGHT_FULL", "code": "" } },
+        { "at": "1000+149", "face": { "field": "white", "light": "LIGHT_FULL" } },
+        { "at": "1000+150", "face": { "big": "27", "small": "ON YOUR PHONE?", "light": "LIGHT_OFF" } },
+        { "at": "1000+250", "face": { "big": "", "field": "white", "light": "LIGHT_FULL" } },
+        { "at": "1000+400", "face": { "big": "27", "light": "LIGHT_OFF" } },
+        { "at": "1000+500", "face": { "big": "27", "small": "ON YOUR PHONE?", "field": "black", "light": "LIGHT_PAIR" } },
+        { "at": "3000", "frame": { "t": "paired", "secret": "5ec2e75ec2e75ec2e75ec2e75ec2e75e" } },
+        { "at": "3000", "show": "TEST", "sounds": ["up"], "face": { "big": "", "field": "white", "light": "LIGHT_FULL" } },
+        { "at": "4000", "show": "HI", "rev": 1, "face": { "big": "HI :)", "field": "hi", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "a check that ends without YES plays fall as the letters come back; letters said again play nothing",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "PAIRING" },
+        { "at": "1000", "show": "CHECK", "sounds": ["ask"] },
+        { "at": "5000", "show": "PAIRING", "with": { "code": "MQTV" }, "sounds": ["fall"], "face": { "big": "MQTV", "code": "MQTV", "light": "LIGHT_PAIR" } },
+        { "at": "6000", "show": "PAIRING", "with": { "code": "MQTV" } }
+      ]
+    },
+    {
+      "name": "TEST THE LIGHT plays up; in NOT NOW it shows its white and plays nothing, and NOT NOW stays silent after it, a FACE hold included",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "show": "TEST", "sounds": ["up"], "face": { "field": "white", "light": "LIGHT_FULL" } },
+        { "at": "3000", "show": "HI", "rev": 3 },
+        { "at": "4000", "show": "QUIET", "rev": 4, "face": { "big": "", "light": "LIGHT_OFF" } },
+        { "at": "5000", "show": "TEST", "face": { "field": "white", "light": "LIGHT_FULL" } },
+        { "at": "7000", "show": "QUIET", "rev": 4 },
+        { "at": "8000", "press": 1, "downSounds": [], "face": { "big": "NOT NOW" } },
+        { "at": "9000", "key1": "down" },
+        { "at": "9000+HOLD_MS", "sent": [{ "t": "hold" }], "face": { "light": "LIGHT_OFF" } },
+        { "at": "9000+HOLD_MS", "key1": "up" }
+      ]
+    },
+    {
+      "name": "a card shown while the wrist's own hold waits to be heard does not end NOT NOW's silence",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "key1": "down", "sounds": ["tick"] },
+        { "at": "1000+HOLD_MS", "sent": [{ "t": "hold" }], "sounds": ["down"], "face": { "light": "LIGHT_OFF" } },
+        { "at": "1000+HOLD_MS", "key1": "up" },
+        { "at": "3000", "show": "SONG", "rev": 4, "face": { "light": "LIGHT_OFF" } },
+        { "at": "3500", "press": 2, "downSounds": [], "face": { "big": "NOT NOW", "small": "SIDE TO CHANGE" } },
+        { "at": "4000", "show": "QUIET", "rev": 5, "face": { "big": "NOT NOW" } }
+      ]
+    },
+    {
+      "name": "a try to come back from NOT NOW that ends CHANGED or NOT SENT is silent; its word still shows",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "QUIET", "rev": 6 },
+        { "at": "1000", "press": 2, "downSounds": [] },
+        { "at": "2000", "press": 2, "downSounds": [], "face": { "big": "HI :)", "small": "HOLD SIDE TO SHOW" } },
+        { "at": "3000", "key2": "down" },
+        { "at": "3000+HOLD_MS", "sent": [{ "t": "set", "intent": "hi", "basis": 6 }] },
+        { "at": "3000+HOLD_MS", "key2": "up" },
+        { "at": "5000", "frame": { "t": "set", "ok": false, "why": "changed" }, "face": { "big": "NOT NOW", "small": "CHANGED", "field": "black", "light": "LIGHT_AWAKE" } },
+        { "at": "9000", "press": 2, "downSounds": [] },
+        { "at": "10000", "press": 2, "downSounds": [] },
+        { "at": "11000", "key2": "down" },
+        { "at": "11000+HOLD_MS", "sent": [{ "t": "set", "intent": "hi", "basis": 6 }] },
+        { "at": "11000+HOLD_MS", "key2": "up" },
+        { "at": "13000", "frame": { "t": "set", "ok": false, "why": "too fast" }, "face": { "big": "NOT NOW", "small": "NOT SENT", "light": "LIGHT_AWAKE" } }
+      ]
+    },
+    {
+      "name": "NOT NOW stays silent through waiting for the owner, and letters end it",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "QUIET", "rev": 2 },
+        { "at": "1000", "show": "WAITING", "face": { "big": "OPEN YOUR PHONE", "light": "LIGHT_AWAKE" } },
+        { "at": "2000", "press": 2, "downSounds": [] },
+        { "at": "3000", "show": "PAIRING", "face": { "big": "KXRT" } },
+        { "at": "4000", "press": 2 }
+      ]
+    },
+    {
+      "name": "the wearer's own changes on the phone are silent on the wrist: a card, NOT NOW and back",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "show": "SONG", "rev": 4, "face": { "big": "FIRST SONG?", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "2000", "show": "QUIET", "rev": 5, "face": { "big": "", "light": "LIGHT_OFF" } },
+        { "at": "3000", "show": "HI", "rev": 6, "face": { "big": "HI :)", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "4000", "press": 1 }
+      ]
+    },
+    {
+      "name": "the sound switch is kept through waiting and goes back on at letters, after what the letters play",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "sound": false } },
+        { "at": "1000", "show": "WAITING" },
+        { "at": "2000", "press": 2, "downSounds": [] },
+        { "at": "3000", "show": "PAIRING" },
+        { "at": "4000", "press": 2 },
+        { "at": "5000", "show": "CHECK", "with": { "sound": false }, "face": { "field": "white", "light": "LIGHT_FULL" } },
+        { "at": "6000", "show": "PAIRING", "face": { "big": "KXRT", "light": "LIGHT_PAIR" } },
+        { "at": "7000", "show": "CHECK", "sounds": ["ask"] }
       ]
     }
   ]

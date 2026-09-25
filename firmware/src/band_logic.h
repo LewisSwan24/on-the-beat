@@ -425,6 +425,7 @@ struct Frame {
   std::string t;
   bool hasShow = false;
   Show show;
+  int sound = -1;          // the show's sound switch: 1 on, 0 off, -1 not said (so not part of the Show)
   std::string why;
   bool hasOk = false;      // {t:'set', ok:false, why}: the relay refused a choice
   bool ok = true;
@@ -488,6 +489,14 @@ inline bool readFrame(const std::string& text, Frame& f) {
         bool whole = false;
         if (!r.integer(v, whole)) return r.skip();
         s.rev = whole ? v : 0;
+        return true;
+      }
+      if (k == "sound") {
+        // Only true or false says it; anything else leaves the band's switch as it was.
+        if (!r.peek('t') && !r.peek('f')) return r.skip();
+        bool on = false;
+        if (!r.boolean(on)) return false;
+        f.sound = on ? 1 : 0;
         return true;
       }
       return r.skip();
@@ -1063,7 +1072,7 @@ class Wrist {
     // Any KEY1 press-down freezes a choice at once: no commit can fire.
     if (k == 1 && (mode_ == LOOK || mode_ == CHOOSING)) frozen_ = true;
     // Every press is heard as it goes down; NOT NOW is silent.
-    if (current() != "notnow") react("tick");
+    if (!silent_) react("tick");
     settle(now);
   }
 
@@ -1126,16 +1135,34 @@ class Wrist {
       return;
     }
     if (f.t != "show" || !f.hasShow) return;
+    // Reactions come from changes; a show that differs only in its sound switch is no change.
+    const bool same = haveShow_ && show_ == f.show;
+    const bool wasCheck = haveShow_ && show_.kind == "check";
     show_ = f.show;
     haveShow_ = true;
-    if (show_.kind == "pairing") secret_.clear();  // unpaired, or nobody came for it: a new pairing
+    // A show's own switch counts for what it causes.
+    if (f.sound >= 0) soundOn_ = f.sound == 1;
+    if (show_.kind == "pairing") {
+      secret_.clear();                            // unpaired, or nobody came for it: a new pairing
+      silent_ = false;                            // the band is nobody's: NOT NOW is over
+      if (wasCheck) react("fall", nullptr, 1);    // the check ended without YES
+      soundOn_ = true;                            // after the letters' own reactions
+    }
     quiet_.shown(show_);
+    // NOT NOW's silence starts and ends only with a show about the person (rule 1).
+    if (personal()) {
+      if (show_.quiet) silent_ = true;
+      else if (!quiet_.dark()) silent_ = false;
+    }
     if (mode_ == LOOK || mode_ == CHOOSING) {
       // A show not about the person, or one whose rev moved, cancels the choice.
       if (!personal() || show_.rev != basis_) rest();
     } else if (mode_ == SENDING && personal() && show_.rev > basis_ && show_.armed == choice_ && !show_.quiet) {
       result(now, "SET");
     }
+    if (same || silent_) return;
+    if (show_.kind == "check") react("ask", "check", 1);
+    else if (show_.kind == "test") react("up", nullptr, 1);  // paired, or TEST THE LIGHT: the white face is its flash
   }
 
   void ticked(uint32_t now) {
@@ -1249,6 +1276,7 @@ class Wrist {
     r.flash = flash ? flashFor(flash) : nullptr;
     if (r.flash) r.colour = std::string(r.flash->colour) == "card" ? (card.empty() ? "white" : card) : r.flash->colour;
     r.cls = cls;
+    r.audible = soundOn_;
     moment_.push_back(r);
   }
 
@@ -1331,7 +1359,9 @@ class Wrist {
     quiet_.held();
     rest();
     wakeUntil_ = now;
-    react("down");
+    // Going into NOT NOW is the one sound it makes; a hold inside NOT NOW is silent.
+    if (!silent_) react("down");
+    silent_ = true;
   }
 
   /** SET, CHANGED or NOT SENT on the face, with its sound and flash. In NOT NOW a failed try to come back is silent. */
@@ -1341,7 +1371,7 @@ class Wrist {
     resultUntil_ = now + RESULT_MS;
     preview_.clear();
     frozen_ = false;
-    if (current() == "notnow") return;
+    if (silent_) return;
     const std::string word = w;
     if (word == "SET") react("up", "set", 0, choice_);
     else if (word == "CHANGED") react("fall", "changed");
@@ -1356,13 +1386,12 @@ class Wrist {
       rest();
       return;
     }
-    const bool silent = current() == "notnow";
     choice_ = preview_ == "off" ? "" : preview_;
     out_.push_back("{\"t\":\"set\",\"intent\":" + (choice_.empty() ? std::string("null") : "\"" + choice_ + "\"") +
                    ",\"basis\":" + std::to_string(basis_) + "}");
     mode_ = SENDING;
     sentAt_ = now;
-    if (held && !silent) react("double");
+    if (held && !silent_) react("double");
   }
 
   static std::string after(const std::string& card) {
@@ -1424,6 +1453,8 @@ class Wrist {
   Reaction playing_;
   bool playingOn_ = false;
   std::vector<std::string> due_;
+  bool soundOn_ = true;  // the person's switch, as the last show that said it had it (rule 3)
+  bool silent_ = false;  // NOT NOW, for the sake of silence (rule 1)
 };
 
 // ---------- the serial console ----------
