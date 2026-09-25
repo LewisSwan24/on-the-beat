@@ -127,6 +127,42 @@ test('an hour on the floor, then the clip is gone — from the floor and from th
   close(ana, ben);
 });
 
+test("every room's clips together stay under the machine's cap: the oldest go first, wherever they are", async () => {
+  // On a small always-on machine one room's cap is not the limit that
+  // matters: clips posted across many venues would fill its memory and stop
+  // the relay for everyone. The oldest anywhere goes, and its floor with it.
+  const small = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist'), allClipsMax: 3 * 4096 });
+  const h = helpers(() => small.port);
+  const at = (venue, ref) => fetch('http://127.0.0.1:' + small.port + '/clip/' + venue + '/' + ref).then((r) => r.status);
+  try {
+    const ana = await h.phone('cap-a');
+    const ben = await h.phone('cap-a');
+    const cai = await h.phone('cap-b');
+    const dee = await h.phone('cap-b');
+    const eve = await h.phone('cap-b');
+    const post = (p) => p.send({ t: 'clip', mime: 'video/webm', data: randomBytes(4096).toString('base64') });
+    post(ana);
+    const [a1] = (await ben.until((v) => v.floor.length === 1)).floor;
+    post(cai);
+    const [b1] = (await dee.until((v) => v.floor.length === 1)).floor;
+    post(dee);
+    const b2 = (await cai.until((v) => v.floor.length === 1)).floor[0];
+    assert.equal(await at('cap-a', a1.ref), 200, 'three clips fit the cap exactly');
+    // The fourth is posted in the other room: the oldest goes from a room
+    // nothing was said in, and that room's phones are told.
+    post(eve);
+    await cai.until((v) => v.floor.length === 2);
+    await ben.until((v) => v.floor.length === 0);
+    assert.equal(await at('cap-a', a1.ref), 404, 'the oldest clip, in another room, went for the newest');
+    assert.equal(await at('cap-b', b1.ref), 200);
+    assert.equal(await at('cap-b', b2.ref), 200);
+    h.close(ana, ben, cai, dee, eve);
+  } finally {
+    h.cleanup();
+    await small.close();
+  }
+});
+
 test('a wristband pairs by its four letters, then shows what its person is doing', async () => {
   const band = await wristband();
   assert.equal(band.show.kind, 'pairing');
@@ -162,7 +198,7 @@ test("holding the wristband's button is NOT NOW, and a phone coming back does no
   ana.send({ t: 'arm', intent: 'hi' });
   await ben.until((v) => v.near.length === 1);
   band.send({ t: 'hold' });
-  await ana.until((v) => v.me.invisible);
+  await ana.until((v) => v.me.invisible && v.me.by === 'band');
   await ben.until((v) => v.near.length === 0);
   await band.until((s) => s.kind === 'off' && s.quiet);
   // The phone says again what it was doing, as it does after any reconnect.
@@ -301,6 +337,60 @@ test('a missed code is throttled on the same counter as an id-claim', async () =
   ana.send({ t: 'pair', band: randomBytes(16).toString('hex'), secret: newKey() });
   assert.equal((await blocked).why, 'too many tries');
   close(ana);
+});
+
+/** A phone that only guesses: its own headers, joined to a venue, sending id-claims nothing answers. */
+async function guesser(port, headers, venue) {
+  const ws = new WebSocket('ws://127.0.0.1:' + port + WS_PATH, { headers });
+  clients.add(ws);
+  await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject); });
+  ws.send(JSON.stringify({ t: 'join', venue, me: randomBytes(16).toString('hex') }));
+  return { ws, claim: () => ws.send(JSON.stringify({ t: 'pair', band: randomBytes(16).toString('hex'), secret: newKey() })) };
+}
+
+/** Twenty unproven attempts from one address, over four sockets: the address's whole allowance. */
+async function spend(at, ip, venue) {
+  for (let s = 0; s < 4; s += 1) {
+    const g = await at(ip, venue + '-' + s);
+    for (let i = 0; i < 5; i += 1) {
+      const ok = reply(g, 'claim');
+      g.claim();
+      assert.equal((await ok).why, 'waiting', 'attempt ' + (s * 5 + i) + ' should be answered');
+    }
+    g.ws.close();
+  }
+}
+
+test('behind a proxy that names each client, the named address is what the limit counts', async () => {
+  // On Fly.io every socket comes from its proxy, which names the client in
+  // Fly-Client-IP. Counted by the proxy's own address, one guesser would lock
+  // every phone out of pairing; told the header, the relay counts each apart.
+  const proxied = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist'), clientIpHeader: 'fly-client-ip' });
+  const at = (ip, venue) => guesser(proxied.port, { 'fly-client-ip': ip }, venue);
+  try {
+    await spend(at, '203.0.113.50', 'proxied');
+    const same = await at('203.0.113.50', 'proxied-4');
+    const blocked = reply(same, 'error');
+    same.claim();
+    assert.equal((await blocked).why, 'too many tries', 'the named address has had its twenty');
+    const other = await at('203.0.113.51', 'proxied-5');
+    const ok = reply(other, 'claim');
+    other.claim();
+    assert.equal((await ok).why, 'waiting', 'another client behind the same proxy is counted apart');
+  } finally {
+    await proxied.close();
+  }
+});
+
+test('without that setting, a client-address header is a claim anyone can make', async () => {
+  relay.expire(Date.now() + 61_000);
+  const at = (ip, venue) => guesser(relay.port, { 'fly-client-ip': ip }, venue);
+  await spend(at, '203.0.113.60', 'unproxied');
+  const other = await at('203.0.113.61', 'unproxied-4');
+  const blocked = reply(other, 'error');
+  other.claim();
+  assert.equal((await blocked).why, 'too many tries', "the socket's own address stands, whatever the header says");
+  relay.expire(Date.now() + 61_000);
 });
 
 test('id-claims with no wristband behind them are swept, so they cannot pile up', async () => {
@@ -512,7 +602,8 @@ test('malformed and hostile messages never take the relay down', async () => {
     { t: 'keep', match: 'nope', on: true }, { t: 'keep' }, { t: 'keep', match: {}, on: 'yes' },
     { t: 'profile', name: {}, contact: [] }, { t: 'pick', track: {} }, { t: 'pick' },
     { t: 'block', handle: '\u0000' }, { t: 'block' }, { t: 'setBand', band: 999 },
-    { t: 'arm', intent: 'nonsense' }, { t: 'invisible', on: 'yes' },
+    { t: 'arm', intent: 'nonsense' }, { t: 'invisible', on: 'yes' }, { t: 'set', intent: 'hi', basis: 1 },
+    { t: 'arm', intent: 'hi', seq: 'x' }, { t: 'invisible', on: true, seq: null }, { t: 'arm', intent: 'hi', basis: 'x' },
     { t: 'testLight' }, { t: 'unpair' }, { t: 'leave' }, { t: 'unknown-type', x: 1 },
   ];
   for (const m of bad) junk.send(m);

@@ -3,7 +3,8 @@ import { HUE } from '../copy.js';
 import { CODE_LETTERS, cleanCode } from '../../relay/band.js';
 import { pairUrl } from '../lib/pairing.js';
 import { qrMatrix, qrPath } from '../lib/qr.js';
-import { bandIdOf, toHex } from '../lib/sha256.js';
+import { toHex } from '../lib/sha256.js';
+import { HOLD_MS, WAKE_MS, createWrist } from '../lib/wrist.js';
 import { Back, Ghost, Icon } from '../ui.jsx';
 
 /**
@@ -45,6 +46,33 @@ export function BandFace({ show, awake, battery, scale = 2, pairAt = null }) {
             : battery !== null && battery !== undefined ? <span className="small-w">{battery}%</span> : null}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+const INK = { ink: '#041418', white: '#FFFFFF', text2: 'var(--text-2)' };
+
+/** What the Wrist says to draw (app/lib/wrist.js face()): one field, two lines, the bar, and letters with their code. */
+export function WristFace({ screen: s, scale = 2, pairAt = null }) {
+  const hue = HUE[s.field];
+  const bg = s.field === 'white' ? '#FFFFFF'
+    : hue ? `radial-gradient(120% 90% at 50% 38%, ${hue.c} 0%, ${hue.g} 100%)` : '#000000';
+  const ink = INK[s.ink] ?? HUE[s.ink]?.c ?? INK.text2;
+  // The backlight: dark is off, not a black picture lit from behind.
+  const glow = s.light ? Math.max(0.35, s.light / 255) : 0;
+  const number = /^\d+$/.test(s.big);
+  return (
+    <div className="bandface" style={{ width: 135 * scale, height: 240 * scale, '--u': scale + 'px', background: bg, filter: `brightness(${glow})` }}
+      role="img" aria-label={s.code ? 'Wristband showing its pairing letters ' + s.code.split('').join(' ') : s.light ? 'Wristband: ' + [s.big, s.small].filter(Boolean).join(', ') : 'Wristband dark'}>
+      {s.code ? <Pairing code={s.code} at={pairAt} />
+        : number ? <span className="words meet" style={{ color: ink }}><span className="small-w">{s.small}</span><span className="num">{s.big}</span></span>
+        : s.big || s.small ? (
+          <span className="words" style={{ color: ink }}>
+            {s.big ? <span className="big">{s.big}</span> : null}
+            {s.small ? <span className="small-w">{s.small}</span> : null}
+          </span>
+        ) : null}
+      {s.bar >= 0 ? <span className="bandbar" style={{ '--p': s.bar / 99, color: ink }} aria-hidden="true" /> : null}
     </div>
   );
 }
@@ -121,96 +149,95 @@ export const bandLine = (band) => (band
   : '');
 
 /**
- * /band — a stand-in for the M5StickC on the strap, until one is in hand. It
- * joins the relay exactly as the firmware will, draws the same 135 x 240
- * screen at 2x, and has the same one button: a press wakes it for three
- * seconds, a one-second hold is NOT NOW.
+ * /band — a stand-in for the wristband, until one is in hand. The machine is
+ * app/lib/wrist.js, the same one band_logic.h runs on the real band and held
+ * to the same table; this page only feeds it the socket, the two buttons and
+ * the time, and draws its face at 2x.
  */
 export function BandStandIn() {
   // A new wristband every load, as the firmware is every boot: the key stays in this page, and the id is its hash.
-  const [band] = useState(() => {
+  const wrist = useMemo(() => {
     try { localStorage.removeItem('otb:band-id'); } catch { /* a private window */ }
-    const key = toHex(crypto.getRandomValues(new Uint8Array(16)));
-    return { key, id: bandIdOf(key) };
-  });
-  const secret = useRef('');   // given on YES; this page only, as the firmware keeps it in RAM
+    return createWrist({ key: toHex(crypto.getRandomValues(new Uint8Array(16))) });
+  }, []);
   const [battery, setBattery] = useState(62);
-  const [show, setShow] = useState(null);
+  const [screen, setScreen] = useState(() => wrist.face(Date.now()));
   const [live, setLive] = useState(false);
-  const [awake, setAwake] = useState(false);
-  const [holding, setHolding] = useState(false);
+  const [down, setDown] = useState({ 1: false, 2: false });
   const ws = useRef(null);
-  const batteryNow = useRef(battery);
-  batteryNow.current = battery;
 
   useEffect(() => {
-    let closed = false, retry = null, heard = 0;
+    let closed = false, retry = null;
+    // What the Wrist says to send goes out, a drop drops the socket, and the face is drawn again.
+    const flush = () => {
+      for (const f of wrist.take()) {
+        if (f === 'DROP') ws.current?.close();
+        else if (ws.current?.readyState === 1) ws.current.send(f);
+      }
+      setScreen(wrist.face(Date.now()));
+    };
     const open = () => {
       const sock = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/ws');
       ws.current = sock;
-      sock.onopen = () => {
-        heard = Date.now();
-        setLive(true);
-        sock.send(JSON.stringify({ t: 'wristband', id: band.id, key: band.key, v: 2, battery: batteryNow.current, ...(secret.current ? { secret: secret.current } : {}) }));
+      sock.onopen = () => { if (ws.current === sock) { setLive(true); wrist.linkUp(Date.now()); flush(); } };
+      sock.onmessage = (e) => { if (ws.current === sock) { wrist.frame(String(e.data), Date.now()); flush(); } };
+      sock.onclose = () => {
+        if (ws.current !== sock) return;
+        ws.current = null;
+        setLive(false);
+        wrist.linkDown(Date.now());
+        flush();
+        if (!closed) retry = setTimeout(open, 1500);
       };
-      sock.onmessage = (e) => {
-        heard = Date.now();
-        const m = JSON.parse(e.data);
-        if (m.t === 'paired' && m.secret) secret.current = m.secret;
-        if (m.t === 'show') { if (m.show.kind === 'pairing') secret.current = ''; setShow(m.show); }
-      };
-      sock.onclose = () => { setLive(false); if (!closed) retry = setTimeout(open, 1500); };
     };
     open();
-    const beat = setInterval(() => {
-      const s = ws.current;
-      if (s?.readyState !== 1) return;
-      if (Date.now() - heard > 6000) { s.close(); return; }
-      s.send('{"t":"ping"}');
-    }, 2000);
-    return () => { closed = true; clearTimeout(retry); clearInterval(beat); ws.current?.close(); };
-  }, [band]);
+    const beat = setInterval(() => { wrist.tick(Date.now()); flush(); }, 50);
+    return () => { closed = true; clearTimeout(retry); clearInterval(beat); const s = ws.current; ws.current = null; s?.close(); };
+  }, [wrist]);
 
   useEffect(() => {
+    wrist.setBattery(battery);
     if (ws.current?.readyState === 1) ws.current.send(JSON.stringify({ t: 'battery', level: battery }));
-  }, [battery]);
+  }, [wrist, battery]);
 
-  // One button. A press shows what it is doing for three seconds; held for a second, NOT NOW.
-  const timer = useRef(null);
-  const held = useRef(false);
-  const down = () => {
-    held.current = false;
-    setHolding(true);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      held.current = true;
-      setHolding(false);
-      if (ws.current?.readyState === 1) ws.current.send('{"t":"hold"}');
-    }, 1000);
+  const key = (k, isDown) => {
+    (isDown ? wrist.keyDown : wrist.keyUp)(k, Date.now());
+    setDown((d) => ({ ...d, [k]: isDown }));
   };
-  const up = () => {
-    clearTimeout(timer.current);
-    setHolding(false);
-    if (held.current) return;
-    setAwake(true);
-    setTimeout(() => setAwake(false), 3000);
-  };
+  const handlers = (k) => ({
+    // The press counts first; capture only keeps the let-go on this button, and throws for a pointer that is not active.
+    onPointerDown: (e) => {
+      key(k, true);
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not an active pointer */ }
+    },
+    onPointerUp: () => key(k, false),
+    onPointerCancel: () => key(k, false),
+    onKeyDown: (e) => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); key(k, true); } },
+    onKeyUp: (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); key(k, false); } },
+  });
+  const hold = HOLD_MS / 1000 + ' s';
+  const wake = WAKE_MS / 1000 + ' s';
 
   return (
     <div className="standin">
       <div className="strap" aria-hidden="true" />
       <div className="bandbody">
-        <BandFace show={show} awake={awake} battery={battery}
-          pairAt={show?.kind === 'pairing' ? pairUrl(location.origin, show.code) : null} />
-        <button type="button" className={'bandbtn' + (holding ? ' down' : '')} aria-label="Wristband button. Press to wake it, hold for a second for NOT NOW."
-          onPointerDown={down} onPointerUp={up} onPointerLeave={() => { if (holding) { clearTimeout(timer.current); setHolding(false); } }}
-          onKeyDown={(e) => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); down(); } }}
-          onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); up(); } }} />
+        <div className="bandrow">
+          <WristFace screen={screen} pairAt={screen.code ? pairUrl(location.origin, screen.code) : null} />
+          <button type="button" className={'bandside' + (down[2] ? ' down' : '')} {...handlers(2)}
+            aria-label={'Side button. Press to see your card, press again to change it; hold ' + hold + ' to send it now, or to come back from NOT NOW.'}>SIDE</button>
+        </div>
+        <button type="button" className={'bandbtn' + (down[1] ? ' down' : '')} {...handlers(1)}
+          aria-label={'Face button. Press to wake it for ' + wake + '; hold ' + hold + ' for NOT NOW.'} />
       </div>
       <div className="strap" aria-hidden="true" />
       <div className="operator">
         <span className="label" style={{ color: live ? 'var(--ok)' : 'var(--warn)' }}>{live ? 'on the relay' : 'looking for the relay…'}</span>
-        <span className="small">A stand-in for the wristband — the real one is an M5StickC on a strap. Letters: {CODE_LETTERS.length} of them, none that look alike.</span>
+        <span className="small">
+          A stand-in for the wristband — the real one is an M5StickC Plus or a StickS3 on a strap. The face button wakes
+          it for {wake}; hold it {hold} for NOT NOW. SIDE shows your card, and more presses change it.
+          Letters: {CODE_LETTERS.length} of them, none that look alike.
+        </span>
         <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           battery <input type="range" min="1" max="100" value={battery} onChange={(e) => setBattery(Number(e.target.value))} aria-label="Stand-in battery" />
           <span className="tnum" style={{ color: '#fff', minWidth: 36 }}>{battery}%</span>

@@ -229,7 +229,7 @@ export function Quiet({ paired, onBackOn, onBlock, onReport, onLeft }) {
         <Icon name="visibility_off" size={40} color="#6E6D77" style={{ marginBottom: 8 }} />
         <span className="h1">You're invisible.</span>
         <span className="lede muted">Nothing is broadcasting.</span>
-        {paired ? <span className="lede muted">Your wristband is dark too.</span> : null}
+        {paired ? <span className="lede muted">Your wristband is dark too. Hold its side button to come back.</span> : null}
       </div>
       <div style={{ paddingBottom: 12 }}>
         <Cta plain onClick={onBackOn}>TURN BACK ON</Cta>
@@ -241,6 +241,19 @@ export function Quiet({ paired, onBackOn, onBlock, onReport, onLeft }) {
             <Icon name="chevron_right" size={18} color="var(--text-3)" />
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/** "I've left", carried until the relay has heard it (spec §2). */
+export function Leaving({ offline }) {
+  return (
+    <div className="scr tall">
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
+        <Icon name="logout" size={40} color="#6E6D77" style={{ marginBottom: 8 }} />
+        <span className="h1">Leaving…</span>
+        <span className="lede muted">{offline ? 'You’ll be taken out as soon as there’s signal.' : 'Taking you out of the room.'}</span>
       </div>
     </div>
   );

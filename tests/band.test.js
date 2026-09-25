@@ -8,7 +8,7 @@ const T = Date.UTC(2026, 8, 23, 11, 0);
 const view = (me = {}, matches = []) => ({ me: { armed: null, invisible: false, pick: null, ...me }, matches });
 
 test('each armed card is its own light, with words — colour is never the only signal', () => {
-  assert.deepEqual(bandShow({ view: view({ armed: 'hi' }), now: T }), { kind: 'hi', intent: 'hi', big: 'HI :)', small: 'blue means hello', dim: false });
+  assert.deepEqual(bandShow({ view: view({ armed: 'hi' }), now: T }), { kind: 'hi', intent: 'hi', big: 'HI :)', small: 'blue means hello', dim: false, armed: 'hi', rev: 0 });
   const song = bandShow({ view: view({ armed: 'song', pick: 'Just the Way You Are' }), now: T });
   assert.deepEqual([song.big, song.small], ['FIRST SONG?', 'Just the Way Yo…'], 'your own pick, short enough to read');
   assert.equal(bandShow({ view: view({ armed: 'dance' }), now: T }).big, "LET'S DANCE!");
@@ -63,4 +63,16 @@ test('waiting for its owner, and a person not in a room, are shows of their own'
   assert.deepEqual(bandShow({ view: null, waiting: true, now: T }), { kind: 'waiting' });
   assert.deepEqual(bandShow({ view: null, battery: 40, now: T }), { kind: 'off', battery: 40, away: true });
   assert.equal(bandShow({ view: null, code: 'KXRT', waiting: true, now: T }).kind, 'pairing', 'letters come first');
+});
+
+test('a show made from the view names what is armed and its rev; the others name neither', () => {
+  const m = { id: 'm1', intent: 'song', number: 27, at: T };
+  for (const [v, armed] of [[view({ armed: 'dance', rev: 7 }), 'dance'], [view({ rev: 7 }), null], [view({ invisible: true, rev: 7 }), null], [view({ armed: 'hi', rev: 7 }, [m]), 'hi']]) {
+    const s = bandShow({ view: v, now: T });
+    assert.deepEqual([s.armed, s.rev], [armed, 7], JSON.stringify(s));
+  }
+  for (const s of [bandShow({ view: null, now: T }), bandShow({ view: view(), code: 'KXRT', now: T }), bandShow({ view: view(), check: 12, now: T }),
+    bandShow({ view: view(), testUntil: T + 1, now: T }), bandShow({ view: null, waiting: true, now: T })]) {
+    assert.equal('armed' in s || 'rev' in s, false, JSON.stringify(s));
+  }
 });

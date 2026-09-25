@@ -2,8 +2,11 @@
 //
 // The relay forgets everything when it restarts, and a person who has been
 // gone longer than its grace period is taken out of the room. So on every
-// join the phone says again who it is and what it is doing — name, the card
-// it has armed, NOT NOW, its pick — and the room is rebuilt from the phones.
+// join the phone says again who it is and what it is doing, and the room is
+// rebuilt from the phones — but only as facts marked `again`, which the relay
+// applies only when they are news to it and only when they hide the person
+// (relay/room.js fromPhone(), rule 3). A page load says nothing new: what it
+// holds is kept here and re-said, never queued.
 //
 // A socket can die without closing: it reads open, takes every send and
 // fires nothing. So the phone asks every two seconds, and six seconds of
@@ -13,6 +16,9 @@ const PING_EVERY = 2000;
 const DEAF_MS = 6000;
 const QUEUE_MAX = 40;
 
+/** The order facts are re-said in: the claim first, so a wristband's kept hold lands before anything else. */
+export const SAID_ORDER = ['pair', 'invisible', 'profile', 'pick', 'arm', 'leave'];
+
 export function connect({ venue, me, onView, onStatus, onMessage }) {
   let ws = null;
   let heard = 0;
@@ -21,7 +27,7 @@ export function connect({ venue, me, onView, onStatus, onMessage }) {
   let backoff = 500;
   const queue = [];
   // What this phone is, re-said on every join.
-  const said = { profile: null, arm: null, invisible: null, pick: null, pair: null };
+  const said = Object.fromEntries(SAID_ORDER.map((k) => [k, null]));
 
   const status = (s) => onStatus?.(s);
   const raw = (m) => ws?.send(JSON.stringify(m));
@@ -37,10 +43,9 @@ export function connect({ venue, me, onView, onStatus, onMessage }) {
       if (ws !== sock) return;
       heard = Date.now();
       backoff = 500;
-      raw({ t: 'join', venue, me });
-      // Said again, and marked so: the room may know better — a wristband can
-      // have made this person invisible while the phone was away.
-      for (const m of Object.values(said)) if (m) raw({ ...m, again: true });
+      // NOT NOW rides on the join: it counts only if the join makes the person anew.
+      raw({ t: 'join', venue, me, ...(said.invisible?.on ? { quiet: true } : {}) });
+      for (const k of SAID_ORDER) if (said[k]) raw({ ...said[k], again: true });
       for (const m of queue.splice(0)) raw(m);
       status('live');
     };
@@ -81,17 +86,19 @@ export function connect({ venue, me, onView, onStatus, onMessage }) {
   open();
 
   return {
+    /** Is there a live socket right now? Showing changes are only sent on one. */
+    live: () => !!isOpen(),
     /** An action. Sent now, or kept and sent when the signal comes back. */
     send(m) {
       if (isOpen()) raw(m);
       else if (queue.length < QUEUE_MAX) queue.push(m);
     },
-    /** A standing fact about this phone, re-said after every reconnect. */
+    /** A standing fact about this phone, sent now and re-said after every reconnect. */
     say(kind, m) {
       said[kind] = m;
       this.send(m);
     },
-    /** A standing fact the relay has just confirmed: not sent now, only re-said after a reconnect. */
+    /** A standing fact this phone already holds: not sent now, only re-said after a reconnect. */
     keep(kind, m) {
       said[kind] = m;
     },

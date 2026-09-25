@@ -136,7 +136,9 @@ opening a `/pair/` link — end the same way:
    now. Try again in a minute.* and leaves its waiting state. Every `pair`
    attempt, right or wrong, counts toward the per-socket attempt limit.
 2. The wristband that was actually reached shows the number, large, with
-   `ON YOUR PHONE?` under it. The phone shows a sheet — *Does your wristband
+   `ON YOUR PHONE?` over it, as `MEET` stands over a meeting number (the
+   owner kept this layout on 25 Sep 2026; it first read "under it"). The
+   phone shows a sheet — *Does your wristband
    show 27?* with `YES` and `NO` — that stays over any screen and comes back
    if the phone reconnects; the pending belongs to the person, not the socket.
 3. `YES` pairs: the wristband flashes white, as today. `NO` says *That's not

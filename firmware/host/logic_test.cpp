@@ -1,6 +1,7 @@
 // ON THE BEAT — the wristband's logic, run on a laptop.
 //
 //   logic_test            every check below; exits non-zero on the first that fails
+//   logic_test wrist      the wrist's table of cases (tests/wrist-table.js), one answer a line
 //   logic_test speak      reads commands on stdin, one per line, and answers each
 //                         with one line: how tests/firmware.test.js puts this code
 //                         in front of the real relay
@@ -10,6 +11,7 @@
 
 #include <cstdio>
 #include <iostream>
+#include <memory>
 #include <random>
 #include <sstream>
 #include <string>
@@ -74,19 +76,28 @@ bool reads(const std::string& text) {
   return readFrame(text, f);
 }
 
-void button() {
-  Button b;
-  CHECK(b.update(false, 0) == Button::NONE);
-  CHECK(b.update(true, 100) == Button::NONE);
-  CHECK(b.update(true, 1099) == Button::NONE);
-  CHECK(b.update(false, 1099) == Button::WAKE);  // a press, let go before a second: wake
-  CHECK(b.update(true, 2000) == Button::NONE);
-  CHECK(b.update(true, 3000) == Button::HOLD);   // a second held: NOT NOW, while still held
-  CHECK(b.update(true, 9000) == Button::NONE);   // once
-  CHECK(b.update(false, 9001) == Button::NONE);  // and letting go is not also a wake
-  // Across the millisecond counter wrapping, after 49 days on.
-  CHECK(b.update(true, 0xFFFFFE00u) == Button::NONE);
-  CHECK(b.update(true, 0x000002FFu) == Button::HOLD);
+void wrist() {
+  // The table of cases (tests/fixtures/wrist-cases.json) runs through `logic_test wrist`.
+  // Here, only what a table in milliseconds cannot reach: the counter wrapping after 49 days.
+  Wrist w("000102030405060708090a0b0c0d0e0f");
+  CHECK(w.id() == idFor("000102030405060708090a0b0c0d0e0f"));
+  const uint32_t t0 = 0xFFFFFE00u;
+  w.linkUp(t0);
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"armed\":null,\"rev\":1}}", t0);
+  w.take();
+  w.keyDown(1, t0);
+  w.tick(t0 + HOLD_MS - 1);
+  CHECK(w.take().empty() && w.face(t0 + HOLD_MS - 1).small == "KEEP HOLDING");
+  w.tick(t0 + HOLD_MS);  // past zero
+  const std::vector<std::string> sent = w.take();
+  CHECK(sent.size() == 1 && sent[0] == HOLD_FRAME);
+  // A press just before the counter wraps keeps the face awake across it, and no longer.
+  Wrist v("000102030405060708090a0b0c0d0e0f");
+  const uint32_t t1 = 0xFFFFFFFFu - 1000;
+  v.keyDown(1, t1);
+  v.keyUp(1, t1 + 100);
+  CHECK(v.face(t1 + 200).light == LIGHT_AWAKE);
+  CHECK(v.face(t1 + 100 + WAKE_MS).light == LIGHT_OFF);  // past zero
 }
 
 void link() {
@@ -194,6 +205,19 @@ void frames() {
         p.secret == "00112233445566778899aabbccddeeff" && !p.hasShow);
   Frame a;
   CHECK(readFrame("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"battery\":40,\"away\":true}}", a) && a.show.away);
+  // What the wrist chooses from: what is armed (null is not the same as nothing said) and the rev.
+  s = parsed(R"j({"t":"show","show":{"kind":"off","battery":62,"armed":null,"rev":41}})j");
+  CHECK(s.hasArmed && s.armed.empty() && s.rev == 41);
+  s = parsed(R"j({"t":"show","show":{"kind":"hi","intent":"hi","armed":"hi","rev":9007199254740991}})j");
+  CHECK(s.hasArmed && s.armed == "hi" && s.rev == 9007199254740991LL);
+  s = parsed(R"j({"t":"show","show":{"kind":"pairing","code":"KXRT"}})j");
+  CHECK(!s.hasArmed && s.rev == 0);
+  s = parsed(R"j({"t":"show","show":{"armed":7,"rev":"3","kind":""}})j");
+  CHECK(!s.hasArmed && s.rev == 0 && s.kind == "off");
+  s = parsed(R"j({"t":"show","show":{"armed":"hi","rev":2.5}})j");
+  CHECK(s.rev == 0);
+  Frame no;
+  CHECK(readFrame(R"j({"t":"set","ok":false,"why":"changed"})j", no) && no.hasOk && !no.ok && no.why == "changed");
   // Not one whole object: refused.
   for (const char* bad : {"", "{", "}", "[]", "\"show\"", "{\"t\":}", "{\"t\":\"show\"", "{\"t\":\"show\"} x",
                           "{\"t\":\"sh\nw\"}", "{\"t\":\"\\x\"}", "{\"t\":\"\\u12\"}", "{t:1}", "{\"a\":01x}",
@@ -372,6 +396,60 @@ void relay() {
     CHECK(!parseRelay(bad).ok);
 }
 
+void rejoin() {
+  Rejoin r;
+  CHECK(!r.due(false, false, 0) && !r.due(false, false, 999999));  // no network set: nothing to join
+  r.began(1000);                                    // setup began it
+  CHECK(!r.due(true, false, 1000 + REJOIN_MS - 1));
+  CHECK(r.due(true, false, 1000 + REJOIN_MS));      // no link for REJOIN_MS: begin again
+  CHECK(!r.due(true, false, 1000 + REJOIN_MS + 1)); // and wait again
+  CHECK(r.due(true, false, 1000 + 2 * REJOIN_MS));
+  CHECK(!r.due(true, true, 90000));                 // joined: nothing to do...
+  CHECK(!r.due(true, false, 90000 + REJOIN_MS - 1)); // ...and after a drop, the wait runs from the last time it was joined
+  CHECK(r.due(true, false, 90000 + REJOIN_MS));
+  r.began(200000);                                  // a console command began it
+  CHECK(!r.due(true, false, 200000 + REJOIN_MS - 1));
+  Rejoin w;                                         // across the wrap of millis()
+  w.began(0xFFFFFFFFu - 1000);
+  CHECK(!w.due(true, false, REJOIN_MS - 1002));
+  CHECK(w.due(true, false, REJOIN_MS - 1001));
+}
+
+void console() {
+  const std::string key = "0123456712345678234567893456789a", id = idFor(key);
+  const std::string secret = "5ec2e75ec2e75ec2e75ec2e75ec2e75e";
+  CHECK(saidLine("DROP") == "the relay went quiet; trying again");
+  CHECK(saidLine(HOLD_FRAME) == "NOT NOW, from the wrist");
+  CHECK(saidLine(PING_FRAME).empty() && saidLine(batteryFrame(40)).empty());
+  CHECK(saidLine(helloFrame(id, key, 62)) == "hello to the relay, as a new wristband");
+  CHECK(saidLine(helloFrame(id, key, 62, secret, true)) == "hello to the relay, with its secret");
+  CHECK(saidLine("{\"t\":\"set\",\"intent\":\"hi\",\"basis\":7}") == "a choice from the wrist: HI :)");
+  CHECK(saidLine("{\"t\":\"set\",\"intent\":null,\"basis\":7}") == "a choice from the wrist: OFF");
+
+  std::string shown;
+  const auto heard = [&shown](const std::string& text) {
+    Frame f;
+    CHECK(readFrame(text, f));
+    return heardLine(f, shown);
+  };
+  CHECK(heard("{\"t\":\"error\",\"why\":\"bad band\"}") == "the relay says: bad band");
+  CHECK(heard("{\"t\":\"set\",\"ok\":false,\"why\":\"changed\"}") == "the relay did not take the choice: changed");
+  const std::string paired = heard("{\"t\":\"paired\",\"secret\":\"" + secret + "\"}");
+  CHECK(paired == "paired: the relay gave it a secret" && paired.find("5ec2") == std::string::npos);  // never the secret
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"pairing\",\"code\":\"MHJJ\"}}") == "the relay shows: pairing MHJJ");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"pairing\",\"code\":\"MHJJ\"}}").empty());  // only a change is said
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"check\",\"big\":\"27\"}}") == "the relay shows: check 27");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"test\"}}") == "the relay shows: test");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"armed\":null,\"rev\":3}}") == "the relay shows: off");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"hi\",\"intent\":\"hi\",\"big\":\"HI :)\",\"armed\":\"hi\",\"rev\":4}}") == "the relay shows: hi");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"hi\",\"intent\":\"hi\",\"big\":\"HI :)\",\"armed\":\"hi\",\"rev\":5}}").empty());
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"quiet\":true,\"armed\":\"hi\",\"rev\":6}}") == "the relay shows: off (NOT NOW)");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"away\":true}}") == "the relay shows: off (away)");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"meet\",\"intent\":\"hi\",\"big\":\"42\",\"small\":\"MEET\"}}") == "the relay shows: meet 42");
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"waiting\"}}") == "the relay shows: waiting");
+  CHECK(heard("{\"t\":\"ping\"}").empty());
+}
+
 void said() {
   CHECK(validId("0123456789abcdef") && !validId("0123456789abcde") && !validId("0123456789ABCDEF"));
   CHECK(!validId(std::string(65, 'a')) && validId(std::string(64, 'a')));
@@ -441,6 +519,19 @@ std::string answer(const Command& c) {
   if (c.verb == "battery") return batteryFrame(std::atoi(c.arg.c_str()));
   if (c.verb == "hold") return HOLD_FRAME;
   if (c.verb == "ping") return PING_FRAME;
+  if (c.verb == "consts") {
+    // Every constant the table's times are written in, by name, as app/lib/wrist.js CONSTS has them.
+    return "{\"WAKE_MS\":" + std::to_string(WAKE_MS) + ",\"HOLD_MS\":" + std::to_string(HOLD_MS) +
+           ",\"BAR_MS\":" + std::to_string(BAR_MS) + ",\"CHOOSE_MS\":" + std::to_string(CHOOSE_MS) +
+           ",\"COMMIT_MS\":" + std::to_string(COMMIT_MS) + ",\"CONFIRM_MS\":" + std::to_string(CONFIRM_MS) +
+           ",\"RESULT_MS\":" + std::to_string(RESULT_MS) + ",\"PING_EVERY_MS\":" + std::to_string(PING_EVERY_MS) +
+           ",\"DEAF_MS\":" + std::to_string(DEAF_MS) + ",\"STALE_MS\":" + std::to_string(STALE_MS) +
+           ",\"QUIET_CONFIRM_MS\":" + std::to_string(QUIET_CONFIRM_MS) + ",\"LIGHT_FULL\":" + std::to_string(LIGHT_FULL) +
+           ",\"LIGHT_DIM\":" + std::to_string(LIGHT_DIM) + ",\"LIGHT_PAIR\":" + std::to_string(LIGHT_PAIR) +
+           ",\"LIGHT_AWAKE\":" + std::to_string(LIGHT_AWAKE) + ",\"LIGHT_OFF\":" + std::to_string(LIGHT_OFF) +
+           ",\"CARD_WORDS\":{\"hi\":" + quote(cardWords("hi")) + ",\"song\":" + quote(cardWords("song")) +
+           ",\"dance\":" + quote(cardWords("dance")) + "}}";
+  }
   if (c.verb == "hues") {
     std::string out = "{";
     for (const Hue& h : HUES)
@@ -463,22 +554,74 @@ std::string answer(const Command& c) {
     const Words w = wordsFor(face, false, -1, Signal::LIVE);
     return "{\"kind\":" + quote(s.kind) + ",\"intent\":" + quote(s.intent) + ",\"big\":" + quote(s.big) +
            ",\"small\":" + quote(s.small) + ",\"code\":" + quote(s.code) + ",\"dim\":" + (s.dim ? "true" : "false") +
-           ",\"quiet\":" + (s.quiet ? "true" : "false") + ",\"away\":" + (s.away ? "true" : "false") + ",\"lit\":" + (lit(s) ? "true" : "false") +
+           ",\"quiet\":" + (s.quiet ? "true" : "false") + ",\"away\":" + (s.away ? "true" : "false") +
+           ",\"hasArmed\":" + (s.hasArmed ? "true" : "false") + ",\"armed\":" + quote(s.armed) +
+           ",\"rev\":" + std::to_string(s.rev) + ",\"lit\":" + (lit(s) ? "true" : "false") +
            ",\"light\":" + std::to_string(lightFor(face, false)) + ",\"words\":{\"big\":" + quote(w.big) +
            ",\"small\":" + quote(w.small) + "}}";
   }
   return "?";
 }
 
+/**
+ * `logic_test wrist`: the table's line protocol (tests/wrist-table.js). The
+ * first line is `key <hex>`; every other line is `<t> <what>` and is answered
+ * with one line: `{}` for `heard`, else what was sent and the screen.
+ */
+int runWrist() {
+  std::unique_ptr<Wrist> w;
+  std::string line;
+  while (std::getline(std::cin, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    std::istringstream in(line);
+    std::string first, verb, arg;
+    in >> first;
+    if (first == "key") {
+      in >> arg;
+      w.reset(new Wrist(arg));
+      continue;
+    }
+    if (!w) return 2;
+    const uint32_t t = static_cast<uint32_t>(std::stoul(first));
+    in >> verb;
+    std::getline(in, arg);
+    if (!arg.empty() && arg[0] == ' ') arg.erase(0, 1);
+    if (verb == "heard") {
+      w->heard(t);
+      std::cout << "{}\n";
+      continue;
+    }
+    w->tick(t);
+    if (verb == "up") w->linkUp(t);
+    else if (verb == "down") w->linkDown(t);
+    else if (verb == "key1" || verb == "key2") {
+      const int k = verb == "key1" ? 1 : 2;
+      if (arg == "down") w->keyDown(k, t);
+      else w->keyUp(k, t);
+    }
+    else if (verb == "frame") w->frame(arg, t);
+    else if (verb == "battery") w->setBattery(std::atoi(arg.c_str()));
+    else if (verb == "wifi") w->setWifi(arg == "1");
+    std::string sent;
+    for (const std::string& f : w->take()) sent += (sent.empty() ? "" : ",") + (f == "DROP" ? std::string("\"DROP\"") : f);
+    const Screen s = w->face(t);
+    std::cout << "{\"sent\":[" << sent << "],\"face\":{\"big\":" << quote(s.big) << ",\"small\":" << quote(s.small)
+              << ",\"field\":" << quote(s.field) << ",\"ink\":" << quote(s.ink) << ",\"light\":" << int(s.light)
+              << ",\"bar\":" << s.bar << ",\"code\":" << quote(s.code) << "}}\n";
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
+  if (argc > 1 && std::string(argv[1]) == "wrist") return runWrist();
   if (argc > 1 && std::string(argv[1]) == "speak") {
     std::string line;
     while (std::getline(std::cin, line)) std::cout << answer(readCommand(line)) << "\n";
     return 0;
   }
-  button();
+  wrist();
   link();
   quiet();
   battery();
@@ -488,6 +631,8 @@ int main(int argc, char** argv) {
   colour();
   pairing();
   relay();
+  rejoin();
+  console();
   said();
   std::printf("ok: %d checks\n", checks);
   return 0;

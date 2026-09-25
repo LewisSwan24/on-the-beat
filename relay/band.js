@@ -27,6 +27,12 @@ const short = (s, n) => {
  * @param {boolean} p.waiting     after a relay restart, until its owner's phone claims it
  * @param {number} p.testUntil    TEST THE LIGHT runs until this time
  * @param {number} p.now
+ *
+ * A show made from the person's view carries `armed` (null for none) and the
+ * view's `rev`; that is how the wrist tells a show about its person from one
+ * that is not, and names the state a choice was made from. The others —
+ * pairing, the check, the test light, waiting, and not in a room — carry
+ * neither.
  */
 export function bandShow({ view = null, battery = null, code = null, check = null, waiting = false, testUntil = 0, now = Date.now() }) {
   if (check) return { kind: 'check', big: String(check) };
@@ -35,17 +41,18 @@ export function bandShow({ view = null, battery = null, code = null, check = nul
   if (testUntil > now) return { kind: 'test' };
   const dim = battery !== null && battery <= DIM_AT;
   if (!view) return { kind: 'off', battery, away: true };
+  const about = { armed: view.me.armed ?? null, rev: view.me.rev ?? 0 };
   // NOT NOW is black, completely. Nothing broadcasting, and nothing to read.
-  if (view.me.invisible) return { kind: 'off', battery, quiet: true };
+  if (view.me.invisible) return { kind: 'off', battery, quiet: true, ...about };
   const meet = view.matches
     .filter((m) => now - m.at < MEET_MS)
     .sort((a, b) => b.at - a.at)[0];
-  if (meet) return { kind: 'meet', intent: meet.intent, big: String(meet.number), small: 'MEET', dim };
+  if (meet) return { kind: 'meet', intent: meet.intent, big: String(meet.number), small: 'MEET', dim, ...about };
   switch (view.me.armed) {
-    case 'hi': return { kind: 'hi', intent: 'hi', big: 'HI :)', small: 'blue means hello', dim };
-    case 'song': return { kind: 'song', intent: 'song', big: 'FIRST SONG?', small: short(view.me.pick, 16), dim };
-    case 'dance': return { kind: 'dance', intent: 'dance', big: "LET'S DANCE!", small: '', dim };
-    default: return { kind: 'off', battery };
+    case 'hi': return { kind: 'hi', intent: 'hi', big: 'HI :)', small: 'blue means hello', dim, ...about };
+    case 'song': return { kind: 'song', intent: 'song', big: 'FIRST SONG?', small: short(view.me.pick, 16), dim, ...about };
+    case 'dance': return { kind: 'dance', intent: 'dance', big: "LET'S DANCE!", small: '', dim, ...about };
+    default: return { kind: 'off', battery, ...about };
   }
 }
 

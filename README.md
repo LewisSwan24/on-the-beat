@@ -27,6 +27,10 @@ npm run dev          # Vite on :5178 for working on the app (run `npm run relay`
 npm run tunnel       # an https address for real phones (cloudflared must be installed)
 ```
 
+**The night ends at 06:00 at the venue.** `NIGHT_TZ=Australia/Brisbane npm start`
+names the venue's time zone (an IANA name); without it the relay uses its own
+machine's.
+
 **CI.** Every push to `main` and every pull request runs `npm test` and builds
 the wristband's firmware for both envs with PlatformIO
 (`.github/workflows/ci.yml`). Each run keeps the firmware as a download: each
@@ -38,6 +42,30 @@ M5StickC Plus, `otb-wristband-s3-full.bin` for the StickS3.
 are all refused on plain http, so a phone on the LAN gets an app with no
 camera. `npm start` and then `npm run tunnel` gives every phone the same https
 address and the same room.
+
+**Always on, at https://on-the-beat.fly.dev.** The relay runs on one Fly.io
+machine in Sydney (`fly.toml`, `Dockerfile`), so phones and wristbands need no
+laptop: a phone opens the address, and a wristband is told it once with
+`relay https://on-the-beat.fly.dev`. To ship a change:
+
+```
+flyctl auth login                        # once, in your own terminal
+flyctl deploy --ha=false --remote-only   # built on Fly's builder; the one machine restarts on it
+```
+
+- **Exactly one machine.** Every room lives in the relay's memory, so a second
+  machine would split phones from their wristbands. `--ha=false` keeps a
+  deploy from starting two; `flyctl scale count 1` puts it back if it ever does.
+- **A deploy is a restart.** Rooms, pairings and clips go with the old
+  process, and phones and wristbands come back as after any restart: a
+  wristband waits with `OPEN YOUR PHONE` until its phone claims it back.
+  Deploy between nights.
+- **Only what the image is built from reaches the builder.** `.dockerignore`
+  lets through `package.json`, `package-lock.json`, `vendor/`,
+  `vite.config.js`, `app/` and `relay/`, and nothing else: never
+  `firmware/src/secrets.h`. The first deploy sent 465 kB.
+- `fly.toml` sets `NIGHT_TZ=Australia/Brisbane` and
+  `CLIENT_IP_HEADER=fly-client-ip` (see Abuse resistance).
 
 **Showing it with one phone.** `node scripts/crowd.mjs [venue] [how many]`
 puts a few demo people in a venue: they show blue, pick tracks, wave back at
@@ -90,7 +118,9 @@ never becomes a match.
   - A dropped socket is not leaving: a person stays in the room for two
     minutes, so a locked screen does not cost them their place.
   - Clips are kept in memory, one on the floor per person, for an hour —
-    the canvas says "it loops on the floor for an hour", and it does.
+    the canvas says "it loops on the floor for an hour", and it does. Every
+    room's clips together stay under 96 MB, what a small always-on machine
+    can hold: past that the oldest go first, in whichever room they are.
   - Reports are written to the relay's log. A venue would send them to its
     own team's radio or dashboard.
   - `relay/shows.json` is tonight's shows: times, quiet corners to meet at,
@@ -116,11 +146,15 @@ never becomes a match.
 
 ## The wristband
 
-Revision 6 of the canvas puts a wristband beside the phone: an M5StickC on a
-strap that lights in the colour of the card you armed, so the phone can go
-back in a pocket. Its firmware is in `firmware/` (below), and **`/band` is a
-stand-in** that speaks exactly the same messages — open it in a second browser,
-or on a second phone strapped to a wrist, when there is no wristband to hand.
+Revision 6 of the canvas puts a wristband beside the phone: an M5StickC Plus
+or a StickS3 on a strap that lights in the colour of the card you armed, so the
+phone can go back in a pocket. Its firmware is in `firmware/` (below), and
+**`/band` is a stand-in** that speaks exactly the same messages — open it in a
+second browser, or on a second phone strapped to a wrist, when there is no
+wristband to hand.
+It has two buttons, so from the wrist alone, with the phone in a pocket, a
+person can change which card is armed, come back from NOT NOW, and see whether
+that was taken.
 
 - **Pairing.** A wristband nobody has claimed shows four letters from
   `ABCDEFGHJKMNPQRSTUVWXYZ` — no I, L or O — under a QR code of an address:
@@ -131,14 +165,20 @@ or on a second phone strapped to a wrist, when there is no wristband to hand.
   - `SCAN IT INSTEAD` on that screen: the app's own scanner reads the code;
   - someone who has not opened the app yet points the phone's own camera at
     the wristband. The address opens the app on the pair screen with the
-    letters already in, and one tap pairs it — after onboarding, for someone
-    new. It never pairs on its own; see Abuse resistance for why.
+    letters already in — after onboarding, for someone new.
 
-  The relay then tells the phone the wristband's id, and the phone claims it
-  by that id after every reconnect. A new pairing flashes the wristband white
-  once, so the right wrist knows. A paired wristband cannot be taken by
-  another phone; one nobody claimed is forgotten when it disconnects, letters
-  and all.
+  **All three end with a check.** The relay does not pair on the letters: the
+  wristband that was reached shows a two-digit number with `ON YOUR PHONE?`
+  over it, and the phone asks *Does your wristband show 27?* in a sheet that
+  stays over any screen and comes back after a reconnect. `YES` pairs, and the
+  wristband flashes white once. `NO`, or no answer within a minute, drops it and
+  the wristband shows new letters; a second phone trying the same wristband
+  meanwhile is told someone is pairing it. A decoy code stuck on someone's
+  wristband fails here: the number lights the decoy, not the wrist the person
+  is looking at.
+
+  On `YES` the relay makes a secret and gives it to that phone and that
+  wristband, and after every reconnect each proves itself with it.
 - **Reading and drawing the code.** The scanner uses the browser's own
   `BarcodeDetector` where it has one (Chrome on Android) and jsQR everywhere
   else, loaded only when the scanner opens. jsQR 1.4.0 (Apache-2.0) is kept in
@@ -152,15 +192,48 @@ or on a second phone strapped to a wrist, when there is no wristband to hand.
   two-digit meeting number for fifteen minutes after a match (the same number
   on both wrists), and nothing at all under NOT NOW. Never a name, never
   anyone else's pick, never a contact. At 15% battery it dims itself.
-- **Its one button.** A press wakes it for three seconds. Held for a second it
-  is NOT NOW, and the phone follows to the invisible screen. That is also why
-  the pair screen says *press* its button, not *hold* it.
-- **A phone coming back does not undo the wrist.** On every reconnect the
-  phone re-says its standing facts marked `again`, and the relay never lets
-  those turn a person visible who went invisible from the wrist.
-- **After a relay restart** everything is forgotten, and the phone can be back
-  before its wristband. The phone's claim by id is held, and the wristband
-  comes back already paired.
+- **Its two buttons.** The face button (KEY1): a press wakes it for six
+  seconds; held for 1.5 s it is NOT NOW — dark at once — and the phone
+  follows to the invisible screen. The side button (KEY2): a press shows
+  the card that is armed; each press after moves a preview — HI, SONG,
+  DANCE, OFF — and 3 s after the last one the choice goes to the relay,
+  which decides; the face says `SET`, `CHANGED` or `NOT SENT`.
+  Coming back from NOT NOW takes holding the side button. The pair screen
+  says to *press* its face button, not to hold it.
+- **Who a wristband is.** It makes a random key at every boot and keeps it
+  only in RAM; its id is the first half of the key's SHA-256, and every hello
+  proves the id with the key. Knowing an id — every phone that ever paired it
+  was told it — is not enough to speak as it, and switching it off and on makes
+  a new wristband with new letters.
+- **The relay decides, and a late message can only hide.** Every change to the
+  armed card or to NOT NOW, from a phone or a wrist, moves a revision. A choice
+  on the wrist, and a tap on the phone that would show the person, name the
+  revision they were chosen from and are refused if it has moved. A phone
+  re-says its facts after every reconnect, marked `again`, and the relay
+  applies one only if it never saw it and it hides the person. So a phone
+  waking in a pocket cannot undo a card chosen on the wrist, and a tap stuck in
+  a dead socket cannot show someone who has since gone NOT NOW. The phone
+  follows every view (`app/lib/follow.js`) and says when the wrist changed
+  something — *Armed from your wristband: SAY HI*, with `NOT YOU? UNPAIR` — or
+  when its own tap did not land. Offline it queues only what hides: NOT NOW,
+  and a card turned off.
+- **A wristband keeps its person in the room** for up to an hour after a phone
+  of theirs was last heard, or until 06:00 at the venue, whichever is first,
+  so the phone can stay locked. With no phone and no live wristband, the
+  two-minute grace applies as before. Once they are out, the wrist says
+  `OPEN YOUR PHONE` / `TO COME BACK` on a press, and a hold is kept until they
+  are back.
+- **After a relay restart** the wristband comes back with its secret and waits
+  for its owner — `OPEN YOUR PHONE` / `OR SWITCH ME OFF`, no letters — until
+  the phone's claim with the same secret pairs it again; a hold meanwhile is
+  applied then. Whichever is back first, the secret decides. Nobody by the hour
+  or by 06:00, and it shows new letters. A paired wristband away for an hour is
+  forgotten, and only then, told so by the relay, does the phone say *Your
+  wristband restarted or went away. Pair it again.* Before that, away for two
+  minutes, its chip says `OFFLINE` and offers `PAIR AGAIN`.
+- **"I've left" is carried until it is heard.** The phone says *Leaving…* and
+  re-sends it across reconnects until the relay answers; the relay's leave
+  unpairs the wristband.
 
 ## The wristband's firmware
 
@@ -169,9 +242,9 @@ tells them apart as it starts; the first M5StickC works too, drawn smaller),
 and for the M5StickS3, an ESP32-S3 that no ESP32 image boots on, so it is an
 env of its own: `pio run -e m5sticks3`. The code is the same for all of them. It
 speaks exactly what `/band` speaks, on the same clock: it says it is a wristband
-with an id it made once and keeps, shows whatever the relay tells it to, asks
-the relay every two seconds and takes six of silence as a dead socket. A press
-wakes it for three seconds; a one-second hold is NOT NOW.
+with an id that is the hash of a key it makes at every boot, shows whatever the
+relay tells it to, asks the relay every two seconds and takes six of silence as
+a dead socket. Its two buttons work as above.
 
 ```
 cd firmware
@@ -181,19 +254,29 @@ pio device monitor      # its console: ssid, pass, relay, show, forget
 pio run -e m5sticks3 -t upload    # the same, for a StickS3
 ```
 
-Tell it the venue's Wi-Fi and the relay at the console — `relay` takes the
-address `npm run tunnel` prints — or copy `src/secrets.example.h` to
-`src/secrets.h`, which git ignores, to build them in. What is typed is kept
-across restarts, which matters: a quick tunnel's address changes every run.
+Tell it the venue's Wi-Fi and the relay at the console — `relay` takes
+`https://on-the-beat.fly.dev`, or the address `npm run tunnel` prints — or
+copy `src/secrets.example.h` to `src/secrets.h`, which git ignores, to build
+them in. What is typed is kept across restarts, which matters: a quick
+tunnel's address changes every run.
+Off the Wi-Fi, it asks the radio to join again every 15 s. The console says
+what the band is doing: the Wi-Fi coming and going and the reason the radio
+gave, each hello and whether it carries its secret (never the secret), each
+choice sent from the wrist, each refusal, and each change in what the relay
+shows.
 
 - **Everything that decides anything is in `src/band_logic.h`**, plain C++ with
-  no hardware in it; `src/main.cpp` is only the screen, the button, the
+  no hardware in it; `src/main.cpp` is only the screen, the two buttons, the
   battery, Wi-Fi and the socket. `npm test` builds that logic with the
   machine's own compiler, under the address and undefined-behaviour sanitizers
   where it can, and `tests/firmware.test.js` puts it in front of the real
   relay: the frames it sends pair it, report its battery and make its person
   invisible, and every frame the relay sends it is read back as the relay meant
-  it. With no C++ compiler those tests skip.
+  it. With no C++ compiler those tests skip. Its `Wrist` is the same machine as
+  `/band`'s `app/lib/wrist.js`, and one table, `tests/fixtures/wrist-cases.json`,
+  is run against both: the JavaScript by `tests/wrist.test.js`, the C++ through
+  `logic_test wrist` by `tests/firmware.test.js`, which also holds every named
+  timing equal on both.
 - **It goes dark rather than lie.** A hold is dark at once, before the relay
   has heard it, and is sent as soon as there is a relay to send it to. And a
   relay out of reach for ten seconds is no longer believed: the person may have
@@ -202,9 +285,8 @@ across restarts, which matters: a quick tunnel's address changes every run.
   relay. The socket runs on a task of its own, so a connection that hangs — a
   captive portal can hold a TLS handshake open for two minutes — never holds
   up the button or the screen.
-- **Its id is 128 random bits, not the chip's MAC.** A phone can claim a
-  wristband by id after a relay restart, so an id anyone could read off the air
-  would let them.
+- **Its key is 128 random bits, made at every boot**, never the chip's MAC, and
+  kept only in RAM with the pairing's secret.
 - **The pairing code is as wide as the screen allows**, with four light modules
   round it. A tunnel address is a version 4 code, and the canvas's 115 pixels
   would make each module two pixels — too small to read off a screen this size.
@@ -249,24 +331,59 @@ across restarts, which matters: a quick tunnel's address changes every run.
 - **The wristband shows a QR code while it pairs**, not only the four letters
   revision 6 draws. `SCAN IT INSTEAD` needs something to scan, and the code
   also lets a phone's own camera open the app.
+- **A second button, and other timings.** Revision 6 gives the wristband a
+  single button — a 3 s wake, and a 1 s hold for NOT NOW — and no second
+  action. The owner chose on 24 Sep 2026: the side button (KEY2,
+  M5Unified's `BtnB` on every supported board, as a StickS3 and a StickC Plus
+  bore out; the power button is never used)
+  changes the armed card, so the phone can stay in a pocket; a press wakes the
+  face for six seconds, long enough to read a preview; NOT NOW is a hold of
+  1.5 s, longer than a bump in a crowd. Every timing is a named constant, in
+  `band_logic.h` and `app/lib/wrist.js`, because they are guesses until worn.
+- **A connected wristband keeps its person in the room for up to an hour**
+  without their phone, where the canvas has the phone as the only way in.
+- **Pairing ends with a check** shown on the wrist and confirmed on the phone.
+  Without it a decoy code would pair silently, and with `set` a wrongly paired
+  wristband could make someone visible.
 
 ## Abuse resistance
 
-The relay is a standing public process (behind a tunnel), so the pairing surface
+The relay is a standing public process (on Fly.io, or behind a tunnel), so the pairing surface
 was red-teamed and hardened. A red/blue pass found and closed:
 
 - **Guessing a wristband's four letters.** The code space is only 279,841, and
   one socket could once walk it in about fifteen seconds and take a stranger's
-  wristband. Now each unproven attempt — a missed code, or a bare id-claim with
-  no wristband behind it — is throttled: five per socket and twenty per address
-  a minute. Behind the tunnel the address is the real client (from
-  `cf-connecting-ip`, trusted only because the socket is on loopback), so one
-  attacker cannot spend the whole room's budget.
-- **Piling up placeholder claims.** A phone claims a wristband by an id, which a
-  restarted relay must accept before the wristband is back. An id nothing ever
-  answers is a placeholder; the sweep forgets it after forty-five seconds, and
-  the band table has a hard ceiling that evicts the deadest record first and
-  never a live wristband.
+  wristband. Now every pairing attempt, right letters or wrong, and every
+  unproven claim is throttled: five per socket and twenty per address
+  a minute. The address is the real client, so one attacker cannot spend the
+  whole room's budget. On Fly.io it is `fly-client-ip`, which Fly's proxy sets
+  from the connection it accepted, read only because `CLIENT_IP_HEADER` names
+  it; that the proxy also replaces one a client sends is reported by others,
+  not measured here. Behind the tunnel it is `cf-connecting-ip`, trusted only
+  because the socket is on loopback.
+- **Piling up placeholder claims.** A phone claims a wristband by id and
+  secret, which a restarted relay must accept before the wristband is back. A
+  claim nothing answers is a placeholder, one per person, forgotten after the
+  hour; the band table has a hard ceiling that evicts the deadest record first
+  and never a live wristband.
+- **Speaking as someone else's wristband.** Every hello carries the key its id
+  is the hash of; a hello whose key does not hash to its id is refused, for a
+  paired, a pending and an unpaired record alike, and a paired record also
+  needs its secret, without which the new socket is closed and the live one is
+  left alone. A socket says hello once, a replaced wristband socket is closed
+  and nothing more is taken from it, and a hello with no protocol version gets
+  letters but is never paired.
+- **A decoy wristband.** The check above: the number appears on the wristband
+  that was reached, so a decoy has to be believed, not just scanned. Numbers
+  are unique among the pairings in progress, a second pairing of the same
+  wristband is refused `busy`, and the letters change after every NO or
+  timeout.
+- **Showing someone late.** A wristband's `set` is dropped whole unless it is
+  exactly a set, and refused `unpaired`, `no room`, `changed` or `too fast`
+  (one a second). A phone's re-said facts only ever hide, and only when they are
+  news; a showing change names the revision it was chosen from. A person who
+  left under NOT NOW and comes back is still invisible, and a join made while
+  holding NOT NOW makes them invisible from the first moment.
 - **Rooms that never emptied.** A venue with nobody in it, nobody in its grace
   window, no clip still loading and no wristband still worn is now reclaimed, so
   a long-lived relay does not keep a room object for every venue anyone typed.
@@ -282,46 +399,69 @@ was red-teamed and hardened. A red/blue pass found and closed:
   handles and unknown message types are all inert: a fuzz barrage of them
   leaves the relay serving and still forming rooms (`tests/server.test.js`).
 
-Each fix is a test in `tests/server.test.js`, and each was mutation-checked —
-break the guard and exactly its test goes red. A dropped wristband keeps its
+Each fix is a test in `tests/server.test.js`, `tests/wristband.test.js` or
+`tests/rules.test.js`, and each was mutation-checked — break the guard and
+exactly its test goes red; where other tests stand on a guard, exactly that
+known set does. A dropped wristband keeps its
 letters through a wifi blip on purpose (so the code under a typing finger does
 not change), which is the one deliberate change to a wristband's own lifetime.
 
-One further guard is on the phone, not the relay. A `/pair/<code>` link is a
-bearer link: a hostile QR anywhere would otherwise bind an attacker's wristband
-to whoever opened it, so their wrist would show the victim's coarse state and
-meeting number. A code from the address no longer pairs on its own — it lands on
-the pair screen pre-filled and waits for an explicit tap. The in-app scanner,
-where the camera was deliberately pointed at a wristband, still pairs on sight.
-This is client-side, so it is verified in a browser rather than by a relay test:
-opening a `/pair/` link shows the confirm step and sends no pairing frame until
-the button is pressed, and the button then pairs.
+The `/pair/` link used to wait for a tap on the phone, because a hostile code
+anywhere could bind an attacker's wristband to whoever opened it. The check
+replaces that tap for every way in — the in-app scanner and typed letters too,
+which the old guard never covered.
 
 The room model itself — who appears in another person's view — was read end to
 end: before a mutual yes a person is only a per-viewer handle and a coarse band,
 name and contact arrive only when both keep, an invisible person is absent from
 everyone's lists, and a block cuts both directions and outlives leaving.
 
-Still open here: the clip bearer links below; the fact that the pairing code is a
-bearer token visible on the wristband's screen — first to type it pairs, so
-a paired wristband flashes white and can be unpaired; and the firmware's https
+Still open here: the clip bearer links below; the letters on a wristband's
+screen, which let someone watching hold its check open a minute at a time —
+every attempt counts and the letters change after each, so this annoys rather
+than pairs; and the firmware's https
 connection, which is encrypted but does not check the relay's certificate unless
 `OTB_RELAY_CA` is built in, so on a hostile network something posing as the
 relay could drive what a wrist shows.
 
 ## What is not done
 
+- **One machine, and its memory is everything.** The relay has a fixed
+  address now, https://on-the-beat.fly.dev, but every room, pairing and clip
+  lives in one machine's memory: a deploy or any restart empties it, and
+  everyone finds their way back as after any restart. More people than one
+  small machine holds, or a restart nobody notices, needs the rooms kept
+  outside the process first. A phone that used a tunnel address starts over
+  at the fixed one: a browser keeps the app's storage per address.
 - **Proximity.** Wristbands pair and light, but nothing measures who is near
   whom: every person is still `in this room`. Nearness wants ESP-NOW between
   wristbands, which wants the hardware.
-- **The firmware has run on one wristband.** A StickS3 joined a phone's
-  hotspot, reached the relay through a quick tunnel, and was paired by
-  scanning its code from a real Android phone: the phone showed its battery,
-  a card armed on the phone lit the wrist in its colour, and a hold on the
-  wrist took the phone to the invisible screen. That is one band and one
-  phone; two wrists meeting, and a night's worth of battery, are not tried.
-  CI builds both envs with PlatformIO on every push — the ESP32 image is about
-  1.2 MB of its 3 MB app partition — and keeps each image to flash.
+- **The firmware has run on two wristbands, for one day.** On 25 Sep
+  2026 a StickS3 and an M5StickC Plus joined an Android phone's hotspot and
+  reached the relay through a quick tunnel, with that phone and a laptop
+  browser as two people. From the wrist alone, the side button chose each
+  card and OFF and the phone followed, saying *Armed from your wristband*; a
+  face hold went NOT NOW and a side hold came back. With the phone locked for
+  over two minutes, SAY HI chosen on the band reached the other person's
+  WHO'S NEAR, and the phone woke with it still armed and no toast saying a tap
+  failed — but its socket stayed open all the while, so a band holding its
+  person with the phone truly gone is still untried. After a relay restart
+  the band waited with `OPEN YOUR PHONE` until the phone claimed it back
+  without letters, and when the laptop's own internet dropped for 80 s both
+  bands found the relay again by themselves. Two wrists met: both showed
+  `MEET 22` in the same second. Two things did not work, and are fixed: a
+  band that booted before the hotspot was on never joined it (it now begins
+  again every 15 s, and joined by itself once the hotspot was back), and the
+  console said too little to tell an UNPAIR tapped on the phone from a lost
+  secret (it now says what the wrist sends and each change in what the relay
+  shows). That evening both moved to the always-on relay with one `relay`
+  line each and no reflash; then, with no relay or tunnel on the laptop and
+  both bands off its USB, the phone paired with a band through
+  https://on-the-beat.fly.dev and the band responded; a second device paired
+  the other, and a wave and a wave back between the two put `MEET` on both
+  bands. A night's worth of battery, and the Plus's face button, are not
+  tried. CI builds both envs with PlatformIO on every push — the ESP32 image
+  is about 1.2 MB of its 3 MB app partition — and keeps each image to flash.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was
@@ -331,6 +471,11 @@ relay could drive what a wrist shows.
   it for its hour, including someone who has since been blocked. The address
   is 96 random bits and only ever shown inside a room.
 - **Reports go to a log**, not to a person.
+- **Answering someone from the wrist** (phase B) is not built: only waving back
+  at a SAY HI could be, since a like needs the other person's pick, which the
+  wrist never shows.
+- **The timings are guesses until worn** — six seconds awake, 1.5 s holds,
+  three to send, ten to wait. They are named constants for that reason.
 - **Recording has run on Chrome's fake camera, not a phone's.** Headless
   Chrome with a fake camera recorded five seconds through the app's own
   MediaRecorder path and sent it; a second phone found it on the floor and
