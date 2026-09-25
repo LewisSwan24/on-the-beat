@@ -101,7 +101,7 @@ What each kind of yes shows the other side before it is returned:
 
 | | seen by the other person? |
 |---|---|
-| a wave (SAY HI) | yes — a blue dot on a row that is still only a band, so they can wave back |
+| a wave (SAY HI) | yes — a blue dot on a row that is still only a band, so they can wave back; and on their wristband, a short call and a count of who waits, never who |
 | a like (FIRST SONG?) | never — it was for an answer, not a face |
 | a dance back (LET'S DANCE!) | yes — the clip goes straight to them, with no name on it |
 
@@ -190,8 +190,11 @@ that was taken.
   `viewFor()` its person's phone is sent, so it can never show more than the
   phone could: its person's colour and card words while a card is armed, the
   two-digit meeting number for fifteen minutes after a match (the same number
-  on both wrists), and nothing at all under NOT NOW. Never a name, never
-  anyone else's pick, never a contact. At 15% battery it dims itself.
+  on both wrists), and nothing at all under NOT NOW. While its person shows
+  SAY HI it is also told that someone waved and how many wait: the newest
+  one's handle, a count and a number, the same size however many wait. Never a
+  name, never anyone else's pick, never a contact. At 15% battery it dims
+  itself.
 - **Its two buttons.** The face button (KEY1): a press wakes it for six
   seconds; held for 1.5 s it is NOT NOW — dark at once — and the phone
   follows to the invisible screen. The side button (KEY2): a press shows
@@ -218,6 +221,20 @@ that was taken.
   held equal by `tests/firmware.test.js`; the notes are starting points, to be
   tuned by ear on a band. `/band` plays the same notes through Web Audio once
   its page has been tapped, which is when a browser first lets a page sound.
+- **A wave reaches the wrist, and is answered there.** A wave at someone on
+  SAY HI calls their wristband: a short `hello` and the HI blue three times,
+  whatever the keys do. During it a key only ticks, and only a face hold still
+  goes NOT NOW, so how long it lasts says nothing about whether it was seen;
+  waves that arrive meanwhile join it. A face press on the resting HI or
+  meeting face then opens `SOMEONE WAVED` over `HOLD SIDE: WAVE BACK`, or
+  `3 WAITING - HOLD SIDE` when more wait (`9+` past nine). A side hold there
+  waves back to the newest, and the relay answers it as it answers a choice:
+  one that lands makes the match, and both wristbands show the same `MEET`
+  number and call it; one that does not shows `NOT SENT`, or `CHANGED` if its
+  own person's card moved meanwhile. Anyone else waiting is answered on the
+  phone. Waves are numbered by the relay's clock, so a band never calls twice
+  for one wave, even past a relay restart, and never misses the next. The
+  phone buzzes for a wave only when no live wristband calls instead.
 - **The sound can be switched off, on the phone.** The wristband sheet has
   `SOUND: ON` under TEST THE LIGHT; off, the band only lights up. The switch is
   the person's own: the phone keeps it across nights and re-says it after
@@ -398,8 +415,13 @@ shows.
   light patterns that pretend to carry a message. The owner chose on 25 Sep
   2026 that the band flashes and sounds, and none of it pretends: each
   reaction answers something the wearer just did, or says one fact about the
-  band, and the only one about another person is the meeting call, for a
-  number the band already shows.
+  band. The two about another person are the meeting call, for a number the
+  band already shows, and a wave's call.
+- **The wristband says that someone waved.** Revision 6 §8 keeps names,
+  photos and other people's picks off the wristband, and it showed nothing
+  about anyone else but the meeting number. The owner chose on 25 Sep 2026
+  that it also says that someone waved at its person and how many wait, and
+  can wave back to the newest. Still no name, no photo, no pick and no area.
 
 ## Abuse resistance
 
@@ -439,6 +461,17 @@ was red-teamed and hardened. A red/blue pass found and closed:
   news; a showing change names the revision it was chosen from. A person who
   left under NOT NOW and comes back is still invisible, and a join made while
   holding NOT NOW makes them invisible from the first moment.
+- **A wristband's yes for its person.** A band can wave back, which makes a
+  match and shows both names. It speaks for its person only with the secret of
+  its pairing, so no other band can wave as them. Its wave is dropped whole
+  unless it is exactly one, then refused `too fast` (one a second, counted
+  before any handle is looked up and whether or not it lands, so a flood of
+  made-up handles buys nothing), `unpaired`, `no room`, `changed` (its
+  person's revision moved, or they are not on SAY HI) and `gone` when the
+  handle is not someone waiting on its person, which a block reads exactly
+  like. A band never starts a wave: with none to answer, nothing is recorded.
+  A lent, taken or forgotten band can still make a match for its person, with
+  or without their phone; blocking undoes it.
 - **Rooms that never emptied.** A venue with nobody in it, nobody in its grace
   window, no clip still loading and no wristband still worn is now reclaimed, so
   a long-lived relay does not keep a room object for every venue anyone typed.
@@ -533,9 +566,12 @@ relay could drive what a wrist shows.
   it for its hour, including someone who has since been blocked. The address
   is 96 random bits and only ever shown inside a room.
 - **Reports go to a log**, not to a person.
-- **Answering someone from the wrist** (phase B) is not built: only waving back
-  at a SAY HI could be, since a like needs the other person's pick, which the
-  wrist never shows.
+- **Waves on the wrist have been tried only in the tables and a browser.**
+  Both twins pass the shared cases and the relay's tests hold every refusal,
+  but a wave, its call and a wave back from a band are not yet tried on the
+  two real bands with two real people. Answering from the wrist is only
+  waving back: a like needs the other person's pick, which the wrist never
+  shows.
 - **The timings are guesses until worn** — six seconds awake, 1.5 s holds,
   three to send, ten to wait. They are named constants for that reason.
 - **Recording has run on Chrome's fake camera, not a phone's.** Headless

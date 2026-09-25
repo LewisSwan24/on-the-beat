@@ -20,7 +20,8 @@
 // What each kind of yes shows the other side, before it is returned:
 //
 //   - A wave (SAY HI) is seen by the person waved at, as a blue dot on a row
-//     that is still only a band. That is what makes waving back possible.
+//     that is still only a band, and on their wristband as a short call and a
+//     count of who waits. That is what makes waving back possible.
 //   - A like (FIRST SONG?) is never shown. It was for an answer, not a face.
 //   - A dance back (LET'S DANCE!) is a clip sent straight to one person, so
 //     they see it — five seconds of someone dancing, with no name on it.

@@ -2,8 +2,9 @@
 //
 // The wristband is a light first and words second: from across a dark room it
 // is a colour, and only up close two short lines. It shows nothing about
-// anyone else except the meeting number, and only once both of you said yes.
-// No names, no photos, no picks but your own.
+// anyone else except the meeting number, once both of you said yes, and while
+// you show SAY HI, that someone waved at you and how many wait. Never who: no
+// names, no photos, no picks but your own.
 //
 // Pure: everything it needs is passed in, so every state can be tested
 // without a socket or a clock.

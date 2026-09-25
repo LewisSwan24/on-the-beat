@@ -64,7 +64,9 @@ None of it pretends:
 - each reaction answers something the wearer just did, or says one fact
   about the band: out of reach, battery, waiting, away, or unpaired;
 - the only reaction about another person is the meeting call, and the
-  meeting number is already on the band.
+  meeting number is already on the band. The waves spec
+  (`2026-09-25-wrist-waves-design.md`) adds a second: a wave's call, which
+  says that someone waved and never who.
 
 README's "Where this differs from the canvas, on purpose" gains this.
 
