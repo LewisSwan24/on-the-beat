@@ -4,7 +4,8 @@ import { CODE_LETTERS, cleanCode } from '../../relay/band.js';
 import { pairUrl } from '../lib/pairing.js';
 import { qrMatrix, qrPath } from '../lib/qr.js';
 import { toHex } from '../lib/sha256.js';
-import { HOLD_MS, WAKE_MS, createWrist } from '../lib/wrist.js';
+import { createSpeaker } from '../lib/speaker.js';
+import { FLASH_COLOURS, HOLD_MS, WAKE_MS, createWrist } from '../lib/wrist.js';
 import { Back, Ghost, Icon } from '../ui.jsx';
 
 /**
@@ -52,19 +53,24 @@ export function BandFace({ show, awake, battery, scale = 2, pairAt = null }) {
 
 const INK = { ink: '#041418', white: '#FFFFFF', text2: 'var(--text-2)' };
 
-/** What the Wrist says to draw (app/lib/wrist.js face()): one field, two lines, the bar, and letters with their code. */
+/**
+ * What the Wrist says to draw (app/lib/wrist.js face()): one field, two lines,
+ * the bar, and letters with their code and the hint under them. A flash's red
+ * and orange are flat, as on the band.
+ */
 export function WristFace({ screen: s, scale = 2, pairAt = null }) {
   const hue = HUE[s.field];
   const bg = s.field === 'white' ? '#FFFFFF'
-    : hue ? `radial-gradient(120% 90% at 50% 38%, ${hue.c} 0%, ${hue.g} 100%)` : '#000000';
+    : FLASH_COLOURS[s.field] ?? (hue ? `radial-gradient(120% 90% at 50% 38%, ${hue.c} 0%, ${hue.g} 100%)` : '#000000');
   const ink = INK[s.ink] ?? HUE[s.ink]?.c ?? INK.text2;
   // The backlight: dark is off, not a black picture lit from behind.
   const glow = s.light ? Math.max(0.35, s.light / 255) : 0;
   const number = /^\d+$/.test(s.big);
   return (
-    <div className="bandface" style={{ width: 135 * scale, height: 240 * scale, '--u': scale + 'px', background: bg, filter: `brightness(${glow})` }}
-      role="img" aria-label={s.code ? 'Wristband showing its pairing letters ' + s.code.split('').join(' ') : s.light ? 'Wristband: ' + [s.big, s.small].filter(Boolean).join(', ') : 'Wristband dark'}>
-      {s.code ? <Pairing code={s.code} at={pairAt} />
+    // The band changes at once: a fade would blur a 150 ms flash and the meeting's blink.
+    <div className="bandface" style={{ width: 135 * scale, height: 240 * scale, '--u': scale + 'px', background: bg, filter: `brightness(${glow})`, transition: 'none' }}
+      role="img" aria-label={s.code ? 'Wristband showing its pairing letters ' + s.code.split('').join(' ') + (s.small ? ', ' + s.small : '') : s.light ? 'Wristband: ' + [s.big, s.small].filter(Boolean).join(', ') : 'Wristband dark'}>
+      {s.code ? <Pairing code={s.code} at={pairAt} hint={s.small} />
         : number ? <span className="words meet" style={{ color: ink }}><span className="small-w">{s.small}</span><span className="num">{s.big}</span></span>
         : s.big || s.small ? (
           <span className="words" style={{ color: ink }}>
@@ -77,8 +83,8 @@ export function WristFace({ screen: s, scale = 2, pairAt = null }) {
   );
 }
 
-/** Pairing: a code to scan over the four letters to type. Either one pairs. */
-function Pairing({ code, at }) {
+/** Pairing: a code to scan over the four letters to type. Either one pairs. A press puts the hint under them. */
+function Pairing({ code, at, hint = '' }) {
   const qr = useMemo(() => (at ? qrMatrix(at) : null), [at]);
   const box = qr ? qr.size + 8 : 0;
   return (
@@ -90,6 +96,7 @@ function Pairing({ code, at }) {
         </svg>
       ) : null}
       <span className="code">{code}</span>
+      {hint ? <span className="small-w hint">{hint}</span> : null}
     </span>
   );
 }
@@ -152,7 +159,7 @@ export const bandLine = (band) => (band
  * /band — a stand-in for the wristband, until one is in hand. The machine is
  * app/lib/wrist.js, the same one band_logic.h runs on the real band and held
  * to the same table; this page only feeds it the socket, the two buttons and
- * the time, and draws its face at 2x.
+ * the time, draws its face at 2x, and plays its sounds (app/lib/speaker.js).
  */
 export function BandStandIn() {
   // A new wristband every load, as the firmware is every boot: the key stays in this page, and the id is its hash.
@@ -160,22 +167,41 @@ export function BandStandIn() {
     try { localStorage.removeItem('otb:band-id'); } catch { /* a private window */ }
     return createWrist({ key: toHex(crypto.getRandomValues(new Uint8Array(16))) });
   }, []);
+  const speaker = useMemo(() => createSpeaker(), []);
   const [battery, setBattery] = useState(62);
   const [screen, setScreen] = useState(() => wrist.face(Date.now()));
   const [live, setLive] = useState(false);
+  const [heard, setHeard] = useState(false);
   const [down, setDown] = useState({ 1: false, 2: false });
   const ws = useRef(null);
+  const flushRef = useRef(() => {});
+
+  // A browser lets a page sound only after a tap: the first one anywhere on it lets the band chirp.
+  useEffect(() => {
+    const unlock = () => { speaker.unlock(); setHeard(speaker.ready()); };
+    window.addEventListener('pointerdown', unlock, true);
+    window.addEventListener('keydown', unlock, true);
+    return () => {
+      window.removeEventListener('pointerdown', unlock, true);
+      window.removeEventListener('keydown', unlock, true);
+    };
+  }, [speaker]);
 
   useEffect(() => {
     let closed = false, retry = null;
-    // What the Wrist says to send goes out, a drop drops the socket, and the face is drawn again.
+    // What the Wrist says to send goes out, a drop drops the socket, the newest sound due plays, as on the band,
+    // and the face is drawn again.
     const flush = () => {
       for (const f of wrist.take()) {
         if (f === 'DROP') ws.current?.close();
         else if (ws.current?.readyState === 1) ws.current.send(f);
       }
+      const due = wrist.sounds();
+      if (due.length) speaker.play(due[due.length - 1]);
+      setHeard(speaker.ready());
       setScreen(wrist.face(Date.now()));
     };
+    flushRef.current = flush;
     const open = () => {
       const sock = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/ws');
       ws.current = sock;
@@ -193,7 +219,7 @@ export function BandStandIn() {
     open();
     const beat = setInterval(() => { wrist.tick(Date.now()); flush(); }, 50);
     return () => { closed = true; clearTimeout(retry); clearInterval(beat); const s = ws.current; ws.current = null; s?.close(); };
-  }, [wrist]);
+  }, [wrist, speaker]);
 
   useEffect(() => {
     wrist.setBattery(battery, Date.now());
@@ -203,6 +229,7 @@ export function BandStandIn() {
   const key = (k, isDown) => {
     (isDown ? wrist.keyDown : wrist.keyUp)(k, Date.now());
     setDown((d) => ({ ...d, [k]: isDown }));
+    flushRef.current();  // a press's tick now, not at the next beat
   };
   const handlers = (k) => ({
     // The press counts first; capture only keeps the let-go on this button, and throws for a pointer that is not active.
@@ -237,6 +264,10 @@ export function BandStandIn() {
           A stand-in for the wristband — the real one is an M5StickC Plus or a StickS3 on a strap. The face button wakes
           it for {wake}; hold it {hold} for NOT NOW. SIDE shows your card, and more presses change it.
           Letters: {CODE_LETTERS.length} of them, none that look alike.
+        </span>
+        <span className="small" role="status">
+          {heard ? 'It chirps as the band does, unless its sound is off or it is in NOT NOW.'
+            : 'Silent until this page is tapped: a browser lets a page make sound only after a tap.'}
         </span>
         <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           battery <input type="range" min="1" max="100" value={battery} onChange={(e) => setBattery(Number(e.target.value))} aria-label="Stand-in battery" />

@@ -297,6 +297,7 @@ h1 { margin: 0; font-weight: 400; }
 .bandface .pairing { display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 16); }
 .bandface .qr { display: block; width: calc(var(--u) * 115); height: calc(var(--u) * 115); }
 .bandface .pairing .code { font-size: calc(var(--u) * 26); }
+.bandface .pairing .hint { color: #fff; margin-top: calc(var(--u) * -10); max-width: calc(var(--u) * 115); text-align: center; }
 .bandchip { display: flex; align-items: center; gap: 5px; height: 44px; padding: 0 8px; border-radius: 14px; color: var(--text-2); font: var(--label); letter-spacing: .04em; }
 .bandchip:hover { color: #fff; }
 
