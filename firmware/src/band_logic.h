@@ -1201,8 +1201,13 @@ class Wrist {
     if (!s.down) return;
     s.down = false;
     if (!s.fired && !waveFlashing(now)) {
-      if (k == 2) {
+      if (mode_ == WAVES) {
+        rest();  // in the wave face a press of either key closes it; SIDE never starts the chooser there
+      } else if (k == 2) {
         step(now);
+      } else if (opensWaves()) {
+        mode_ = WAVES;
+        stepAt_ = now;
       } else {
         if (frozen_) rest();
         wake(now);
@@ -1309,6 +1314,8 @@ class Wrist {
       if (!personal() || show_.rev != basis_) rest();
     } else if (mode_ == SENDING && personal() && show_.rev > basis_ && show_.armed == choice_ && !show_.quiet) {
       result(now, "SET");
+    } else if (mode_ == WAVES && !waiting()) {
+      rest();  // the wave face follows the shows: nobody left waiting, off SAY HI, or not about the person
     }
     // Away starts at an away show and ends at one that is not; the same again after a reconnect is no change.
     if (!show_.away) {
@@ -1337,8 +1344,8 @@ class Wrist {
         callAt_ = now;
       }
     }
-    // After a meeting's jingle. A wave call already under way takes the new wave in.
-    if (newer && !waveCalling()) callWave();
+    // After a meeting's jingle. A wave call already under way takes the new wave in; the open wave face counts it.
+    if (newer && !waveCalling() && mode_ != WAVES) callWave();
   }
 
   void ticked(uint32_t now) {
@@ -1377,7 +1384,7 @@ class Wrist {
       quiet_.sent(now);
     }
     quiet_.tick(now);
-    if (mode_ == LOOK && now - stepAt_ >= CHOOSE_MS) {
+    if ((mode_ == LOOK || mode_ == WAVES) && now - stepAt_ >= CHOOSE_MS) {
       rest();
     } else if (mode_ == CHOOSING && !frozen_) {
       if (!fromQuiet_ && now - stepAt_ >= COMMIT_MS) commit(now);
@@ -1409,6 +1416,11 @@ class Wrist {
       const char* small = mode_ == SENDING ? "SENDING" : fromQuiet_ ? "HOLD SIDE TO SHOW" : "SIDE: NEXT";
       f = preview_ == "off" ? words("OFF", small, "black", "text2", LIGHT_AWAKE)
                             : words(cardWords(preview_), small, "black", preview_, LIGHT_AWAKE);
+    } else if (mode_ == WAVES) {
+      // As the chooser shows HI, in its own words: that someone waved, and how many wait. Never who.
+      const std::string count = waves_.n > 9 ? "9+" : std::to_string(waves_.n);
+      f = words("SOMEONE WAVED", waves_.n > 1 ? count + " WAITING - HOLD SIDE" : "HOLD SIDE: WAVE BACK", "black", "hi",
+                LIGHT_AWAKE);
     } else {
       f = restFace(now, static_cast<int32_t>(wakeUntil_ - now) > 0 || mode_ == RESULT);
       if (mode_ == RESULT) f.small = word_;
@@ -1442,7 +1454,7 @@ class Wrist {
   }
 
  private:
-  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT };
+  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT, WAVES };
   struct Key {
     bool down = false;
     bool fired = false;
@@ -1630,7 +1642,14 @@ class Wrist {
   void closed(uint32_t now) {
     link_.closed(now);
     quiet_.closed();
+    if (mode_ == WAVES) rest();  // the wave face follows the link
   }
+
+  /** Someone waits on the person showing SAY HI, as the show says. */
+  bool waiting() const { return personal() && show_.armed == "hi" && !show_.quiet && waves_.n > 0; }
+
+  /** A FACE press on the resting HI or meeting face, with someone waiting and the link up, opens the wave face. */
+  bool opensWaves() const { return mode_ == REST && link_.up() && !quiet_.dark() && waiting(); }
 
   void hold(uint32_t now) {
     quiet_.held();

@@ -121,7 +121,7 @@ export function createWrist({ key }) {
   let wakeUntil = 0;
   const k1 = { down: false, since: 0, fired: false };
   const k2 = { down: false, since: 0, fired: false };
-  let mode = 'rest';          // rest | look | choosing | sending | result
+  let mode = 'rest';          // rest | look | choosing | sending | result | waves
   let preview = '';           // hi | song | dance | off
   let fromQuiet = false;
   let frozen = false;
@@ -261,6 +261,15 @@ export function createWrist({ key }) {
     if (link.up) link.lost = now;
     link.up = false;
     quiet.sent = false;
+    if (mode === 'waves') rest();  // the wave face follows the link
+  }
+
+  /** Someone waits on the person showing SAY HI, as the show says. */
+  const waiting = () => personal() && show.armed === 'hi' && !show.quiet && waves.n > 0;
+
+  /** A FACE press on the resting HI or meeting face, with someone waiting and the link up, opens the wave face. */
+  function opensWaves() {
+    return mode === 'rest' && link.up && !quiet.pending && waiting();
   }
 
   function hold(now) {
@@ -345,7 +354,7 @@ export function createWrist({ key }) {
     if (k2.down && !k2.fired && now - k2.since >= HOLD_MS) { k2.fired = true; if (!waveFlashing(now)) sideHeld(now); }
     if (quiet.pending && !quiet.sent && link.up) { send({ t: 'hold' }); quiet.sent = true; quiet.at = now; }
     if (quiet.pending && quiet.sent && now - quiet.at >= QUIET_CONFIRM_MS) quiet.pending = false;
-    if (mode === 'look' && now - stepAt >= CHOOSE_MS) rest();
+    if ((mode === 'look' || mode === 'waves') && now - stepAt >= CHOOSE_MS) rest();
     else if (mode === 'choosing' && !frozen) {
       if (!fromQuiet && now - stepAt >= COMMIT_MS) commit(now);
       else if (fromQuiet && now - stepAt >= CHOOSE_MS) rest();
@@ -389,7 +398,10 @@ export function createWrist({ key }) {
     if (!s.down) return;
     s.down = false;
     if (!s.fired && !waveFlashing(now)) {
-      if (k === 2) step(now);
+      // In the wave face a press of either key closes it; SIDE never starts the chooser there.
+      if (mode === 'waves') rest();
+      else if (k === 2) step(now);
+      else if (opensWaves()) { mode = 'waves'; stepAt = now; }
       else {
         if (frozen) rest();
         wake(now);
@@ -487,6 +499,8 @@ export function createWrist({ key }) {
       if (!personal() || show.rev !== basis) rest();
     } else if (mode === 'sending' && personal() && show.rev > basis && show.armed === choice && !show.quiet) {
       result(now, 'SET');
+    } else if (mode === 'waves' && !waiting()) {
+      rest();  // the wave face follows the shows: nobody left waiting, off SAY HI, or not about the person
     }
     // Away starts at an away show and ends at one that is not; the same again after a reconnect is no change.
     if (!show.away) warned.away = false;
@@ -509,8 +523,8 @@ export function createWrist({ key }) {
         callAt = now;
       }
     }
-    // After a meeting's jingle. A wave call already under way takes the new wave in.
-    if (newer && !waveCalling()) callWave();
+    // After a meeting's jingle. A wave call already under way takes the new wave in; the open wave face counts it.
+    if (newer && !waveCalling() && mode !== 'waves') callWave();
   }
 
   /** The face at rest: band_logic.h faceFor(), wordsFor() and lightFor(), in that order. */
@@ -559,6 +573,10 @@ export function createWrist({ key }) {
       f = preview === 'off'
         ? words('OFF', small, 'black', 'text2', LIGHT_AWAKE)
         : words(CARD_WORDS[preview], small, 'black', preview, LIGHT_AWAKE);
+    } else if (mode === 'waves') {
+      // As the chooser shows HI, in its own words: that someone waved, and how many wait. Never who.
+      const count = waves.n > 9 ? '9+' : String(waves.n);
+      f = words('SOMEONE WAVED', waves.n > 1 ? count + ' WAITING - HOLD SIDE' : 'HOLD SIDE: WAVE BACK', 'black', 'hi', LIGHT_AWAKE);
     } else {
       f = restFace(now, wakeUntil > now || mode === 'result');
       if (mode === 'result') f = { ...f, small: word };
