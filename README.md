@@ -200,6 +200,35 @@ that was taken.
   which decides; the face says `SET`, `CHANGED` or `NOT SENT`.
   Coming back from NOT NOW takes holding the side button. The pair screen
   says to *press* its face button, not to hold it.
+- **It answers in sound and light**, and is quiet unless its wearer did
+  something on it or something came for them. Every key ticks as it goes
+  down. A choice from the wrist ends in `SET` (a rising chirp, and the card's
+  colour twice; white for OFF), `CHANGED` (a falling one, and red three times)
+  or `NOT SENT` (a low one, and orange twice). The pairing check asks with two
+  notes and two white flashes; `YES` and TEST THE LIGHT chirp up, and a check
+  that ends without `YES` falls. A meeting number plays a jingle and blinks
+  the face once a second until a key answers it, and that key does nothing
+  else. Five facts about the band warn, in orange, once each time they begin:
+  out of reach for ten seconds, the battery at 15% and again at 5%, waiting
+  ten seconds for its owner after a relay restart, away, and unpaired. NOT NOW
+  is silent, but for the hold that starts it and a `SET` from the wrist that
+  ends it; a warning that came up meanwhile plays once, after. A change made
+  on the phone to one's own card or NOT NOW is silent on the wrist. Each sound
+  and flash is one line in a table both twins keep, `SOUNDS` and `FLASHES`,
+  held equal by `tests/firmware.test.js`; the notes are starting points, to be
+  tuned by ear on a band. `/band` plays the same notes through Web Audio once
+  its page has been tapped, which is when a browser first lets a page sound.
+- **The sound can be switched off, on the phone.** The wristband sheet has
+  `SOUND: ON` under TEST THE LIGHT; off, the band only lights up. The switch is
+  the person's own: the phone keeps it across nights and re-says it after
+  every reconnect, and the relay carries it on the shows to that person's
+  band and to no other. A band nobody has claimed chirps as it is, and a
+  claimed band has the switch in its first show.
+- **Letters go dark after two minutes.** An unclaimed band's letters and QR,
+  and the face of one waiting for its owner after a restart, light for two
+  minutes and then only the backlight goes off; a press lights them again.
+  A press on the letters or on the check puts `PAIR ON YOUR PHONE` on the
+  face for 3 s, and does nothing else there.
 - **Who a wristband is.** It makes a random key at every boot and keeps it
   only in RAM; its id is the first half of the key's SHA-256, and every hello
   proves the id with the key. Knowing an id — every phone that ever paired it
@@ -266,8 +295,8 @@ choice sent from the wrist, each refusal, and each change in what the relay
 shows.
 
 - **Everything that decides anything is in `src/band_logic.h`**, plain C++ with
-  no hardware in it; `src/main.cpp` is only the screen, the two buttons, the
-  battery, Wi-Fi and the socket. `npm test` builds that logic with the
+  no hardware in it; `src/main.cpp` is only the screen, the speaker, the two
+  buttons, the battery, Wi-Fi and the socket. `npm test` builds that logic with the
   machine's own compiler, under the address and undefined-behaviour sanitizers
   where it can, and `tests/firmware.test.js` puts it in front of the real
   relay: the frames it sends pair it, report its battery and make its person
@@ -285,6 +314,26 @@ shows.
   relay. The socket runs on a task of its own, so a connection that hangs — a
   captive portal can hold a TLS handshake open for two minutes — never holds
   up the button or the screen.
+- **A sound plays from a buffer of its own.** When the wrist names a sound,
+  `main.cpp` renders all its notes as one 8-bit triangle wave at 16 kHz
+  (`render()`, in `band_logic.h`, so the host tests hold it) and hands that
+  to `M5.Speaker.playRaw()`, so painting the face cannot bend a tune's
+  rhythm. There are two buffers of 9.6 KB, used in turn, and one is written
+  again only once M5Unified says the speaker has let it go: its buffer
+  release callback, which is why the firmware needs M5Unified 0.2.22 or
+  later. The StickC Plus plays the same samples through its buzzer. The first
+  M5StickC has no speaker; it says so once on the console and only lights up.
+  The Plus has no PSRAM, and the buffers take its static RAM from 51 KB to
+  70 KB of 320 KB; `show` prints the free heap.
+- **A change of light alone only turns the backlight.** A flash's dark steps
+  and the meeting's blink never repaint the face, so a call that blinks for
+  fifteen minutes never holds up the loop or misses a tap.
+- **`npm test` also compiles the logic as the band's compiler does.** The ESP32
+  core builds C++ as gnu++11, after `Arduino.h` has made names like `LOW` and
+  `HIGH` into macros; the laptop build is C++17 and has neither. So
+  `firmware/host/as_band.cpp` compiles `band_logic.h` that way: a note table
+  called `LOW` and a `constexpr` loop once passed every test and broke only
+  in PlatformIO.
 - **Its key is 128 random bits, made at every boot**, never the chip's MAC, and
   kept only in RAM with the pairing's secret.
 - **The pairing code is as wide as the screen allows**, with four light modules
@@ -345,6 +394,12 @@ shows.
 - **Pairing ends with a check** shown on the wrist and confirmed on the phone.
   Without it a decoy code would pair silently, and with `set` a wrongly paired
   wristband could make someone visible.
+- **The wristband flashes and chirps.** Revision 6 §8 rules out vibration or
+  light patterns that pretend to carry a message. The owner chose on 25 Sep
+  2026 that the band flashes and sounds, and none of it pretends: each
+  reaction answers something the wearer just did, or says one fact about the
+  band, and the only one about another person is the meeting call, for a
+  number the band already shows.
 
 ## Abuse resistance
 
@@ -462,6 +517,13 @@ relay could drive what a wrist shows.
   bands. A night's worth of battery, and the Plus's face button, are not
   tried. CI builds both envs with PlatformIO on every push — the ESP32 image
   is about 1.2 MB of its 3 MB app partition — and keeps each image to flash.
+- **The reactions have not been heard on a wrist yet.** The stand-in has
+  played them through Web Audio in a browser, with the phone's switch both
+  ways, and both firmware envs build with them. The Plus's buzzer playing the
+  same samples, its free memory with both buffers, and the check's words and
+  the hint whole on a real screen are the next check; if the buzzer stays
+  silent, the fallback drives its pin with LEDC tones. Flashing on the
+  music's beat is a later spec.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was
