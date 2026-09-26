@@ -3,6 +3,7 @@ import { HUE, PROMISES, matchName, someone } from './copy.js';
 import { SOUND_SAY, soundRow } from './lib/bandsound.js';
 import { battery, buzz, toBase64 } from './lib/device.js';
 import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
+import { meetingOn, newlyFound } from './lib/found.js';
 import { connect } from './lib/net.js';
 import { phaseLine, phaseOf } from './lib/phase.js';
 import * as store from './lib/store.js';
@@ -279,6 +280,21 @@ export default function App() {
   }, [view]);
   useEffect(() => { wavesSeen.current = null; }, [night?.me]);
 
+  // Found by both, news to this phone: a buzz, unless a live wristband plays it instead (found §1). The record
+  // keeps foundAt (noteMatch, above), so a reload buzzes for nothing already found.
+  const foundSeen = useRef(null);
+  useEffect(() => {
+    if (!view.me) return;
+    const known = foundSeen.current ?? new Set(Object.values(night?.matches || {}).filter((m) => m.foundAt).map((m) => m.id));
+    foundSeen.current = known;
+    const fresh = newlyFound(view, known);
+    if (!fresh.length) return;
+    for (const m of fresh) known.add(m.id);
+    if (buzzes(fresh, view)) buzz([70, 50, 70, 50, 70]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+  useEffect(() => { foundSeen.current = null; }, [night?.me]);
+
   // The relay decides (§3): a view that passes rule 4 sets the cards, the screen and what is re-said.
   useEffect(() => {
     if (!view.me) return;
@@ -459,6 +475,12 @@ export default function App() {
       return;
     }
     net.current?.send({ t: 'keep', match: m.id, on });
+  };
+
+  // WE FOUND EACH OTHER: the same as the side hold on the wrist, counted once both say it. Queued offline.
+  const sayFound = (m) => {
+    net.current?.send({ t: 'found', match: m.id });
+    if (status !== 'live') say("Saved. It'll sync when you're out.");
   };
 
   const sendClip = async (blob, type) => {
@@ -653,7 +675,8 @@ export default function App() {
     case 'floor': body = <Floor floor={view.floor} mine={view.me?.clip} room={room} onBack={back} onTile={tileSheet} />; break;
     case 'mate':
       body = match ? (
-        <Mate match={match} onBack={back} onKeep={(on) => keep(match, on)} onTonight={() => go('tonight')}
+        <Mate match={match} number={paired && meetingOn(match, now.getTime()) ? match.number : null}
+          onBack={back} onFound={() => sayFound(match)} onKeep={(on) => keep(match, on)} onTonight={() => go('tonight')}
           onMore={() => personSheet(match.id, matchName(match))} />
       ) : null;
       break;

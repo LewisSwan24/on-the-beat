@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { HUE, hueVars, matchName, spotShort } from '../copy.js';
 import { reducedMotion } from '../lib/device.js';
+import { FOUND_MINE, foundBoth, metCount, metItem } from '../lib/found.js';
 import { PHASES, hhmm, phaseOf, timesOf } from '../lib/phase.js';
 import { tonightKey } from '../lib/store.js';
 import { Back, Cta, Ghost, Icon, More, Pill } from '../ui.jsx';
@@ -62,8 +63,8 @@ export function Match({ match, number, onMyWay, onNotThis, onPick }) {
   );
 }
 
-/** S11 — the person you met, kept only if you both say so. */
-export function Mate({ match, onBack, onMore, onKeep, onTonight }) {
+/** S11 — the person you met: found, and kept, only if you both say so. */
+export function Mate({ match, number, onBack, onMore, onFound, onKeep, onTonight }) {
   const name = matchName(match);
   const hue = HUE[match.intent] || HUE.hi;
   return (
@@ -80,6 +81,18 @@ export function Mate({ match, onBack, onMore, onKeep, onTonight }) {
         {match.pick ? <div style={{ marginTop: 16 }}><Pill track={match.pick} /></div> : null}
         <div className="small tnum" style={{ marginTop: 16 }}>met at {hhmm(match.at)}, {spotShort(match.spot)}</div>
       </div>
+      {number ? (
+        <div className="lede" style={{ marginBottom: 14 }}>
+          Look for the wristband showing <span style={{ font: 'var(--display-l)', color: hue.c }}>{number}</span>
+        </div>
+      ) : null}
+      {match.foundAt ? (
+        <div className="small tnum" style={{ marginBottom: 14, color: 'var(--ok)' }}>{foundBoth(match.foundAt)}</div>
+      ) : match.found ? (
+        <div className="small" style={{ marginBottom: 14 }}>{FOUND_MINE}</div>
+      ) : (
+        <div style={{ marginBottom: 14 }}><Cta hue={match.intent} onClick={onFound}>WE FOUND EACH OTHER</Cta></div>
+      )}
       <div className="keep">
         <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span className="h2">Keep after tonight</span>
@@ -120,7 +133,8 @@ export function Tonight({ show, phase, night, live, kept, name, onBack, onKeep, 
   const stored = Object.values(night?.matches || {});
   const items = [
     ...(night?.events || []).map((e) => ({ at: e.at, text: e.text })),
-    ...stored.map((m) => ({ at: m.at, text: matchLine(m) })),
+    // A meeting found by both is met, when it was found; a match never found keeps its own line.
+    ...stored.map((m) => metItem(m) || { at: m.at, text: matchLine(m) }),
   ];
   if (phase === 'AFTER') {
     const end = new Date();
@@ -138,7 +152,7 @@ export function Tonight({ show, phase, night, live, kept, name, onBack, onKeep, 
       <Back onClick={onBack} />
       <h1 className="h1" style={{ margin: '6px 0 3px' }}>Tonight</h1>
       <div className="tnum" aria-live="polite" style={{ font: 'var(--num)', color: 'var(--text-2)', marginBottom: 18 }}>
-        {stored.length} met · {keptCount} kept
+        {metCount(stored)} met · {keptCount} kept
       </div>
       <div className="scroll" style={{ gap: 0 }}>
         {PHASES.map((p, i) => {
