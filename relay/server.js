@@ -530,7 +530,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       stopGrace(ws.r, me);
       ws.r.heard.set(me, now());
       // `quiet` counts only if this join makes the person.
-      ws.r.room.join(me, { band: m.band, quiet: m.quiet === true });
+      ws.r.room.join(me, { quiet: m.quiet === true });
       // A hold on their wristband while they were out of the room.
       const b = bandOf(key, me);
       if (b?.quiet) { ws.r.room.setInvisible(me, true, 'band'); b.quiet = false; }
@@ -543,7 +543,6 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const room = r.room, me = ws.me;
     switch (m.t) {
       case 'profile': room.setProfile(me, { name: m.name, contact: m.contact }); break;
-      case 'band': room.setBand(me, m.band); break;
       case 'arm':
       case 'invisible':
         // Rules 3 to 5 are in room.fromPhone(). A seq that is there but not a number drops the frame.

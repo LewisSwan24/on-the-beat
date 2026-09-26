@@ -5,9 +5,10 @@
 //
 //   1. Nobody sees where you are. A person carries a BAND — `in this room`,
 //      `near the bar`, `by the stage`, `somewhere out the back` — and nothing
-//      finer, ever. There is no position here to leak. What wristbands hear
-//      of each other only takes people off SAY HI's list, and what they heard
-//      never leaves the room.
+//      finer, ever. There is no position here to leak. Only a marker the
+//      venue put up, heard clearly by the person's own wristband, names a
+//      band other than `in this room`. What wristbands hear of each other only
+//      takes people off SAY HI's list, and what they heard never leaves the room.
 //   2. No name and no photo until you both say yes. Before a mutual yes a
 //      person is a handle, a band and at most the track they picked. Handles
 //      are per viewer: the same person has a different handle on every phone,
@@ -51,6 +52,17 @@ export const HEARD_MS = 30_000;   // what a band heard, and that it listened at 
 export const NEAR_FIVE = 5;       // of the people wearing a band, the most a list shows
 export const NEAR_KEEP = 10;      // one of the five stays while still among this many heard most strongly
 
+// Markers (docs/superpowers/specs/2026-09-27-wrist-markers-design.md §3): the band each area names.
+export const MARKS = { bar: 'near the bar', stage: 'by the stage', back: 'somewhere out the back' };
+export const MARK_FLOOR = -56;    // dBm: the loudest marker names a person's band if heard this loud or louder
+export const MARK_HOLD = 4;       // dB: a band holds this far under the floor, and until another is this much louder
+
+/** The middle of some readings, or null for none. */
+const median = (list) => {
+  const s = list.map((x) => x.rssi).sort((x, y) => x - y);
+  return s.length ? s[Math.floor(s.length / 2)] : null;
+};
+
 /** A pair's key, the same whichever way round it is asked. */
 const pairKey = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
 const clip = (s, n) => String(s ?? '').trim().slice(0, n);
@@ -83,10 +95,12 @@ export function createRoom({
   let nextMatch = 1;
   // Near: what each person's wristband heard, never shown to anyone. pairKey -> [{ at, rssi }], from
   // either band hearing the other; id -> { at, ch }, when their band last reported and on which Wi-Fi
-  // channel; id -> the five nearTick() last worked out for them.
+  // channel; id -> the five nearTick() last worked out for them; id -> area -> [{ at, rssi }], the
+  // markers their band heard.
   const samples = new Map();
   const listening = new Map();
   const fives = new Map();
+  const marked = new Map();
 
   const handle = (viewer, target) =>
     createHash('sha256').update(salt + '|' + viewer + '|' + target).digest('hex').slice(0, 10);
@@ -109,10 +123,11 @@ export function createRoom({
    * already here, `quiet` is ignored, so an old NOT NOW cannot undo a newer
    * change from the wrist.
    */
-  function join(id, { band = BANDS[0], quiet = false } = {}) {
+  function join(id, { quiet = false } = {}) {
     if (!people.has(id)) {
+      // In this room until a marker says otherwise (nearTick()).
       people.set(id, {
-        id, name: '', contact: '', band: BANDS.includes(band) ? band : BANDS[0],
+        id, name: '', contact: '', band: BANDS[0],
         armed: null, invisible: !!quiet || !!tombs.get(id)?.invisible, pick: null, clip: null, joinedAt: now(),
         rev: tombs.has(id) ? tombs.get(id).rev + 1 : firstRev(), seq: 0, by: 'relay',
       });
@@ -138,11 +153,6 @@ export function createRoom({
     p.invisible = invisible;
     p.rev += 1;
     p.by = by;
-  }
-
-  function setBand(id, band) {
-    const p = people.get(id);
-    if (p && BANDS.includes(band)) p.band = band;
   }
 
   function setProfile(id, { name, contact } = {}) {
@@ -375,8 +385,11 @@ export function createRoom({
     return listening.get(viewer).ch === listening.get(t).ch && !fives.get(viewer).has(t);
   }
 
-  /** What one person's band heard: `near` is [{ id, rssi }] of other people in the room. */
-  function heard(id, { ch, near = [] } = {}) {
+  /**
+   * What one person's band heard: `near` is [{ id, rssi }] of other people in
+   * the room, `marks` [{ area, rssi }] of the markers, each area a key of MARKS.
+   */
+  function heard(id, { ch, near = [], marks = [] } = {}) {
     if (!people.has(id)) return;
     const at = now();
     listening.set(id, { at, ch });
@@ -386,25 +399,54 @@ export function createRoom({
       if (!samples.has(k)) samples.set(k, []);
       samples.get(k).push({ at, rssi });
     }
+    for (const { area, rssi } of marks) {
+      if (!Object.hasOwn(MARKS, area)) continue;
+      if (!marked.has(id)) marked.set(id, new Map());
+      const m = marked.get(id);
+      if (!m.has(area)) m.set(area, []);
+      m.get(area).push({ at, rssi });
+    }
   }
 
   /** A pair's score: the median of what either band heard of the other, or null. nearTick() drops the old first. */
-  function score(a, b) {
-    const s = (samples.get(pairKey(a, b)) ?? []).map((x) => x.rssi);
-    return s.length ? s.sort((x, y) => x - y)[Math.floor(s.length / 2)] : null;
+  const score = (a, b) => median(samples.get(pairKey(a, b)) ?? []);
+
+  /**
+   * A person's band, from the markers their band heard in HEARD_MS: the one
+   * they are in while it is MARK_FLOOR - MARK_HOLD or louder and no other is
+   * MARK_HOLD louder; else the loudest, if MARK_FLOOR or louder; else in this room.
+   */
+  function areaOf(p) {
+    // Its readings go with its last report: a band gone quiet HEARD_MS has none.
+    const loud = [...(marked.get(p.id) ?? [])]
+      .map(([area, list]) => ({ band: MARKS[area], s: median(list) }))
+      .sort((x, y) => y.s - x.s);
+    const here = loud.find((x) => x.band === p.band);
+    if (here && here.s >= MARK_FLOOR - MARK_HOLD && loud[0].s < here.s + MARK_HOLD) return p.band;
+    return loud.length && loud[0].s >= MARK_FLOOR ? loud[0].band : BANDS[0];
   }
 
   /**
    * Works out each listening person's five: of the people on SAY HI whose
    * bands have a score with theirs, last time's five stay while among the
    * NEAR_KEEP strongest, and the free places go to the strongest others.
-   * People bound to them take no place. True if anyone's five changed.
+   * People bound to them take no place. Then each person's band, from the
+   * markers (areaOf()). True if anyone's five or band changed.
    */
   function nearTick() {
+    const fresh = (list) => list.filter((x) => now() - x.at <= HEARD_MS);
     for (const [k, list] of samples) {
-      const kept = list.filter((x) => now() - x.at <= HEARD_MS);
+      const kept = fresh(list);
       if (kept.length) samples.set(k, kept);
       else samples.delete(k);
+    }
+    for (const [id, m] of marked) {
+      for (const [area, list] of m) {
+        const kept = fresh(list);
+        if (kept.length) m.set(area, kept);
+        else m.delete(area);
+      }
+      if (!m.size) marked.delete(id);
     }
     for (const id of [...listening.keys()]) if (!people.has(id) || !listens(id)) listening.delete(id);
     let changed = false;
@@ -426,6 +468,13 @@ export function createRoom({
       for (const x of ranked) if (five.length < NEAR_FIVE && !five.includes(x.id)) five.push(x.id);
       if (!fives.has(id) || five.length !== last.size || five.some((x) => !last.has(x))) changed = true;
       fives.set(id, new Set(five));
+    }
+    for (const p of people.values()) {
+      const band = areaOf(p);
+      if (band !== p.band) {
+        p.band = band;
+        changed = true;
+      }
     }
     return changed;
   }
@@ -484,7 +533,7 @@ export function createRoom({
   }
 
   return {
-    join, leave, setBand, setProfile, arm, setInvisible, fromPhone, pick, postClip,
+    join, leave, setProfile, arm, setInvisible, fromPhone, pick, postClip,
     wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, found, heard, nearTick, viewFor,
     /** For the relay: who is here, so it knows whose view to push. */
     ids: () => [...people.keys()],
