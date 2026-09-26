@@ -10,7 +10,8 @@
 //
 // Everything that decides anything is in band_logic.h, which the tests build
 // and run on a laptop. This file is only the hardware round it: the screen,
-// the speaker, the two buttons, the battery, Wi-Fi, the socket, and a serial
+// the speaker, the two buttons, the battery, Wi-Fi, the socket, the beacon
+// and the listen that tell the relay which bands are near, and a serial
 // console to say which Wi-Fi and which relay. The socket has a task of its
 // own, so nothing the network does can hold up the button or the screen.
 
@@ -18,6 +19,8 @@
 #include <Preferences.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
 
 #include <algorithm>
 #include <atomic>
@@ -65,6 +68,9 @@ std::string shown;                // what the console last said about a show
 
 int battery = -1;       // percent, or -1 while it will not say
 uint32_t batteryAt = 0;
+bool axp = false;       // a StickC Plus: its power chip says what the band draws from USB
+float usbSum = 0;       // mA, a reading a second, since the console last said it
+uint32_t usbCount = 0, usbAt = 0;
 std::string drawn;      // what is on the screen now, so it is drawn again only when that changes
 int lit = -1;           // the backlight as last set
 std::string typed;      // the console line so far
@@ -122,7 +128,7 @@ struct Event {
 enum : uint8_t { OUT_SEND, OUT_DROP };
 struct Out {
   uint8_t kind;
-  char text[256];  // a hello with its key, secret and quiet is about 190 bytes
+  char text[FRAME_MAX];  // the longest a band sends: a report of HEARD_MAX bands (see band_logic.h)
 };
 
 QueueHandle_t events = nullptr;  // socket task -> loop
@@ -310,6 +316,146 @@ void watchWifi(uint32_t now) {
     Serial.printf("no wi-fi (%s); trying %s again\n", wifiReason().c_str(), ssid.c_str());
     startWifi();
   }
+}
+
+// ---------- near: the beacon and the listen ----------
+//
+// The radio half of Hearing (band_logic.h). While wrist->nearOn(), the band
+// broadcasts BEACON by ESP-NOW every BEACON_MS, and every HEAR_EVERY_MS
+// listens for LISTEN_MS in promiscuous mode, because Arduino-ESP32 2.0's
+// ESP-NOW receive callback carries no RSSI; then it reports what it heard.
+// Measured on both bands before it was built: beside the Wi-Fi and a TLS
+// socket to the relay, no beacon lost.
+
+const uint8_t BROADCAST[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint8_t air[6] = {0, 0, 0, 0, 0, 0};  // this boot's address on the air (makeAir)
+bool airSet = false;                  // the radio took it; if not, the band neither beacons nor listens
+bool nearReady = false;               // ESP-NOW is up: once, on the first join
+bool nearWanted = true;               // `near off` on the console stops both, to test a band gone quiet
+bool beaconWanted = true;             // `near listen` stops only the beacon: two bands so hear nobody, and say so
+bool listening = false;
+uint32_t beaconAt = 0, listenAt = 0;
+uint32_t beacons = 0, beaconsRefused = 0;
+Hearing hearing;                      // the listen now
+Hearing lastHeard;                    // the last listen, for the console
+int lastChannel = 0;
+uint32_t lastHeardAt = 0;             // 0 until a listen has ended
+
+// Beacons caught on the Wi-Fi task, taken into `hearing` every time round the loop.
+struct Caught {
+  uint8_t mac[6];
+  int rssi;
+};
+constexpr size_t CAUGHT_MAX = 32;
+Caught caught[CAUGHT_MAX];
+size_t caughtCount = 0;
+portMUX_TYPE caughtLock = portMUX_INITIALIZER_UNLOCKED;
+
+/** On the Wi-Fi task: an ESP-NOW frame (a vendor-specific action frame) that carries BEACON. Its sender is address 2. */
+void onAir(void* buf, wifi_promiscuous_pkt_type_t type) {
+  if (type != WIFI_PKT_MGMT) return;
+  const auto* p = static_cast<const wifi_promiscuous_pkt_t*>(buf);
+  const uint8_t* d = p->payload;
+  const int len = static_cast<int>(p->rx_ctrl.sig_len);
+  if (len < 29 || d[0] != 0xD0 || d[24] != 127) return;
+  for (int i = 25; i + static_cast<int>(sizeof BEACON) <= len; ++i) {
+    if (memcmp(d + i, BEACON, sizeof BEACON) != 0) continue;
+    portENTER_CRITICAL_ISR(&caughtLock);
+    if (caughtCount < CAUGHT_MAX) {
+      memcpy(caught[caughtCount].mac, d + 10, 6);
+      caught[caughtCount].rssi = p->rx_ctrl.rssi;
+      ++caughtCount;
+    }
+    portEXIT_CRITICAL_ISR(&caughtLock);
+    return;
+  }
+}
+
+/** ESP-NOW, on the first join: the broadcast peer, the beacon's rate, and what the listen lets through. */
+void startNear() {
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("near: ESP-NOW would not start");
+    return;
+  }
+  esp_now_peer_info_t peer = {};
+  memcpy(peer.peer_addr, BROADCAST, 6);
+  peer.channel = 0;  // the channel the Wi-Fi is on
+  peer.ifidx = WIFI_IF_STA;
+  peer.encrypt = false;
+  esp_now_add_peer(&peer);
+  // 6 Mbps, not the default 1: a room of bands takes a sixth of the airtime.
+  if (esp_wifi_config_espnow_rate(WIFI_IF_STA, WIFI_PHY_RATE_6M) != ESP_OK) Serial.println("near: 6 Mbps refused");
+  wifi_promiscuous_filter_t f = {};
+  f.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
+  esp_wifi_set_promiscuous_filter(&f);
+  esp_wifi_set_promiscuous_rx_cb(onAir);
+  nearReady = true;
+}
+
+void stopListening() {
+  if (!listening) return;
+  esp_wifi_set_promiscuous(false);
+  listening = false;
+}
+
+/** Every time round the loop: take in what was caught, beacon, listen, and after each listen, report. */
+void hearTick(uint32_t now) {
+  if (!nearReady && airSet && WiFi.status() == WL_CONNECTED) startNear();
+  Caught got[CAUGHT_MAX];
+  portENTER_CRITICAL(&caughtLock);
+  const size_t n = caughtCount;
+  memcpy(got, caught, n * sizeof(Caught));
+  caughtCount = 0;
+  portEXIT_CRITICAL(&caughtLock);
+  if (!nearReady || !nearWanted || !wrist->nearOn()) {
+    stopListening();
+    hearing.clear();
+    return;
+  }
+  for (size_t i = 0; i < n; ++i) hearing.heard(got[i].mac, got[i].rssi);
+  if (beaconWanted && now - beaconAt >= BEACON_MS) {
+    beaconAt = now;
+    if (esp_now_send(BROADCAST, BEACON, sizeof BEACON) == ESP_OK) ++beacons;
+    else ++beaconsRefused;
+  }
+  if (!listening && now - listenAt >= HEAR_EVERY_MS) {
+    listenAt = now;
+    hearing.clear();
+    listening = esp_wifi_set_promiscuous(true) == ESP_OK;
+  } else if (listening && now - listenAt >= LISTEN_MS) {
+    stopListening();
+    lastChannel = WiFi.channel();
+    sendFrame(hearing.frame(lastChannel));  // heard nobody is a report too
+    lastHeard = hearing;
+    lastHeardAt = now;
+    hearing.clear();
+  }
+}
+
+/** Whether it beacons and listens now, and if not, why. */
+const char* nearState() {
+  if (!airSet) return "off: the radio would not take an address of its own";
+  if (!nearReady) return "not yet: waiting for the wi-fi";
+  if (!nearWanted) return "off, from the console (near on)";
+  if (!wrist->up()) return "not now: not on the relay";
+  if (wrist->secret().empty()) return "not now: not paired";
+  if (!wrist->nearOn()) return "not now: NOT NOW";
+  if (!beaconWanted) return "listening, not beaconing, from the console (near on)";
+  return "beaconing and listening";
+}
+
+void reportNear(uint32_t now) {
+  uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
+  esp_wifi_get_mac(WIFI_IF_STA, mac);
+  Serial.printf("near    %s; on the air as %s; %u beacons sent, %u refused\n", nearState(), airHex(mac).c_str(),
+                static_cast<unsigned>(beacons), static_cast<unsigned>(beaconsRefused));
+  if (!lastHeardAt) {
+    Serial.println("        no listen yet");
+    return;
+  }
+  Serial.printf("        last listen %u s ago, channel %d: %s\n", static_cast<unsigned>((now - lastHeardAt) / 1000), lastChannel,
+                lastHeard.size() ? "heard" : "heard nobody");
+  for (const Hearing::Heard& h : lastHeard.strongest()) Serial.printf("        %s  %d dBm\n", airHex(h.mac).c_str(), h.rssi);
 }
 
 // ---------- the screen ----------
@@ -535,7 +681,9 @@ void help() {
       "  press face|side         a press, as a finger makes it\n"
       "  hold face|side          a hold, let go just after it counts\n"
       "  face                    what the screen shows now\n"
-      "  sound <name>            play one of the band's sounds, e.g. sound found");
+      "  sound <name>            play one of the band's sounds, e.g. sound found\n"
+      "  near                    what it last heard of other bands, and whether it beacons\n"
+      "  near off|listen|on      stop both, stop only beaconing, or do both again");
 }
 
 void report() {
@@ -551,6 +699,14 @@ void report() {
   Serial.printf("memory  %u bytes free, %u at the least; sound %s\n", static_cast<unsigned>(ESP.getFreeHeap()),
                 static_cast<unsigned>(ESP.getMinFreeHeap()),
                 !speaker ? "none: light only" : buzzer ? "on the buzzer, octaves up" : "on the speaker");
+  // Plugged in with the battery full, what it draws is what the band uses: near on against near off.
+  if (axp) {
+    Serial.printf("power   %.1f mA from USB, the mean of %u readings since the last show\n", usbCount ? usbSum / usbCount : 0.0f,
+                  static_cast<unsigned>(usbCount));
+    usbSum = 0;
+    usbCount = 0;
+  }
+  reportNear(millis());
 }
 
 void run(const Command& c) {
@@ -596,6 +752,13 @@ void run(const Command& c) {
     }
     if (!speaker) Serial.println("no speaker on this band");
     soundDue = name;
+  } else if (c.verb == "near") {
+    const std::string a = trim(c.arg);
+    if (a == "off" || a == "listen" || a == "on") {
+      nearWanted = a != "off";
+      beaconWanted = a == "on";
+    }
+    reportNear(millis());
   } else if (c.verb == "forget") {
     prefs.remove("ssid");
     prefs.remove("pass");
@@ -629,6 +792,26 @@ void readBattery(uint32_t now) {
   if (wrist) wrist->setBattery(battery, now);
 }
 
+// The Plus's power chip, an AXP192, says what the band draws from USB, a
+// reading a second; the StickS3's build has no AXP192 in it at all.
+void startUsb() {
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  axp = M5.getBoard() == m5::board_t::board_M5StickCPlus;
+  if (axp) M5.Power.Axp192.setAdcState(true);
+#endif
+}
+
+void readUsb(uint32_t now) {
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  if (!axp || (usbAt && now - usbAt < 1000)) return;
+  usbAt = now;
+  usbSum += M5.Power.Axp192.getVBUSCurrent();
+  ++usbCount;
+#else
+  (void)now;
+#endif
+}
+
 }  // namespace
 
 void setup() {
@@ -647,6 +830,7 @@ void setup() {
   // no tone with it off, from M5Unified's output or a plain square wave; about
   // 18 dB over the room with it on, either way.
   if (M5.getBoard() == m5::board_t::board_M5StickCPlus) M5.Power.setExtOutput(true);
+  startUsb();
   M5.Display.setRotation(0);
   if (M5.Display.width() > M5.Display.height()) M5.Display.setRotation(1);
   M5.Display.setBrightness(LIGHT_OFF);
@@ -663,8 +847,14 @@ void setup() {
 
   // The radio on before the key is made: with it on, esp_random() is true noise.
   WiFi.mode(WIFI_STA);
+  // A new address on the air at every boot, from the same noise, before the
+  // Wi-Fi joins: nothing the band sends ties it to the band it was the night
+  // before, and it is never the chip's own.
+  makeAir(air, [] { return static_cast<uint32_t>(esp_random()); });
+  airSet = esp_wifi_set_mac(WIFI_IF_STA, air) == ESP_OK;
   // A new wristband at every boot: the key lives in RAM only, and the id is its hash.
   wrist = new Wrist(makeKey([] { return static_cast<uint32_t>(esp_random()); }));
+  if (airSet) wrist->setAir(airHex(air));
   prefs.begin("otb", false);
   if (prefs.isKey("id")) prefs.remove("id");  // the id an older build kept for good is not kept any more
   loadSettings();
@@ -695,6 +885,7 @@ void loop() {
   const uint32_t now = millis();
   console();
   readBattery(now);
+  readUsb(now);
   drain(now);
   // KEY1 is the face button, KEY2 the side one. The Wrist times the holds. A key
   // pressed from the console is down with the button, so it is the same press.
@@ -709,6 +900,7 @@ void loop() {
   wrist->tick(now);
   playSounds();  // before the frames and the face: a press's tick is heard as soon as it can be
   for (const std::string& f : wrist->take()) sendFrame(f);
+  hearTick(now);
   if (wrist->up() && batteryReport.due(battery, now)) {
     sendFrame(batteryFrame(battery));
     batteryReport.sent(battery, now);
