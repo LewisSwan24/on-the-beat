@@ -460,6 +460,7 @@ void console() {
   CHECK(saidLine("{\"t\":\"set\",\"intent\":\"hi\",\"basis\":7}") == "a choice from the wrist: HI :)");
   CHECK(saidLine("{\"t\":\"set\",\"intent\":null,\"basis\":7}") == "a choice from the wrist: OFF");
   CHECK(saidLine("{\"t\":\"wave\",\"ref\":\"a1b2c3d4e5\",\"basis\":7}") == "a wave back from the wrist");
+  CHECK(saidLine("{\"t\":\"found\",\"number\":\"27\"}") == "found, from the wrist");
 
   std::string shown;
   const auto heard = [&shown](const std::string& text) {
@@ -489,6 +490,13 @@ void console() {
   const std::string two = heard(hi + ",\"waves\":{\"ref\":\"a1b2c3d4e5\",\"n\":2,\"seq\":1790337603000}}}");
   CHECK(two == "the relay shows: hi (2 waiting)" && two.find("a1b2") == std::string::npos);
   CHECK(heard(hi + ",\"waves\":{\"ref\":\"f6a7b8c9d0\",\"n\":2,\"seq\":1790337603005}}}").empty());
+  // Found each other: said on this side, the meeting waits; said by both, the show names the number it found.
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"meet\",\"intent\":\"hi\",\"big\":\"42\",\"small\":\"FOUND: WAITING\"}}") ==
+        "the relay shows: meet 42 (found: waiting)");
+  CHECK(heard(hi + ",\"found\":{\"n\":42,\"intent\":\"song\"}}}") == "the relay shows: hi (found 42)");
+  CHECK(heard(hi + ",\"found\":{\"n\":42,\"intent\":\"song\"}}}").empty());
+  CHECK(heard("{\"t\":\"found\",\"ok\":true}") == "the relay took the found");
+  CHECK(heard("{\"t\":\"found\",\"ok\":false,\"why\":\"gone\"}") == "the relay did not take the found: gone");
   CHECK(heard("{\"t\":\"wave\",\"ok\":true}") == "the relay took the wave back");
   CHECK(heard("{\"t\":\"wave\",\"ok\":false,\"why\":\"gone\"}") == "the relay did not take the wave back: gone");
 

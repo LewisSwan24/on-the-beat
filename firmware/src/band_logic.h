@@ -1936,12 +1936,13 @@ inline std::string faceLine(const Screen& s) {
 /**
  * What the console says about a frame the wrist sends, or "" for nothing: a
  * hello says whether it carries a secret, never the secret itself, a choice
- * says what was chosen, and a wave back only that it was sent.
+ * says what was chosen, and a wave back or a found only that it was sent.
  */
 inline std::string saidLine(const std::string& frame) {
   if (frame == "DROP") return "the relay went quiet; trying again";
   if (frame == HOLD_FRAME) return "NOT NOW, from the wrist";
   if (frame.rfind("{\"t\":\"wave\"", 0) == 0) return "a wave back from the wrist";
+  if (frame.rfind("{\"t\":\"found\"", 0) == 0) return "found, from the wrist";
   if (frame.rfind("{\"t\":\"wristband\"", 0) == 0)
     return frame.find("\"secret\":") == std::string::npos ? "hello to the relay, as a new wristband"
                                                           : "hello to the relay, with its secret";
@@ -1957,14 +1958,16 @@ inline std::string saidLine(const std::string& frame) {
 
 /**
  * What the console says about a frame from the relay, or "" for nothing:
- * what it refuses, a pairing, the answer to a wave back, and each change in
- * what it shows, how many wait included. `shown` is what was last said about
- * a show, kept by the caller. Never a secret, and never who waved.
+ * what it refuses, a pairing, the answer to a wave back or a found, and each
+ * change in what it shows, how many wait and a meeting found included.
+ * `shown` is what was last said about a show, kept by the caller. Never a
+ * secret, and never who waved.
  */
 inline std::string heardLine(const Frame& f, std::string& shown) {
   if (f.t == "error") return "the relay says: " + f.why;
   if (f.t == "set" && f.hasOk && !f.ok) return "the relay did not take the choice: " + f.why;
   if (f.t == "wave" && f.hasOk) return f.ok ? "the relay took the wave back" : "the relay did not take the wave back: " + f.why;
+  if (f.t == "found" && f.hasOk) return f.ok ? "the relay took the found" : "the relay did not take the found: " + f.why;
   if (f.t == "paired" && f.hasSecret) return "paired: the relay gave it a secret";
   if (f.t != "show" || !f.hasShow) return "";
   const Show& s = f.show;
@@ -1973,6 +1976,8 @@ inline std::string heardLine(const Frame& f, std::string& shown) {
   else if (s.kind == "check" || s.kind == "meet") what += " " + s.big;
   else if (s.quiet) what += " (NOT NOW)";
   else if (s.away) what += " (away)";
+  if (s.kind == "meet" && s.small == "FOUND: WAITING") what += " (found: waiting)";
+  if (f.found.n > 0) what += " (found " + std::to_string(f.found.n) + ")";
   if (f.waves.n > 0) what += " (" + std::to_string(f.waves.n) + " waiting)";
   if (what == shown) return "";
   shown = what;
