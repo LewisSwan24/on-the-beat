@@ -14,7 +14,7 @@ import { extname, isAbsolute, join, normalize, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { WebSocketServer } from 'ws';
-import { createRoom, INTENTS, SPOTS } from './room.js';
+import { createRoom, INTENTS, MARKS, SPOTS } from './room.js';
 import { MEET_MS, bandShow, cleanCode, newCode } from './band.js';
 import { nightOf } from './night.js';
 
@@ -334,7 +334,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
    * Wi-Fi channel, and `near`, [air, rssi] pairs. From a band paired in a room,
    * at most every HEARD_GAP_MS, whole or not at all. An air counts only as the
    * air of exactly one band paired in the same room; the room itself ignores the
-   * band's own person and anyone no longer in it.
+   * band's own person and anyone no longer in it. `marks`, when there, is the
+   * markers it heard: [area, rssi] pairs, each area a key of MARKS and none twice
+   * (markers spec §3).
    */
   function heardFromBand(b, m) {
     const r = b.person && b.key ? rooms.get(b.key) : null;
@@ -343,6 +345,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const fits = (e) => Array.isArray(e) && e.length === 2 && typeof e[0] === 'string' && AIR.test(e[0])
       && Number.isInteger(e[1]) && e[1] >= -100 && e[1] <= 0;
     if (!m.near.every(fits)) return;
+    // Each area once: a fourth pair is always one too many, so every() stops by then.
+    const areas = new Set();
+    const marks = (e) => Array.isArray(e) && e.length === 2 && Object.hasOwn(MARKS, e[0]) && !areas.has(e[0])
+      && areas.add(e[0]) && Number.isInteger(e[1]) && e[1] >= -100 && e[1] <= 0;
+    if (m.marks !== undefined && !(Array.isArray(m.marks) && m.marks.every(marks))) return;
     b.heardAt = now();
     // A band has its room's key only while it is paired there.
     const here = [...bands.values()].filter((o) => o.key === b.key);
@@ -351,7 +358,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       const who = here.filter((o) => o.air === air);
       if (who.length === 1) near.push({ id: who[0].person, rssi });
     }
-    r.room.heard(b.person, { ch: m.ch, near });
+    r.room.heard(b.person, { ch: m.ch, near, marks: (m.marks ?? []).map(([area, rssi]) => ({ area, rssi })) });
   }
 
   function refuseBand(ws) {

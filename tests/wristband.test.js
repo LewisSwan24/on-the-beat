@@ -1010,3 +1010,56 @@ test('an air counts only as the air of exactly one band paired in the same room'
     assert.deepEqual(listed(people.vi.p), ['nb', 'p0', 'p2']);
   });
 });
+
+// ---------- markers: the area a band hears it is in (docs/superpowers/specs/2026-09-27-wrist-markers-design.md §3) ----------
+
+/** The area `p`'s phone shows `who` in. */
+const areaOn = (p, who) => p.view.near.find((r) => r.pick === who)?.band;
+
+test("the markers a band reports name its person's area on others' rows, at the tick", async () => {
+  await heldRelay(async (on, clock, own) => {
+    const { people, nb } = await nearFloor(on, 'marks-area', ['vi', 'p0']);
+    people.vi.band.send({ t: 'heard', ch: 6, near: [[people.p0.air, -40]], marks: [['bar', -45], ['stage', -70]] });
+    people.p0.band.send({ t: 'heard', ch: 6, near: [[people.vi.air, -41]], marks: [['back', -50]] });
+    await pause(60);
+    assert.equal(areaOn(nb, 'vi'), 'in this room', 'nothing before the tick');
+    own.tickNear();
+    await nb.until(() => areaOn(nb, 'vi') === 'near the bar' && areaOn(nb, 'p0') === 'somewhere out the back');
+    await people.p0.p.until(() => areaOn(people.p0.p, 'vi') === 'near the bar');
+    assert.equal(/-45|-70|-50|marks|rssi/.test(JSON.stringify(nb.view)), false, 'never a number');
+  });
+});
+
+test('a report whose marks are wrong in any way is dropped whole', async () => {
+  await heldRelay(async (on, clock, own) => {
+    const { people, nb } = await nearFloor(on, 'marks-drop', ['vi', 'p0']);
+    heardOf(people.p0.band, 6, []);
+    const vi = people.vi;
+    // Taken, vi's report would narrow vi's list to nb (vi heard nobody) and name vi's area.
+    const after = async () => { await pause(40); own.tickNear(); await pause(60); return [listed(vi.p), areaOn(nb, 'vi')]; };
+    for (const marks of [
+      'bar', {}, [['bar']], [['bar', -40, 1]], [['kitchen', -40]], [['toString', -40]], [[1, -40]],
+      [['bar', 1]], [['bar', -101]], [['bar', -40.5]], [['bar', '-40']],
+      [['bar', -40], ['bar', -41]], [['bar', -40], ['stage', -41], ['back', -42], ['bar', -43]],
+    ]) {
+      vi.band.send({ t: 'heard', ch: 6, near: [], marks });
+      assert.deepEqual(await after(), [['nb', 'p0'], 'in this room'], JSON.stringify(marks));
+    }
+    vi.band.send({ t: 'heard', ch: 6, near: [], marks: [['bar', -40], ['stage', -41], ['back', -42]] });
+    assert.deepEqual(await after(), [['nb'], 'near the bar'], 'three areas, each once, after all those, are taken');
+  });
+});
+
+test('a phone never names an area: not when it joins, not as {t:"band"}', async () => {
+  await heldRelay(async (on, clock, own) => {
+    const { nb } = await nearFloor(on, 'marks-phone', ['vi']);
+    const eve = await on.phone('marks-phone', { band: 'near the bar' });
+    eve.send({ t: 'pick', track: 'eve' });
+    eve.send({ t: 'arm', intent: 'hi' });
+    eve.send({ t: 'band', band: 'by the stage' });
+    await nb.until(() => areaOn(nb, 'eve') !== undefined);
+    own.tickNear();
+    await pause(60);
+    assert.deepEqual([eve.view.me.band, areaOn(nb, 'eve')], ['in this room', 'in this room']);
+  });
+});
