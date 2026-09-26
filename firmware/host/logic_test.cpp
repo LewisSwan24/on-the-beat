@@ -396,16 +396,40 @@ void sound() {
   // No more than the room it is given, and nothing for a name it does not know.
   CHECK(render("jingle", buf, 100) == 100);
   CHECK(render("hum", buf, sizeof buf) == 0);
-  // On a buzzer a sound goes up whole octaves, as far as its highest note stays within BUZZER_TOP_HZ.
-  const std::pair<const char*, uint32_t> octaves[] = {{"tick", 2}, {"double", 2}, {"down", 4}, {"up", 2},
-                                                      {"fall", 2}, {"low", 4},    {"ask", 2},  {"jingle", 1},
-                                                      {"warn", 4}, {"hello", 2},  {"found", 1}};
-  CHECK(sizeof octaves / sizeof octaves[0] == sizeof SOUNDS / sizeof SOUNDS[0]);
-  for (const auto& o : octaves) CHECK(soundFor(o.first) && buzzerFactor(*soundFor(o.first)) == o.second);
+  // On a buzzer a sound goes up whole octaves, as far as its highest note stays within BUZZER_TOP_HZ...
+  const std::pair<const char*, uint32_t> octaves[] = {{"tick", 2}, {"double", 2}, {"down", 4},   {"up", 2},
+                                                      {"fall", 2}, {"ask", 2},    {"jingle", 1}, {"warn", 4},
+                                                      {"hello", 2}, {"found", 1}};
+  CHECK(sizeof octaves / sizeof octaves[0] + 1 == sizeof SOUNDS / sizeof SOUNDS[0]);  // and low, below
+  for (const auto& o : octaves) CHECK(soundFor(o.first) && !buzzerOwn(o.first) && buzzerFactor(*soundFor(o.first)) == o.second);
   for (const Sound& s : SOUNDS) {
     const uint32_t top = highestHz(s.notes, s.count) * buzzerFactor(s);
     CHECK(top <= BUZZER_TOP_HZ && top * 2 > BUZZER_TOP_HZ);
   }
+  // ...but low, NOT SENT, falls a fifth from 4699 Hz: two octaves up it would be CHANGED's own notes.
+  CHECK(buzzerOwn("low") && buzzerNote(*soundFor("low"), 0).hz == 4699 && buzzerNote(*soundFor("low"), 1).hz == 3136);
+  // Every note on a buzzer keeps its length, its rests and the way each step goes, within BUZZER_TOP_HZ.
+  const auto dir = [](uint32_t a, uint32_t b) { return (b > a) - (b < a); };
+  for (const Sound& s : SOUNDS)
+    for (size_t k = 0; k < s.count; ++k) {
+      const Note n = buzzerNote(s, k);
+      CHECK(n.ms == s.notes[k].ms && !n.hz == !s.notes[k].hz && n.hz <= BUZZER_TOP_HZ);
+      if (k && n.hz && s.notes[k - 1].hz)
+        CHECK(dir(buzzerNote(s, k - 1).hz, n.hz) == dir(s.notes[k - 1].hz, s.notes[k].hz));
+    }
+  // And no two sounds are alike, on the speaker or the buzzer: as many notes, each within a semitone.
+  const auto alike = [](const Sound& a, const Sound& b, bool buzzer) {
+    if (a.count != b.count) return false;
+    for (size_t k = 0; k < a.count; ++k) {
+      const uint32_t x = buzzer ? buzzerNote(a, k).hz : a.notes[k].hz;
+      const uint32_t y = buzzer ? buzzerNote(b, k).hz : b.notes[k].hz;
+      if (!x != !y || (x && std::max(x, y) * 1000 >= std::min(x, y) * 1060)) return false;
+    }
+    return true;
+  };
+  for (const Sound& a : SOUNDS)
+    for (const Sound& b : SOUNDS)
+      if (&a != &b) CHECK(!alike(a, b, false) && !alike(a, b, true));
   // Its length stays, so the wrist's timings hold; only the pitch moves: 3600 Hz for 25 ms is 90 waves.
   static uint8_t plain[SOUND_SAMPLES];
   CHECK(render("tick", buf, sizeof buf, true) == 25 * ms);

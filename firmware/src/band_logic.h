@@ -146,20 +146,44 @@ constexpr uint32_t buzzerFactor(uint32_t top, uint32_t factor = 1) {
 
 inline uint32_t buzzerFactor(const Sound& s) { return buzzerFactor(highestHz(s.notes, s.count)); }
 
+// Octaves alone would make two sounds one. NOT SENT falls the same fifth as
+// CHANGED, an octave under it; two octaves up and one, they land on the same
+// notes, and under 2.6 kHz there is no room to keep it lower. So on a buzzer
+// it falls that fifth from the top of the loud range instead, above CHANGED:
+// every note as long, the same way down.
+
+namespace detail {
+constexpr Note BUZZER_LOW[] = {{4699, 120}, {3136, 220}};
+}  // namespace detail
+
+constexpr Sound BUZZER_OWN[] = {detail::sound("low", detail::BUZZER_LOW)};
+
+/** A sound's own notes on a buzzer, where it has them. */
+inline const Sound* buzzerOwn(const std::string& name) {
+  for (const Sound& s : BUZZER_OWN)
+    if (name == s.name) return &s;
+  return nullptr;
+}
+
+/** The k-th note of `s` as a buzzer plays it: its own, or up by buzzerFactor(). */
+inline Note buzzerNote(const Sound& s, size_t k) {
+  if (const Sound* own = buzzerOwn(s.name)) return own->notes[k];
+  return {static_cast<uint16_t>(s.notes[k].hz * buzzerFactor(s)), s.notes[k].ms};
+}
+
 /**
  * A sound's notes as one triangle wave, 8 bits unsigned at SOUND_RATE, as
  * M5.Speaker.playRaw() takes it: 128 is silence, and a rest is silence. Each
  * note starts at the middle of its wave, so it does not click in. On a
- * `buzzer`, the notes go up by buzzerFactor(). Writes at most `cap` samples;
+ * `buzzer`, each note is buzzerNote()'s. Writes at most `cap` samples;
  * returns how many.
  */
 inline size_t render(const std::string& name, uint8_t* out, size_t cap, bool buzzer = false) {
   const Sound* s = soundFor(name);
   size_t n = 0;
   if (!s) return 0;
-  const uint64_t factor = buzzer ? buzzerFactor(*s) : 1;
   for (size_t k = 0; k < s->count; ++k) {
-    const Note& note = s->notes[k];
+    const Note note = buzzer ? buzzerNote(*s, k) : s->notes[k];
     const size_t samples = size_t(note.ms) * (SOUND_RATE / 1000);
     for (size_t i = 0; i < samples && n < cap; ++i) {
       if (!note.hz) {
@@ -167,7 +191,7 @@ inline size_t render(const std::string& name, uint8_t* out, size_t cap, bool buz
         continue;
       }
       // Where in its wave this sample is, from 0 to SOUND_RATE; a quarter in, the wave crosses the middle going up.
-      const int64_t phase = static_cast<int64_t>((uint64_t(i) * note.hz * factor + SOUND_RATE / 4) % SOUND_RATE);
+      const int64_t phase = static_cast<int64_t>((uint64_t(i) * note.hz + SOUND_RATE / 4) % SOUND_RATE);
       const int64_t v = phase < SOUND_RATE / 2 ? 4 * phase - SOUND_RATE : 3 * int64_t(SOUND_RATE) - 4 * phase;
       out[n++] = static_cast<uint8_t>(128 + v * 127 / int64_t(SOUND_RATE));
     }

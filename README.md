@@ -370,8 +370,12 @@ the relay reaches it.
   high up, from about 2.8 to 4.7 kHz on the Plus, so there each sound goes
   up whole octaves, as far as its highest note stays under 4.7 kHz: the same
   tune, every note as long, so the wrist's timings hold (`buzzerFactor()`).
-  `down`, `low` and `warn` go up two octaves; `jingle` and `found`, already
-  high, stay as they are. The first
+  `down` and `warn` go up two octaves; `jingle` and `found`, already high,
+  stay as they are. Octaves alone made `low`, NOT SENT, into `fall`,
+  CHANGED: the same fifth down an octave apart, they landed on the same
+  notes. So on a buzzer `low` falls that fifth from 4.7 kHz instead, above
+  CHANGED (`BUZZER_OWN`), and a host test holds that no two sounds are
+  alike on either. The first
   M5StickC has no speaker; it says so once on the console and only lights up.
   The Plus has no PSRAM, and the buffers take its static RAM from 51 KB to
   70 KB of 320 KB; `show` prints the free heap.
