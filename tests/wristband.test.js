@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRelay, bandIdOf, BAND_ALONE_MS, PAIR_CHECK_MS } from '../relay/server.js';
+import { MEET_MS } from '../relay/band.js';
 import { helpers, newKey, pause } from './relay-harness.js';
 
 let relay;
@@ -785,4 +786,112 @@ test("two people already matched tonight: a band's wave back is answered ok, and
   await pause(100);
   assert.deepEqual(ana.view.matches.map((x) => [x.id, x.number]), [[m.id, m.number]], 'the match they had, and no other');
   close(ana, ben, cai, band);
+});
+
+// ---------- found each other (docs/superpowers/specs/2026-09-26-wrist-found-design.md §2) ----------
+
+/** Ana and ben each wear a band, and have just matched on SAY HI: both bands show the meeting. */
+async function meeting(venue, on = { phone, wristband, pairBand }, clock = null) {
+  const [aBand, bBand] = [await on.wristband(), await on.wristband()];
+  const ana = await on.phone(venue);
+  const ben = await on.phone(venue);
+  await on.pairBand(ana, aBand);
+  await on.pairBand(ben, bBand);
+  if (clock) clock.t += 3_000;                    // past the white flash a new pairing gives
+  for (const p of [ana, ben]) p.send({ t: 'arm', intent: 'hi' });
+  for (const p of [ana, ben]) await p.until((v) => v.near.length === 1);
+  ana.send({ t: 'wave', handle: ana.view.near[0].handle });
+  ben.send({ t: 'wave', handle: ben.view.near[0].handle });
+  const [a] = await Promise.all([aBand.until((s) => s.kind === 'meet', 5000), bBand.until((s) => s.kind === 'meet', 5000)]);
+  return { aBand, bBand, ana, ben, number: a.big };
+}
+
+/** A band's own found, and the relay's answer. */
+async function sayFound(band, number) {
+  const before = band.replies.length;
+  band.send({ t: 'found', number });
+  await band.until((s, b) => b.replies.length > before);
+  return band.replies.at(-1);
+}
+const notFound = (why) => ({ t: 'found', ok: false, why });
+
+test("a band says found: its own band waits and the other's is as it was; once the other's phone says it too, both numbers go and both bands are told", async () => {
+  const { aBand, bBand, ana, ben, number } = await meeting('found-both');
+  assert.deepEqual(await sayFound(aBand, number), { t: 'found', ok: true });
+  const waiting = await aBand.until((s) => s.small === 'FOUND: WAITING');
+  assert.equal(waiting.big, number, 'the number stays up');
+  await ana.until((v) => v.matches[0].found);
+  await pause(50);
+  assert.deepEqual([bBand.show.kind, bBand.show.small, 'found' in bBand.show], ['meet', 'MEET', false], "ben's band is as it was");
+  assert.deepEqual([ben.view.matches[0].found, ben.view.matches[0].foundAt], [false, null], "and ben's phone");
+  ben.send({ t: 'found', match: ben.view.matches[0].id });
+  const [a, b] = await Promise.all([aBand.until((s) => s.found?.n === Number(number)), bBand.until((s) => s.found?.n === Number(number))]);
+  assert.deepEqual([a.kind, b.kind], ['hi', 'hi'], 'both numbers gone, both cards back');
+  assert.deepEqual([a.found, b.found], [{ n: Number(number), intent: 'hi' }, { n: Number(number), intent: 'hi' }], "both play it in the meeting's card");
+  const [va, vb] = await Promise.all([ana.until((v) => v.matches[0].foundAt), ben.until((v) => v.matches[0].foundAt)]);
+  assert.equal(va.matches[0].foundAt, vb.matches[0].foundAt, 'one time on both phones');
+  close(ana, ben, aBand, bBand);
+});
+
+test('a malformed found from a band is dropped unanswered; the rest are refused unpaired, no room, and too fast before anything is looked up', async () => {
+  await heldRelay(async (on, clock, own) => {
+    const loose = await on.wristband();
+    for (const m of [{ t: 'found' }, { t: 'found', number: 27 }, { t: 'found', number: '7' }, { t: 'found', number: '100' },
+      { t: 'found', number: '07' }, { t: 'found', number: ' 27' }, { t: 'found', number: 'ab' }]) {
+      loose.send(m);
+      await pause(40);
+      assert.deepEqual(loose.replies, [], JSON.stringify(m));
+    }
+    // None of those was stamped: this one, in the same second, is looked at.
+    assert.deepEqual(await sayFound(loose, '27'), notFound('unpaired'));
+    assert.deepEqual(await sayFound(loose, '28'), notFound('too fast'), 'the last was refused, and still stamped');
+    clock.t += 1_000;
+    assert.deepEqual(await sayFound(loose, '28'), notFound('unpaired'), 'a second on');
+
+    const band = await on.wristband();
+    const ana = await on.phone('found-noroom');
+    await on.pairBand(ana, band);
+    clock.t += 3_000;
+    ana.ws.close();
+    await pause(100);
+    own.expire(clock.t + BAND_ALONE_MS + 1_000);   // held only by the wristband, for the hour
+    await band.until((s) => s.away);
+    assert.deepEqual(await sayFound(band, '27'), notFound('no room'));
+  });
+});
+
+test("a band's found is refused gone for a number that is not its meeting's, one found by both, or one over; a refused one changes nothing", async () => {
+  await heldRelay(async (on, clock) => {
+    const { aBand, bBand, ana, ben, number } = await meeting('found-gone', on, clock);
+    const wrong = number === '99' ? '98' : String(Number(number) + 1);
+    assert.deepEqual(await sayFound(aBand, wrong), notFound('gone'), 'not its meeting');
+    await pause(50);
+    assert.deepEqual([ana.view.matches[0].found, aBand.show.small], [false, 'MEET'], 'nothing said');
+    clock.t += MEET_MS;
+    assert.deepEqual(await sayFound(aBand, number), notFound('gone'), 'fifteen minutes on, the meeting is over');
+    await pause(50);
+    assert.equal(ana.view.matches[0].found, false);
+    close(ana, ben, aBand, bBand);
+  });
+  const { aBand, bBand, ana, ben, number } = await meeting('found-twice');
+  assert.deepEqual(await sayFound(aBand, number), { t: 'found', ok: true });
+  ben.send({ t: 'found', match: (await ben.until((v) => v.matches.length === 1)).matches[0].id });
+  await aBand.until((s) => s.found?.n === Number(number));
+  await pause(1_000);                             // past FOUND_GAP_MS
+  assert.deepEqual(await sayFound(aBand, number), notFound('gone'), 'found by both, it is over');
+  close(ana, ben, aBand, bBand);
+});
+
+test('a block reads exactly as a meeting that is over, and tells the one blocked nothing', async () => {
+  const { aBand, bBand, ana, ben, number } = await meeting('found-block');
+  ben.send({ t: 'block', handle: (await ben.until((v) => v.matches.length === 1)).matches[0].id });
+  await aBand.until((s) => s.kind === 'hi');
+  let heard = 0;
+  const count = () => { heard += 1; };
+  ben.ws.on('message', count);
+  assert.deepEqual(await sayFound(aBand, number), notFound('gone'));
+  await pause(50);
+  ben.ws.off('message', count);
+  assert.equal(heard, 0, "nothing reached ben's phone");
+  close(ana, ben, aBand, bBand);
 });

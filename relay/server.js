@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { createRoom, INTENTS, SPOTS } from './room.js';
-import { bandShow, cleanCode, newCode } from './band.js';
+import { MEET_MS, bandShow, cleanCode, newCode } from './band.js';
 import { nightOf } from './night.js';
 
 export const WS_PATH = '/api/ws';
@@ -31,6 +31,7 @@ const PING_MS = 15_000;
 const BAND_GRACE_MS = 60_000;         // a wristband that drops keeps its letters this long
 const SET_GAP_MS = 1000;              // a wristband may change its person at most once a second
 const WAVE_GAP_MS = 1000;             // and wave back at most once a second, on a stamp of its own
+const FOUND_GAP_MS = 1000;            // and say found at most once a second, on a stamp of its own
 const TRIES_MS = 60_000;              // the window pairing attempts are counted in
 const SOCKET_TRIES = 5;               // pairing attempts one socket may make in it
 const ADDRESS_TRIES = 20;             // pairing attempts one address may make in it, over every socket
@@ -169,6 +170,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     quiet: false,       // a hold with nobody in a room to hide, kept until they are
     setAt: 0,           // when this wristband last changed its person (rule 1)
     waveAt: 0,          // when it last waved back, landed or not
+    foundTry: 0,        // when it last said found, landed or not
   });
 
   // How long a record has been dead weight: a live wristband is never that, a
@@ -282,6 +284,31 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     return answer(null);
   }
 
+  /**
+   * We found each other, said on the wrist's meeting face
+   * (docs/superpowers/specs/2026-09-26-wrist-found-design.md §2): for its
+   * person's meeting with that number, under MEET_MS old and not yet found by
+   * both. The relay answers ok, or no and why; a refused one changes nothing
+   * and tells nobody. Returns whether it landed.
+   */
+  function foundFromBand(ws, b, m) {
+    // Dropped whole, unanswered and unstamped, unless it is exactly a found: a meeting's number is two digits.
+    if (typeof m.number !== 'string' || !/^[1-9][0-9]$/.test(m.number)) return false;
+    const answer = (why) => { ws.send(JSON.stringify(why ? { t: 'found', ok: false, why } : { t: 'found', ok: true })); return !why; };
+    // Stamped before anything is looked up, refused or not: finding the meeting is a view of the person.
+    if (now() - b.foundTry < FOUND_GAP_MS) return answer('too fast');
+    b.foundTry = now();
+    if (!b.person) return answer('unpaired');
+    const room = rooms.get(b.key)?.room;
+    if (!room?.has(b.person)) return answer('no room');
+    // The meeting its face shows: the newest with that number. Over, found by both, or blocked, it is gone.
+    const meeting = room.viewFor(b.person).matches
+      .filter((x) => String(x.number) === m.number && now() - x.at < MEET_MS && !x.foundAt)
+      .sort((x, y) => y.at - x.at)[0];
+    if (!meeting || !room.found(b.person, meeting.id)) return answer('gone');
+    return answer(null);
+  }
+
   function handleBand(ws, m) {
     const b = bands.get(ws.band);
     // Only from the wristband's current socket: a set stuck in a replaced one must not land.
@@ -291,6 +318,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (m.t === 'hold') holdOn(b);
     if (m.t === 'set' && !setFromBand(ws, b, m)) return;
     if (m.t === 'wave' && !waveFromBand(ws, b, m)) return;
+    if (m.t === 'found' && !foundFromBand(ws, b, m)) return;
     const r = b.key ? rooms.get(b.key) : null;
     if (r) push(r); else showBand(b);
   }
@@ -514,6 +542,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         if (room.report(me, m.handle || null, m.why)) console.log('REPORT', JSON.stringify(room.reports().at(-1)));
         break;
       case 'keep': room.keep(me, m.match, m.on); break;
+      case 'found': room.found(me, m.match); break;
       case 'clip': {
         const to = m.to ? String(m.to) : null;
         const ref = keepClip(r, me, m.mime, m.data, to ? 'to:' + to : 'floor');
