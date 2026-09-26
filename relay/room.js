@@ -219,6 +219,7 @@ export function createRoom({
       picks: { [a]: people.get(a).pick, [b]: people.get(b).pick },
       keep: { [a]: false, [b]: false },
       contacts: { [a]: '', [b]: '' },
+      found: { [a]: 0, [b]: 0 },   // when each said they found the other; 0 not yet
     };
     matches.set(key, m);
     return m;
@@ -322,6 +323,20 @@ export function createRoom({
     }
   }
 
+  /**
+   * We found each other: like keeping, it counts only once both say so, and
+   * one side's is never shown to the other. The first time each said it is
+   * kept. False for a match that is not theirs, or is gone.
+   */
+  function found(viewer, matchId) {
+    for (const m of matches.values()) {
+      if (m.id !== matchId || (m.a !== viewer && m.b !== viewer)) continue;
+      if (!m.found[viewer]) m.found[viewer] = now();
+      return true;
+    }
+    return false;
+  }
+
   /** Everyone a person may see right now: nobody while they are NOT NOW. */
   const seen = (id) => (people.get(id)?.invisible ? [] : [...people.values()].filter((p) => shows(id, p.id)));
   /** SAY HI's list: who is showing blue to this person. The phone's list and wavesAt() both come from here. */
@@ -372,6 +387,9 @@ export function createRoom({
           pick: m.picks[other], yourPick: m.picks[id],
           kept: m.keep[id], keptByBoth: both,
           contact: both ? m.contacts[other] : '',
+          // Your own found; the time only once both said it, the later of the two.
+          found: !!m.found[id],
+          foundAt: m.found[m.a] && m.found[m.b] ? Math.max(m.found[m.a], m.found[m.b]) : null,
         };
       }),
     };
@@ -379,7 +397,7 @@ export function createRoom({
 
   return {
     join, leave, setBand, setProfile, arm, setInvisible, fromPhone, pick, postClip,
-    wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, viewFor,
+    wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, found, viewFor,
     /** For the relay: who is here, so it knows whose view to push. */
     ids: () => [...people.keys()],
     has: (id) => people.has(id),

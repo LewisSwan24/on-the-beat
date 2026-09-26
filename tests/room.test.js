@@ -286,6 +286,44 @@ test('keep: a contact is shared only when both keep, and still arrives after a p
   assert.equal(room.viewFor('ana').matches[0].contact, '', 'taking it back takes the contact back');
 });
 
+// ---------- found each other (docs/superpowers/specs/2026-09-26-wrist-found-design.md §2) ----------
+
+test("found: counted only once both say so, and one side's is never shown to the other", () => {
+  const { room, handleOf, tick } = night();
+  const { id } = meet(room, handleOf, 'ana', 'ben');
+  const bens = JSON.stringify(room.viewFor('ben'));
+  tick(60_000);
+  assert.equal(room.found('ana', id), true);
+  assert.deepEqual([room.viewFor('ana').matches[0].found, room.viewFor('ana').matches[0].foundAt], [true, null], 'said, alone');
+  assert.equal(JSON.stringify(room.viewFor('ben')), bens, "ben's view is exactly as it was");
+  tick(30_000);
+  const t = Date.UTC(2026, 8, 23, 11, 4) + 90_000;
+  assert.equal(room.found('ben', id), true);
+  for (const who of ['ana', 'ben']) {
+    const m = room.viewFor(who).matches[0];
+    assert.deepEqual([m.found, m.foundAt], [true, t], who + ': the later of the two');
+  }
+});
+
+test('found: only the two of a match say it, the first time is kept, and a match that is gone refuses it', () => {
+  const { room, handleOf, tick } = night();
+  const { id } = meet(room, handleOf, 'ana', 'ben');
+  const t0 = Date.UTC(2026, 8, 23, 11, 4);
+  assert.equal(room.found('cai', id), false, 'not his match');
+  assert.equal(room.found('ana', 'm999'), false, 'no such match');
+  assert.equal(room.viewFor('ana').matches[0].found, false, 'nothing changed');
+  room.found('ana', id);
+  tick(5_000);
+  room.found('ben', id);
+  tick(5_000);
+  room.found('ana', id);
+  assert.equal(room.viewFor('ana').matches[0].foundAt, t0 + 5_000, "ben's is the later; ana's second changed nothing");
+  meet(room, handleOf, 'ana', 'cai');
+  const other = room.viewFor('cai').matches[0];
+  room.block('cai', other.id);
+  assert.equal(room.found('ana', other.id), false, 'a blocked match is gone');
+});
+
 test('a report is kept for the venue team with the band, never a position — about someone, or something', () => {
   const { room, handleOf } = night();
   room.arm('ben', 'hi');
