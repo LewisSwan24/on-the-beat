@@ -1833,6 +1833,39 @@ inline Command readCommand(const std::string& line) {
 }
 
 /**
+ * A key pressed from the USB console, as a finger would: `press face` or
+ * `press side` is let go before any bar shows, `hold face` or `hold side` just
+ * after the hold. Only the cable reaches the console, and whoever holds the
+ * cable holds the band: this is for testing on a real band without hands.
+ */
+constexpr uint32_t PRESS_MS = 120;
+constexpr uint32_t PRESS_HOLD_MS = HOLD_MS + 200;
+
+struct KeyPress {
+  int key = 0;  // 1 the face, 2 the side; 0 when the line is not a press
+  uint32_t ms = 0;
+};
+
+inline KeyPress pressFor(const Command& c) {
+  KeyPress p;
+  if (c.verb != "press" && c.verb != "hold") return p;
+  const std::string which = upper(trim(c.arg));
+  p.key = which == "FACE" ? 1 : which == "SIDE" ? 2 : 0;
+  if (p.key) p.ms = c.verb == "hold" ? PRESS_HOLD_MS : PRESS_MS;
+  return p;
+}
+
+/** What the screen shows, for the console: its words, its field and its light, and the bar while there is one. */
+inline std::string faceLine(const Screen& s) {
+  std::string words = s.big;
+  if (!s.small.empty()) words += (words.empty() ? "" : " / ") + s.small;
+  std::string line = "face: " + (words.empty() ? std::string("no words") : words) + " (" + s.field + ", light " +
+                     std::to_string(s.light);
+  if (s.bar >= 0) line += ", bar " + std::to_string(s.bar);
+  return line + ")";
+}
+
+/**
  * What the console says about a frame the wrist sends, or "" for nothing: a
  * hello says whether it carries a secret, never the secret itself, a choice
  * says what was chosen, and a wave back only that it was sent.

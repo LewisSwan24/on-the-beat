@@ -56,6 +56,7 @@ Relay relay;
 
 Wrist* wrist = nullptr;  // made in setup(), once the radio is on and the key is truly random
 bool keyA = false, keyB = false;  // KEY1 (BtnA, the face) and KEY2 (BtnB, the side), as last read
+uint32_t consoleKeyUntil[3] = {0, 0, 0};  // KEY1 and KEY2 pressed from the console: down until then; 0 is up
 BatteryReport batteryReport;
 Rejoin rejoin;
 std::atomic<uint8_t> wifiWhy{0};  // why the radio last dropped, as the Wi-Fi task heard it; 0 until it has
@@ -529,7 +530,10 @@ void help() {
       "  pass <password>         its password (leave it out for an open network)\n"
       "  relay <address>         https://....trycloudflare.com from npm run tunnel, or ws://<laptop>:8790 on a LAN\n"
       "  show                    what it is set to, and how it is doing\n"
-      "  forget                  back to what it was built with");
+      "  forget                  back to what it was built with\n"
+      "  press face|side         a press, as a finger makes it\n"
+      "  hold face|side          a hold, let go just after it counts\n"
+      "  face                    what the screen shows now");
 }
 
 void report() {
@@ -566,6 +570,18 @@ void run(const Command& c) {
     startRelay();
   } else if (c.verb == "show") {
     report();
+  } else if (c.verb == "press" || c.verb == "hold") {
+    const KeyPress p = pressFor(c);
+    if (!p.key) {
+      Serial.println("press face, press side, hold face or hold side");
+      return;
+    }
+    // Down from the next read of the keys, and up after p.ms, through the same edges as the buttons.
+    consoleKeyUntil[p.key] = millis() + p.ms;
+    Serial.printf("%s the %s for %u ms\n", c.verb == "hold" ? "holding" : "pressing", p.key == 1 ? "face" : "side",
+                  static_cast<unsigned>(p.ms));
+  } else if (c.verb == "face") {
+    Serial.println(faceLine(wrist->face(millis())).c_str());
   } else if (c.verb == "forget") {
     prefs.remove("ssid");
     prefs.remove("pass");
@@ -660,8 +676,12 @@ void loop() {
   console();
   readBattery(now);
   drain(now);
-  // KEY1 is the face button, KEY2 the side one. The Wrist times the holds.
-  const bool a = M5.BtnA.isPressed(), b = M5.BtnB.isPressed();
+  // KEY1 is the face button, KEY2 the side one. The Wrist times the holds. A key
+  // pressed from the console is down with the button, so it is the same press.
+  const auto fromConsole = [now](int k) {
+    return consoleKeyUntil[k] && static_cast<int32_t>(consoleKeyUntil[k] - now) > 0;
+  };
+  const bool a = M5.BtnA.isPressed() || fromConsole(1), b = M5.BtnB.isPressed() || fromConsole(2);
   if (a != keyA) { keyA = a; a ? wrist->keyDown(1, now) : wrist->keyUp(1, now); }
   if (b != keyB) { keyB = b; b ? wrist->keyDown(2, now) : wrist->keyUp(2, now); }
   watchWifi(now);

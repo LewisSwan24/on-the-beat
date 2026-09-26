@@ -295,7 +295,7 @@ a dead socket. Its two buttons work as above.
 ```
 cd firmware
 pio run -t upload       # build it and flash it over USB
-pio device monitor      # its console: ssid, pass, relay, show, forget
+pio device monitor      # its console: ssid, pass, relay, show, forget, press, hold, face
 
 pio run -e m5sticks3 -t upload    # the same, for a StickS3
 ```
@@ -310,6 +310,14 @@ what the band is doing: the Wi-Fi coming and going and the reason the radio
 gave, each hello and whether it carries its secret (never the secret), each
 choice sent from the wrist, each refusal, and each change in what the relay
 shows.
+The console can also press the buttons, so a real band is tested without a
+hand on it: `press face` or `press side` is a press, let go after 120 ms;
+`hold face` or `hold side` is let go 200 ms after the hold counts. Either is
+down through the same edges as the button itself, so the band cannot tell
+them apart. `face` says what the screen shows: its words, field and light,
+the pairing letters included. Only the USB cable reaches the console, and
+whoever holds the cable holds the band and its buttons anyway; no frame from
+the relay reaches it.
 
 - **Everything that decides anything is in `src/band_logic.h`**, plain C++ with
   no hardware in it; `src/main.cpp` is only the screen, the speaker, the two

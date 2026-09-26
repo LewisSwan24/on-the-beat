@@ -491,6 +491,36 @@ void console() {
   CHECK(heard(hi + ",\"waves\":{\"ref\":\"f6a7b8c9d0\",\"n\":2,\"seq\":1790337603005}}}").empty());
   CHECK(heard("{\"t\":\"wave\",\"ok\":true}") == "the relay took the wave back");
   CHECK(heard("{\"t\":\"wave\",\"ok\":false,\"why\":\"gone\"}") == "the relay did not take the wave back: gone");
+
+  // Keys typed at the USB console are the presses a finger makes: a press shows no bar, a hold is past the hold.
+  CHECK(PRESS_MS < BAR_MS && PRESS_HOLD_MS > HOLD_MS);
+  KeyPress p = pressFor(readCommand("press face"));
+  CHECK(p.key == 1 && p.ms == PRESS_MS);
+  p = pressFor(readCommand("HOLD Side "));
+  CHECK(p.key == 2 && p.ms == PRESS_HOLD_MS);
+  CHECK(pressFor(readCommand("press")).key == 0 && pressFor(readCommand("press elbow")).key == 0);
+  CHECK(pressFor(readCommand("show")).key == 0 && pressFor(readCommand("face")).key == 0);
+  CHECK(pressFor(readCommand("ssid side")).key == 0);  // a network called "side" is not a press
+
+  // And the console can say what the screen shows: the words, the field and the light.
+  Screen waves;
+  waves.big = "SOMEONE WAVED";
+  waves.small = "2 WAITING - HOLD SIDE";
+  waves.light = LIGHT_AWAKE;
+  CHECK(faceLine(waves) == "face: SOMEONE WAVED / 2 WAITING - HOLD SIDE (black, light 110)");
+  Screen flash;
+  flash.field = "hi";
+  flash.light = LIGHT_FULL;
+  CHECK(faceLine(flash) == "face: no words (hi, light 255)");
+  Screen held;
+  held.big = "KEEP HOLDING";
+  held.light = LIGHT_AWAKE;
+  held.bar = 40;
+  CHECK(faceLine(held) == "face: KEEP HOLDING (black, light 110, bar 40)");
+  Wrist w("000102030405060708090a0b0c0d0e0f");
+  w.linkUp(1000);
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"pairing\",\"code\":\"UDXE\"}}", 1000);
+  CHECK(faceLine(w.face(1000)) == "face: UDXE (black, light 160)");  // the letters, read without eyes on it
 }
 
 void said() {
