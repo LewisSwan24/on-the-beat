@@ -58,6 +58,12 @@ bands every 8 ms while the laptop played a click track and a drum track:
   2.6× (StickS3) and 1.7× (Plus) above its median at a fixed delay — **but not
   the kick**: laptop speakers at 30% make no bass. How well the low band finds
   a beat in music with real bass is still open, and is the gate in §4.
+- **The tracker of §2, run on the laptop** over energies computed from the
+  test tracks through the band's own filters, with white noise added: a
+  click track and a drum track with a bass line and a pad locked in 1.5 s and
+  1.9 s, and pulsed 97–100% of their beats within 40 ms (mean error about
+  5 ms) up to moderate noise. At a signal-to-noise ratio near 0 dB, and on
+  synthesised speech, it locked nothing and pulsed nothing.
 
 ## §1. What the wearer sees
 
@@ -95,22 +101,34 @@ table.
   equal on the same samples.
 - **Onsets:** a rise in log energy above what the last second held, in
   either band, at least 200 ms after the last one.
-- **Tempo:** the period between 333 and 750 ms (180 and 80 BPM) that best
-  explains the onsets of the last `BEAT_WINDOW_MS`, preferring the kick.
-- **The beat clock:** a predicted next beat, pulled towards each onset that
-  lands near it and left alone by those that do not. The pulse is drawn at
-  the predicted beat minus `MIC_LATENCY_MS`, the model's measured delay from
-  sound to block, so the light and the sound arrive together.
-- **Locking and letting go:** locked once `BEAT_LOCK` predicted beats in a
-  row were each confirmed by an onset within `BEAT_TOLERANCE_MS`; let go once
-  no beat was confirmed for `BEAT_LOSE_MS`. Every one is a named constant and a
-  guess until worn. They start at:
+- **Tempo:** once at least five onsets span two seconds, the period between
+  333 and 750 ms (180 and 80 BPM) that the most pairs of onsets in the last
+  `BEAT_WINDOW_MS` sit a whole number of beats apart on, each pair weighted
+  by the weaker of its two.
+- **The grid:** beat *k* is at *t₀ + k·period*. Starting, the grid is laid
+  through the onset most of the others line up with, and every onset already
+  on it counts as a confirmed beat. After that, an onset within
+  `BEAT_TOLERANCE_MS` of a beat confirms it, and *t₀* and the period are the
+  least-squares line through the last eight confirmed beats. An onset off the
+  grid changes nothing, and a beat with no onset is simply skipped: the grid
+  carries on through a missed kick or a reaction's gap. The pulse is drawn at
+  each beat minus `MIC_LATENCY_MS`, the model's measured delay from sound to
+  block, so the light and the sound arrive together.
+- **Locking and letting go:** locked only on a tight grid that most of what
+  was heard lies on: `BEAT_LOCK` confirmed beats in a row, the line's
+  residual within `BEAT_FIT_MS`, and at least `BEAT_SHARE` of the window's
+  onsets on the grid. Let go, and the grid dropped, once no beat was
+  confirmed for `BEAT_LOSE_MS`. **Not pulsing is always better than pulsing
+  off the beat**: in doubt, the card stays steady. Every one is a named
+  constant and a guess until worn. They start at:
 
   | Constant | Start | |
   |---|---|---|
   | `BEAT_WINDOW_MS` | 6000 | the onsets the tempo is taken from |
   | `BEAT_LOCK` | 4 | confirmed beats in a row before the first pulse |
   | `BEAT_TOLERANCE_MS` | 60 | how near an onset must land to confirm a beat |
+  | `BEAT_FIT_MS` | 25 | the most the confirmed beats may stray from the line |
+  | `BEAT_SHARE` | 60% | of the window's onsets that must be on the grid |
   | `BEAT_LOSE_MS` | 4000 | unconfirmed this long, and the card is steady again |
   | `MIC_LATENCY_MS` | measured | per model, at the gate (§4.1) |
 - **Reactions come first.** A reaction's sound takes the audio channel: the
