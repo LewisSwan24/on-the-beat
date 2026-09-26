@@ -84,7 +84,10 @@ each one.
    `near the bar`, `by the stage`, `somewhere out the back` — and nothing
    finer. There is no position anywhere in the system to leak. On phones
    alone, everyone is `in this room`: a web page cannot tell where in a venue
-   a phone is, and it does not guess. The finer bands wait for the wristbands.
+   a phone is, and it does not guess. The finer bands wait for markers a
+   venue would put up, which are not built. What wristbands hear of each
+   other only takes people off SAY HI's list (*Who is near*, below), and no
+   phone or wristband is ever told how near anyone is.
 2. **No name and no photo until you both say yes.** Before a mutual yes a
    person is a handle, a band and at most a track. Handles are per viewer —
    the same person has a different handle on every phone — so two phones
@@ -115,6 +118,9 @@ never becomes a match.
   put two phones at the same gig into two different rooms that share a name.
   The night is held in memory only; stop the relay and it is gone.
   - After every change the relay pushes each phone its own `viewFor()`.
+  - What each wristband heard of the others is kept 30 s, in memory, and
+    never leaves the relay; every five seconds each room works out who is
+    near whom and pushes only the views that changed.
   - A dropped socket is not leaving: a person stays in the room for two
     minutes, so a locked screen does not cost them their place.
   - Clips are kept in memory, one on the floor per person, for an hour —
@@ -251,6 +257,25 @@ that was taken.
   minute; the phone buzzes only when no live wristband plays it. Refused or
   out of reach, the band says `NOT SENT`. Never said by both, the number goes
   at fifteen minutes, and nothing says why.
+- **Who is near comes from the wristbands.** While a band is on the relay,
+  paired and not in NOT NOW, it beacons four bytes by ESP-NOW twice a second,
+  under an address it makes up at every boot, and for one second in every ten
+  it listens for the others and tells the relay whom it heard and how
+  strongly. The relay scores each pair of bands in a room by the median of
+  what each heard of the other in the last 30 s, and every five seconds works
+  out each band's five heard most strongly; one of the five stays while it is
+  among the ten strongest, so the list does not churn as people turn round.
+  With a band, SAY HI then lists those five, everyone without a band as
+  before, and anyone waved with either way or matched. Nobody else is taken
+  off without evidence — both bands heard from in the last 30 s, on the same
+  Wi-Fi channel — so a band just switched on or gone quiet, a band on another
+  channel, and the stand-in at `/band`, which has no radio, hide nobody and
+  are hidden from nobody. No strength, score or order reaches a phone or a
+  band: the list is only shorter, the rows are in the same order, and every
+  one still says `in this room`. On a modelled floor of 750 people, 150 of
+  them banded, with bodies in the way, 99.8% of each five are truly within
+  10 m, against 33% for five picked at random from what the band heard
+  (`tests/near-crowd.test.js`).
 - **The sound can be switched off, on the phone.** The wristband sheet has
   `SOUND: ON` under TEST THE LIGHT; off, the band only lights up. The switch is
   the person's own: the phone keeps it across nights and re-says it after
@@ -332,7 +357,12 @@ hand on it: `press face` or `press side` is a press, let go after 120 ms;
 down through the same edges as the button itself, so the band cannot tell
 them apart. `face` says what the screen shows: its words, field and light,
 the pairing letters included. `sound found`, or any of the band's sounds by
-name, plays it, to hear the speaker without a room around the band. Only the
+name, plays it, to hear the speaker without a room around the band. `near`
+says whether it is beaconing and listening, the address it is on the air
+under, and what its last listen heard; `near off` stops both, to test a band
+gone quiet, `near listen` stops only the beacon, so two bands both told it
+hear nobody and say so, and `near on` starts both again. On the Plus, `show` also says
+what the band draws from USB, the mean since the last `show`. Only the
 USB cable reaches the console, and
 whoever holds the cable holds the band and its buttons anyway; no frame from
 the relay reaches it.
@@ -389,7 +419,22 @@ the relay reaches it.
   called `LOW` and a `constexpr` loop once passed every test and broke only
   in PlatformIO.
 - **Its key is 128 random bits, made at every boot**, never the chip's MAC, and
-  kept only in RAM with the pairing's secret.
+  kept only in RAM with the pairing's secret. So is its address on the air:
+  before it joins the Wi-Fi it takes a random, locally administered one, and
+  says it in the hello as `air`. If the radio would not take it, the band
+  neither beacons nor listens.
+- **The beacon and the listen** are the only radio work beside the Wi-Fi. The
+  beacon is an ESP-NOW broadcast at 6 Mbps, so a room of bands takes a sixth
+  of the airtime it would at the default 1 Mbps. The listen is promiscuous
+  mode, because Arduino-ESP32 2.0's ESP-NOW receive callback gives no signal
+  strength; it takes only an ESP-NOW frame that carries `OTB1`, keeps the
+  strongest reading of each band in that second (`Hearing` in
+  `band_logic.h`), and reports the strongest twelve, or that it heard nobody.
+  Tried on both bands before it was built: beside the Wi-Fi and a TLS socket
+  to the relay, no beacon was lost, and the Plus drew about 101 mA while
+  listening against 55 to 75 mA without. A band's outgoing frame is 320
+  bytes now, which a full report (294) fits; it was 256, and a longer frame
+  would have been cut short without a word.
 - **The pairing code is as wide as the screen allows**, with four light modules
   round it. A tunnel address is a version 4 code, and the canvas's 115 pixels
   would make each module two pixels — too small to read off a screen this size.
@@ -465,6 +510,12 @@ the relay reaches it.
   band, or `WE FOUND EACH OTHER` on S11, counted only when both say it: the
   meeting face gains `FOUND: WAITING`, both bands a *found* reaction, and
   Tonight's `met` counts meetings found, not matches.
+- **Near is the five heard most strongly, not everyone heard.** Revision 6
+  lists the people whose wristband yours can hear. On a crowded floor that is
+  nearly everyone, so the list is the five heard most strongly, which is also
+  S5's own limit of five. People without a band cannot be heard, which says
+  nothing about where they are, so they are listed as before; the owner chose
+  that on 26 Sep 2026.
 
 ## Abuse resistance
 
@@ -515,6 +566,17 @@ was red-teamed and hardened. A red/blue pass found and closed:
   like. A band never starts a wave: with none to answer, nothing is recorded.
   A lent, taken or forgotten band can still make a match for its person, with
   or without their phone; blocking undoes it.
+- **What a wristband says it heard.** A report is dropped whole unless it
+  comes from a paired band's current socket, five seconds or more after its
+  last, on a channel from 1 to 14, with at most sixteen entries, each a
+  twelve-hex address and a whole signal strength from -100 to 0; a hello whose
+  `air` is not twelve lower-case hex digits is refused. An address counts only
+  as the address of exactly one band paired in the same room, so one claimed
+  twice, or from another room, counts for nobody. A band that lies changes
+  only its own person's list, and nearness only ever removes, so it can show
+  nobody a phone could not see already. A band beaconing under another's
+  address moves that band's nearness to where the liar stands, among
+  strangers in the same room, and no further.
 - **Rooms that never emptied.** A venue with nobody in it, nobody in its grace
   window, no clip still loading and no wristband still worn is now reclaimed, so
   a long-lived relay does not keep a room object for every venue anyone typed.
@@ -564,9 +626,15 @@ relay could drive what a wrist shows.
   small machine holds, or a restart nobody notices, needs the rooms kept
   outside the process first. A phone that used a tunnel address starts over
   at the fixed one: a browser keeps the app's storage per address.
-- **Proximity.** Wristbands pair and light, but nothing measures who is near
-  whom: every person is still `in this room`. Nearness wants ESP-NOW between
-  wristbands, which wants the hardware.
+- **Who is near has not met a crowd.** It has run through the real room on
+  a modelled floor, and not yet on the real bands. Bodies and reflections on
+  a real floor may differ from the model; ranking the strongest was chosen
+  because it leans on them least, and a walk through a venue is the check.
+  Not built: markers a venue puts up (`near the bar`, `by the stage`); a
+  correction between models, though a StickS3 heard a Plus 7 dB weaker than
+  the Plus heard it; and more than one Wi-Fi channel, since a band hears only
+  bands on its own channel, so a venue whose access points use several splits
+  its bands into groups, each of which keeps the others listed.
 - **The firmware has run on two wristbands, for one day.** On 25 Sep
   2026 a StickS3 and an M5StickC Plus joined an Android phone's hotspot and
   reached the relay through a quick tunnel, with that phone and a laptop

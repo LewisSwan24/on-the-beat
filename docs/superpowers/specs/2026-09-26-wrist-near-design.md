@@ -206,10 +206,13 @@ All numbers are named constants in `firmware/src/band_logic.h`.
   within 10 m, as in the model (97% or more).
 - **The real bands**: each paired to a stand-in phone, both on SAY HI;
   `near` on each console shows the other heard; both phones list each
-  other. One band told to stop beaconing: after `HEARD_MS` the other's
-  phone no longer lists it, and the moment it beacons again it is back.
-  Then the Plus's USB draw with this firmware against today's, face dark,
-  battery full: no more than 10 mA more.
+  other. Both bands told to listen without beaconing: each reports
+  hearing nobody, and after `HEARD_MS` neither phone lists the other; the
+  moment one beacons again, both are back. (One band going silent alone
+  cannot show it: a pair is scored from either side, so the other band
+  still hears it; and a band that stops reporting hides nobody.) Then the
+  Plus's USB draw, face dark, battery full, beaconing and listening against
+  neither: no more than 10 mA more.
 
 ## Also to change when this is built
 
