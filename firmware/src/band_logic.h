@@ -79,6 +79,7 @@ constexpr Note ASK[] = {{1319, 80}, {0, 50}, {1760, 160}};
 constexpr Note JINGLE[] = {{1319, 80}, {1568, 80}, {2637, 80}, {2093, 80}, {2349, 80}, {3136, 200}};
 constexpr Note WARN[] = {{880, 150}, {698, 150}, {880, 150}, {698, 150}};
 constexpr Note HELLO[] = {{1568, 60}, {2093, 120}};
+constexpr Note FOUND[] = {{1568, 70}, {2093, 70}, {2637, 70}, {0, 40}, {2637, 70}, {3136, 220}};
 template <size_t N>
 constexpr Sound sound(const char* name, const Note (&notes)[N]) { return {name, notes, N}; }
 }  // namespace detail
@@ -87,7 +88,7 @@ constexpr Sound SOUNDS[] = {
     detail::sound("tick", detail::TICK),     detail::sound("double", detail::DOUBLE), detail::sound("down", detail::DOWN),
     detail::sound("up", detail::UP),         detail::sound("fall", detail::FALL),     detail::sound("low", detail::LOW_TONE),
     detail::sound("ask", detail::ASK),       detail::sound("jingle", detail::JINGLE), detail::sound("warn", detail::WARN),
-    detail::sound("hello", detail::HELLO),
+    detail::sound("hello", detail::HELLO),   detail::sound("found", detail::FOUND),
 };
 
 inline const Sound* soundFor(const std::string& name) {
@@ -151,7 +152,7 @@ inline size_t render(const std::string& name, uint8_t* out, size_t cap) {
   return n;
 }
 
-/** A flash: its colour, then count × on / off ms. "card" is the card chosen, white for OFF. */
+/** A flash: its colour, then count × on / off ms. "card" is the card chosen, or the meeting's for found; white for none. */
 struct Flash {
   const char* name;
   const char* colour;
@@ -162,6 +163,7 @@ struct Flash {
 constexpr Flash FLASHES[] = {
     {"set", "card", 2, 150, 100},       {"changed", "red", 3, 120, 90}, {"notsent", "orange", 2, 350, 250},
     {"warn", "orange", 2, 350, 250},    {"check", "white", 2, 150, 100},   {"wave", "hi", 3, 500, 500},
+    {"found", "card", 3, 200, 150},
 };
 
 inline const Flash* flashFor(const std::string& name) {
@@ -492,12 +494,19 @@ struct Waves {
   int64_t seq = 0;  // the relay's clock in ms when the wave was made: past 32 bits
 };
 
+/** A meeting its person and their match both said they found: its number, and its card or none. */
+struct Found {
+  int64_t n = 0;
+  std::string intent;
+};
+
 struct Frame {
   std::string t;
   bool hasShow = false;
   Show show;
   int sound = -1;          // the show's sound switch: 1 on, 0 off, -1 not said (so not part of the Show)
   Waves waves;             // the show's waves, nobody unless said (so not part of the Show either)
+  Found found;             // the show's found, none unless said (nor this)
   std::string why;
   bool hasOk = false;      // {t:'set', ok:false, why}: the relay refused a choice
   bool ok = true;
@@ -586,6 +595,22 @@ inline bool readFrame(const std::string& text, Frame& f) {
           bool whole = false;
           if (!r.integer(v, whole)) return r.skip();
           (w == "n" ? f.waves.n : f.waves.seq) = whole ? v : 0;
+          return true;
+        });
+      }
+      if (k == "found") {
+        if (!r.peek('{')) return r.skip();
+        return r.object([&](const std::string& w) {
+          if (w == "intent") {
+            if (!text_(f.found.intent, 16)) return false;
+            if (!hueFor(f.found.intent)) f.found.intent.clear();  // a card, or none: the flash is white
+            return true;
+          }
+          if (w != "n") return r.skip();
+          int64_t v = 0;
+          bool whole = false;
+          if (!r.integer(v, whole)) return r.skip();
+          f.found.n = whole ? v : 0;
           return true;
         });
       }
@@ -1368,6 +1393,14 @@ class Wrist {
         callAt_ = now;
       }
     }
+    // Found by both (found §2): a number not yet played for plays once, in the meeting's card. A show about the
+    // person that names none is past FOUND_SHOW_MS, and the same number may then play for another meeting.
+    if (f.found.n && f.found.n != foundPlayed_) {
+      foundPlayed_ = f.found.n;
+      react("found", "found", 1, f.found.intent);
+    } else if (!f.found.n && personal()) {
+      foundPlayed_ = 0;
+    }
     // After a meeting's jingle. A wave call already under way takes the new wave in; the open wave face counts it.
     if (newer && !waveCalling() && mode_ != WAVES) callWave();
   }
@@ -1507,7 +1540,7 @@ class Wrist {
     uint32_t at = 0, until = 0;
   };
 
-  /** A reaction of this moment. `card`: the colour a "set" flash takes. */
+  /** A reaction of this moment. `card`: the colour a "set" or "found" flash takes. */
   void react(const char* sound, const char* flash = nullptr, int cls = 0, const std::string& card = "") {
     Reaction r;
     r.sound = sound;
@@ -1829,6 +1862,8 @@ class Wrist {
   Waves waves_;
   int64_t waveSeq_ = 0;
   bool waveOwed_ = false;
+  // Found by both (found §2): the number last played for, until a show about the person names none.
+  int64_t foundPlayed_ = 0;
   // Rule 5: the letters and the waiting face sleep. Until when they are lit, which letters lit them, when
   // waiting began, and until when a press says where to go.
   uint32_t litUntil_ = 0;

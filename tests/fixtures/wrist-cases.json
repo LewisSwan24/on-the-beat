@@ -1319,6 +1319,62 @@
         { "at": "5100", "key2": "down" },
         { "at": "5100+HOLD_MS", "face": { "big": "NOT NOW", "small": "SIDE TO CHANGE" } }
       ]
+    },
+    {
+      "name": "found by both plays found and flashes the meeting's card three times, 200 on and 150 off; the same number again, after a reconnect too, plays nothing",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "sounds": ["jingle"] },
+        { "at": "2000", "press": 1 },
+        { "at": "3000", "show": "HI", "rev": 3, "with": { "found": { "n": 27, "intent": "song" } }, "sounds": ["found"], "face": { "big": "", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "3199", "face": { "big": "", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "3200", "face": { "big": "HI :)", "light": "LIGHT_OFF" } },
+        { "at": "3350", "face": { "big": "", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "3800", "face": { "big": "", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "3900", "face": { "big": "HI :)", "light": "LIGHT_OFF" } },
+        { "at": "4050", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "field": "hi", "light": "LIGHT_FULL" } },
+        { "at": "5000", "show": "HI", "rev": 4, "with": { "found": { "n": 27, "intent": "song" } } },
+        { "at": "6000", "link": "down" },
+        { "at": "7000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "7100", "show": "HI", "rev": 4, "with": { "found": { "n": 27, "intent": "song" } }, "face": { "big": "HI :)", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "a show about the person that names no found lets the same number play again; a new number plays at once; the test light and NOT NOW let nothing play twice",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "found": { "n": 27, "intent": "song" } }, "sounds": ["found"] },
+        { "at": "2000", "show": "HI", "rev": 3 },
+        { "at": "3000", "show": "HI", "rev": 3, "with": { "found": { "n": 27, "intent": "dance" } }, "sounds": ["found"], "face": { "big": "", "field": "dance" } },
+        { "at": "5000", "show": "HI", "rev": 3, "with": { "found": { "n": 41, "intent": "hi" } }, "sounds": ["found"], "face": { "big": "", "field": "hi" } },
+        { "at": "7000", "show": "TEST", "sounds": ["up"] },
+        { "at": "8000", "show": "HI", "rev": 3, "with": { "found": { "n": 41, "intent": "hi" } } },
+        { "at": "9000", "show": "QUIET", "rev": 4 },
+        { "at": "10000", "show": "HI", "rev": 5, "with": { "found": { "n": 41, "intent": "hi" } }, "face": { "big": "HI :)", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "in NOT NOW a found plays nothing; out of it, while the relay still names it, it plays",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "key1": "down", "sounds": ["tick"] },
+        { "at": "1000+HOLD_MS", "sounds": ["down"], "sent": [{ "t": "hold" }], "face": { "big": "", "light": "LIGHT_OFF" } },
+        { "at": "3000", "key1": "up" },
+        { "at": "3100", "show": "HI", "rev": 3, "with": { "found": { "n": 27, "intent": "song" } }, "face": { "big": "", "light": "LIGHT_OFF" } },
+        { "at": "3200", "show": "QUIET", "rev": 4 },
+        { "at": "5000", "show": "HI", "rev": 5, "with": { "found": { "n": 27, "intent": "song" } }, "sounds": ["found"], "face": { "big": "", "field": "song", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "a found without a whole number plays nothing, and one whose card is not a card flashes white",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "found": { "intent": "song" } } },
+        { "at": "1000", "show": "HI", "rev": 3, "with": { "found": { "n": "27", "intent": "song" } } },
+        { "at": "2000", "show": "HI", "rev": 3, "with": { "found": 27 } },
+        { "at": "3000", "show": "HI", "rev": 3, "with": { "found": { "n": 27, "intent": "red" } }, "sounds": ["found"], "face": { "big": "", "field": "white", "light": "LIGHT_FULL" } }
+      ]
     }
   ]
 }

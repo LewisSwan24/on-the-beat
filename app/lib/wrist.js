@@ -25,6 +25,8 @@
 // A SIDE hold on the meeting face says the two of you found each other
 // (docs/superpowers/specs/2026-09-26-wrist-found-design.md). The relay counts
 // it only once both have said it; until then the face says FOUND: WAITING.
+// Found by both, both bands play the found chirp and flash the meeting's card
+// three times, once for each number.
 
 import { bandIdOf } from './sha256.js';
 
@@ -72,9 +74,13 @@ export const SOUNDS = {
   jingle: [[1319, 80], [1568, 80], [2637, 80], [2093, 80], [2349, 80], [3136, 200]],
   warn: [[880, 150], [698, 150], [880, 150], [698, 150]],
   hello: [[1568, 60], [2093, 120]],
+  found: [[1568, 70], [2093, 70], [2637, 70], [0, 40], [2637, 70], [3136, 220]],
 };
 
-/** Every flash: its colour, then count × on / off ms. `card` is the card chosen, white for OFF. band_logic.h FLASHES. */
+/**
+ * Every flash: its colour, then count × on / off ms. `card` is the card chosen, or the meeting's for found; white
+ * for OFF or none. band_logic.h FLASHES.
+ */
 export const FLASHES = {
   set: { colour: 'card', count: 2, on: 150, off: 100 },
   changed: { colour: 'red', count: 3, on: 120, off: 90 },
@@ -82,6 +88,7 @@ export const FLASHES = {
   warn: { colour: 'orange', count: 2, on: 350, off: 250 },
   check: { colour: 'white', count: 2, on: 150, off: 100 },
   wave: { colour: 'hi', count: 3, on: 500, off: 500 },
+  found: { colour: 'card', count: 3, on: 200, off: 150 },
 };
 
 /**
@@ -111,6 +118,13 @@ function readWaves(s) {
   // A handle is ten lower-case hex: anything else is no one the band can answer.
   const ref = typeof w.ref === 'string' && /^[a-f0-9]{10}$/.test(w.ref) ? w.ref : '';
   return { ref, n: Number.isInteger(w.n) ? w.n : 0, seq: Number.isInteger(w.seq) ? w.seq : 0 };
+}
+
+/** A show's found, read apart from the show, as band_logic.h readFrame() reads it: a whole number, and a card or none. */
+function readFound(s) {
+  const f = s.found && typeof s.found === 'object' ? s.found : {};
+  const card = typeof f.intent === 'string' && Object.hasOwn(CARD_WORDS, f.intent) ? f.intent : '';
+  return { n: Number.isInteger(f.n) ? f.n : 0, intent: card };
 }
 
 const lit = (s) => LIT.includes(s.kind) && !!CARD_WORDS[s.intent];
@@ -151,6 +165,8 @@ export function createWrist({ key }) {
   let waves = readWaves({});
   let waveSeq = 0;
   let waveOwed = false;
+  // Found by both (found §2): the number last played for, until a show about the person names none.
+  let foundPlayed = 0;
   // Rule 5: the letters and the waiting face sleep. Until when they are lit, which letters lit them, when
   // waiting began, and until when a press says where to go.
   let litUntil = 0;
@@ -176,8 +192,8 @@ export function createWrist({ key }) {
   const pct = () => (battery >= 0 ? battery + '%' : '');
 
   /**
-   * A reaction of this moment. cls: 0 a key or a result, 1 a call, 2 a warning. `card`: the colour a `set` flash
-   * takes. A wave's flashes play whole: a key does not end them.
+   * A reaction of this moment. cls: 0 a key or a result, 1 a call, 2 a warning. `card`: the colour a `set` or
+   * `found` flash takes. A wave's flashes play whole: a key does not end them.
    */
   function react(sound, flash = null, cls = 0, card = '') {
     const f = flash ? FLASHES[flash] : null;
@@ -512,6 +528,7 @@ export function createWrist({ key }) {
     const wasSilent = silent;
     show = readShow(m.show);
     waves = readWaves(m.show);
+    const found = readFound(m.show);
     // Reactions come from changes; a show that differs only in `sound` is no change.
     const same = !!was && JSON.stringify(was) === JSON.stringify(show);
     // A show's own switch counts for what it causes. One that is not true or false is not said.
@@ -570,6 +587,12 @@ export function createWrist({ key }) {
         callAt = now;
       }
     }
+    // Found by both (found §2): a number not yet played for plays once, in the meeting's card. A show about the
+    // person that names none is past FOUND_SHOW_MS, and the same number may then play for another meeting.
+    if (found.n && found.n !== foundPlayed) {
+      foundPlayed = found.n;
+      react('found', 'found', 1, found.intent);
+    } else if (!found.n && personal()) foundPlayed = 0;
     // After a meeting's jingle. A wave call already under way takes the new wave in; the open wave face counts it.
     if (newer && !waveCalling() && mode !== 'waves') callWave();
   }
