@@ -74,6 +74,7 @@ std::string typed;      // the console line so far
 // one is written again only once the speaker has let it go.
 constexpr int SOUND_CHANNEL = 0;
 bool speaker = false;                   // the first M5StickC has none: it only lights up
+bool buzzer = false;                    // a buzzer, as the StickC Plus has: sounds go octaves up
 uint8_t soundBuf[2][SOUND_SAMPLES];
 std::atomic<bool> soundHeld[2];         // a sound on this buffer the speaker has not let go of yet
 int soundNext = 0;                      // the buffer the next sound goes in
@@ -511,7 +512,7 @@ void playSounds() {
     if (M5.Speaker.isPlaying(SOUND_CHANNEL)) return;
     soundHeld[i] = false;
   }
-  const size_t n = render(soundDue, soundBuf[i], SOUND_SAMPLES);
+  const size_t n = render(soundDue, soundBuf[i], SOUND_SAMPLES, buzzer);
   soundHeld[i] = true;
   if (n && M5.Speaker.playRaw(soundBuf[i], n, SOUND_RATE, false, 1, SOUND_CHANNEL, true)) {
     Serial.printf("sound: %s\n", soundDue.c_str());
@@ -548,7 +549,8 @@ void report() {
                                                               : "");
   // The Plus has no PSRAM: the sound buffers and the face leave this much for a TLS handshake.
   Serial.printf("memory  %u bytes free, %u at the least; sound %s\n", static_cast<unsigned>(ESP.getFreeHeap()),
-                static_cast<unsigned>(ESP.getMinFreeHeap()), speaker ? "on the speaker" : "none: light only");
+                static_cast<unsigned>(ESP.getMinFreeHeap()),
+                !speaker ? "none: light only" : buzzer ? "on the buzzer, octaves up" : "on the speaker");
 }
 
 void run(const Command& c) {
@@ -652,11 +654,12 @@ void setup() {
   face.createSprite(M5.Display.width(), M5.Display.height());
   // The speaker, as the sound test had it: the microphone off first (on some
   // bands the two share one I2S), then full volume. The StickC Plus plays the
-  // same samples through its buzzer, powered as above.
+  // same sounds through its buzzer, powered as above, whole octaves higher.
   M5.Mic.end();
   M5.Speaker.setBufferReleaseCallback(nullptr, soundReleased);
   speaker = M5.Speaker.begin();
   M5.Speaker.setVolume(255);
+  buzzer = speaker && M5.Speaker.config().buzzer;
 
   // The radio on before the key is made: with it on, esp_random() is true noise.
   WiFi.mode(WIFI_STA);

@@ -364,9 +364,14 @@ the relay reaches it.
   rhythm. There are two buffers of 9.6 KB, used in turn, and one is written
   again only once M5Unified says the speaker has let it go: its buffer
   release callback, which is why the firmware needs M5Unified 0.2.22 or
-  later. The StickC Plus plays the same samples through its buzzer, which
+  later. The StickC Plus plays the same sounds through its buzzer, which
   runs off the 5V output the StickS3 keeps off so as to charge, so `setup()`
-  switches that output back on for the Plus alone. The first
+  switches that output back on for the Plus alone. A buzzer is loud only
+  high up, from about 2.8 to 4.7 kHz on the Plus, so there each sound goes
+  up whole octaves, as far as its highest note stays under 4.7 kHz: the same
+  tune, every note as long, so the wrist's timings hold (`buzzerFactor()`).
+  `down`, `low` and `warn` go up two octaves; `jingle` and `found`, already
+  high, stay as they are. The first
   M5StickC has no speaker; it says so once on the console and only lights up.
   The Plus has no PSRAM, and the buffers take its static RAM from 51 KB to
   70 KB of 320 KB; `show` prints the free heap.
@@ -593,14 +598,19 @@ relay could drive what a wrist shows.
   `face` read it, until a press that only ticked. The Plus keeps 72,728 bytes
   free with both sound buffers, 63,880 at the least. The Plus's buzzer was
   silent at first: it runs off the 5V output the firmware had switched off
-  for the StickS3's sake. With that output back on for the Plus alone, a
-  laptop microphone beside it heard `found` and `jingle` played from its
-  console, three times each: at one fixed delay, every 2093 Hz note stood 15
-  to 22 dB over the room, and moved 0.7 s either way nothing did. The buzzer
-  is uneven — 2093 Hz loud, 2637 Hz and lower notes barely there — so how
-  each sound lands on a wrist, and each colour, and the words whole on a real
-  screen, still need someone there. Flashing on the music's beat is a later
-  spec.
+  for the StickS3's sake. With that output back on, a laptop microphone
+  beside it heard the band play every one of its eleven sounds from the
+  console, three times each, measured note by note at one fixed delay, with
+  the same measure 0.7 s either way as the control. Played at the S3's
+  pitches, `ask`, `down`, `low` and `warn` did not rise over the room at
+  all; a sweep a semitone at a time found the buzzer loud only from about
+  2.8 to 4.7 kHz. Raised by octaves (above), every one of them came through,
+  most notes 10 to 34 dB over the room, and the ticks as well; still faint
+  are `up`'s first two notes, at 2.1 and 2.6 kHz. With the 5V output on and
+  USB in, the Plus held 100% for 50 minutes, most of them on the Wi-Fi,
+  where the StickS3 in the same state ran down. How each sound lands on a
+  wrist, and each colour, and the words whole on a real screen, still need
+  someone there. Flashing on the music's beat is a later spec.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was

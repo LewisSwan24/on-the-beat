@@ -125,16 +125,39 @@ constexpr uint32_t longestSoundMs(size_t i = 0) {
 
 constexpr size_t SOUND_SAMPLES = longestSoundMs() * (SOUND_RATE / 1000);  // one buffer
 
+// A buzzer is not a speaker. The StickC Plus's, swept a semitone at a time
+// beside a microphone, is loud from about 2.8 kHz to 4.7 kHz, where the sweep
+// ended, and weak under 2.6 kHz: played through it, down, low and warn, every
+// note under 1.1 kHz, did not rise over the room at all. So on a buzzer a sound
+// goes up whole octaves, which keeps its tune and every note's length, as far
+// as its highest note stays within BUZZER_TOP_HZ.
+
+constexpr uint32_t BUZZER_TOP_HZ = 4700;
+
+/** The highest of `count` notes, in Hz. */
+constexpr uint32_t highestHz(const Note* notes, size_t count, uint32_t high = 0) {
+  return count ? highestHz(notes + 1, count - 1, notes->hz > high ? notes->hz : high) : high;
+}
+
+/** What notes that reach `top` Hz are multiplied by on a buzzer: 1, 2, 4... */
+constexpr uint32_t buzzerFactor(uint32_t top, uint32_t factor = 1) {
+  return top && top * factor * 2 <= BUZZER_TOP_HZ ? buzzerFactor(top, factor * 2) : factor;
+}
+
+inline uint32_t buzzerFactor(const Sound& s) { return buzzerFactor(highestHz(s.notes, s.count)); }
+
 /**
  * A sound's notes as one triangle wave, 8 bits unsigned at SOUND_RATE, as
  * M5.Speaker.playRaw() takes it: 128 is silence, and a rest is silence. Each
- * note starts at the middle of its wave, so it does not click in. Writes at
- * most `cap` samples; returns how many.
+ * note starts at the middle of its wave, so it does not click in. On a
+ * `buzzer`, the notes go up by buzzerFactor(). Writes at most `cap` samples;
+ * returns how many.
  */
-inline size_t render(const std::string& name, uint8_t* out, size_t cap) {
+inline size_t render(const std::string& name, uint8_t* out, size_t cap, bool buzzer = false) {
   const Sound* s = soundFor(name);
   size_t n = 0;
   if (!s) return 0;
+  const uint64_t factor = buzzer ? buzzerFactor(*s) : 1;
   for (size_t k = 0; k < s->count; ++k) {
     const Note& note = s->notes[k];
     const size_t samples = size_t(note.ms) * (SOUND_RATE / 1000);
@@ -144,7 +167,7 @@ inline size_t render(const std::string& name, uint8_t* out, size_t cap) {
         continue;
       }
       // Where in its wave this sample is, from 0 to SOUND_RATE; a quarter in, the wave crosses the middle going up.
-      const int64_t phase = static_cast<int64_t>((uint64_t(i) * note.hz + SOUND_RATE / 4) % SOUND_RATE);
+      const int64_t phase = static_cast<int64_t>((uint64_t(i) * note.hz * factor + SOUND_RATE / 4) % SOUND_RATE);
       const int64_t v = phase < SOUND_RATE / 2 ? 4 * phase - SOUND_RATE : 3 * int64_t(SOUND_RATE) - 4 * phase;
       out[n++] = static_cast<uint8_t>(128 + v * 127 / int64_t(SOUND_RATE));
     }

@@ -15,6 +15,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <utility>
 
 // On the wristband, Arduino.h comes first and defines these as macros, so a
 // name in band_logic.h that matches one breaks the device build (HEX did).
@@ -395,6 +396,29 @@ void sound() {
   // No more than the room it is given, and nothing for a name it does not know.
   CHECK(render("jingle", buf, 100) == 100);
   CHECK(render("hum", buf, sizeof buf) == 0);
+  // On a buzzer a sound goes up whole octaves, as far as its highest note stays within BUZZER_TOP_HZ.
+  const std::pair<const char*, uint32_t> octaves[] = {{"tick", 2}, {"double", 2}, {"down", 4}, {"up", 2},
+                                                      {"fall", 2}, {"low", 4},    {"ask", 2},  {"jingle", 1},
+                                                      {"warn", 4}, {"hello", 2},  {"found", 1}};
+  CHECK(sizeof octaves / sizeof octaves[0] == sizeof SOUNDS / sizeof SOUNDS[0]);
+  for (const auto& o : octaves) CHECK(soundFor(o.first) && buzzerFactor(*soundFor(o.first)) == o.second);
+  for (const Sound& s : SOUNDS) {
+    const uint32_t top = highestHz(s.notes, s.count) * buzzerFactor(s);
+    CHECK(top <= BUZZER_TOP_HZ && top * 2 > BUZZER_TOP_HZ);
+  }
+  // Its length stays, so the wrist's timings hold; only the pitch moves: 3600 Hz for 25 ms is 90 waves.
+  static uint8_t plain[SOUND_SAMPLES];
+  CHECK(render("tick", buf, sizeof buf, true) == 25 * ms);
+  CHECK(render("double", buf, sizeof buf, true) == 110 * ms);
+  CHECK(render("warn", buf, sizeof buf, true) == render("warn", plain, sizeof plain));
+  render("tick", buf, sizeof buf, true);
+  ups = 0;
+  for (size_t i = 1; i < 25 * ms; ++i)
+    if (buf[i - 1] < 128 && buf[i] >= 128) ++ups;
+  CHECK(buf[0] == 128 && ups >= 89 && ups <= 90);
+  // A sound already high enough is left as it is, sample for sample.
+  const size_t n = render("found", buf, sizeof buf, true);
+  CHECK(n == render("found", plain, sizeof plain) && std::equal(buf, buf + n, plain));
   // The flash colours: plain fills. Black, white and the cards are drawn another way.
   CHECK(plainField("red") && *plainField("red") == (Rgb{0xFF, 0x6B, 0x6B}));
   CHECK(plainField("orange") && *plainField("orange") == (Rgb{0xFF, 0x8A, 0x00}));
