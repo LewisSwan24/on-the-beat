@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createRelay, bandIdOf, BAND_ALONE_MS, PAIR_CHECK_MS } from '../relay/server.js';
+import { createRelay, bandIdOf, BAND_ALONE_MS, PAIR_CHECK_MS, HEARD_GAP_MS } from '../relay/server.js';
 import { MEET_MS } from '../relay/band.js';
 import { helpers, newKey, pause } from './relay-harness.js';
 
@@ -894,4 +894,119 @@ test('a block reads exactly as a meeting that is over, and tells the one blocked
   ben.ws.off('message', count);
   assert.equal(heard, 0, "nothing reached ben's phone");
   close(ana, ben, aBand, bBand);
+});
+
+// ---------- near: what the bands heard (docs/superpowers/specs/2026-09-26-wrist-near-design.md §2) ----------
+
+const airOf = (i) => '02abcdef' + String(i).padStart(4, '0');
+
+/** People on SAY HI, each with a band that says its air and each picking their own name; and `nb`, a phone with no band. */
+async function nearFloor(on, venue, names) {
+  const people = {};
+  for (const [i, name] of names.entries()) {
+    const band = await on.wristband(62, { air: airOf(i) });
+    const p = await on.phone(venue);
+    await on.pairBand(p, band);
+    p.send({ t: 'pick', track: name });
+    p.send({ t: 'arm', intent: 'hi' });
+    people[name] = { band, p, air: airOf(i) };
+  }
+  const nb = await on.phone(venue);
+  nb.send({ t: 'pick', track: 'nb' });
+  nb.send({ t: 'arm', intent: 'hi' });
+  for (const x of [...Object.values(people).map((q) => q.p), nb]) {
+    await x.until((v) => v.near.length === names.length && v.me.armed === 'hi' && v.me.pick);
+  }
+  await pause(100);
+  return { people, nb };
+}
+const listed = (p) => p.view.near.map((r) => r.pick).sort();
+const heardOf = (band, ch, near) => band.send({ t: 'heard', ch, near });
+
+test("a band's hello may say its radio's air, twelve lower-case hex digits; any other is refused", async () => {
+  for (const air of ['02ABCDEF0123', '02abcdef012', '02abcdef01234', 'zzzzzzzzzzzz', 12, '']) {
+    const key = newKey();
+    const r = await hello({ t: 'wristband', id: bandIdOf(key), key, v: 2, air });
+    assert.deepEqual([r.reply, r.closed], [{ t: 'error', why: 'bad band' }, 4001], JSON.stringify(air));
+  }
+  const key = newKey();
+  const ok = await hello({ t: 'wristband', id: bandIdOf(key), key, v: 2, air: '02abcdef0123' });
+  assert.equal(ok.reply.t, 'show');
+  ok.ws.close();
+});
+
+test('what the bands heard narrows SAY HI to the five heard most strongly, at the tick, pushed only where a list changed', async () => {
+  await heldRelay(async (on, clock, own) => {
+    const names = ['vi', 'p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
+    const { people, nb } = await nearFloor(on, 'near-five', names);
+    const views = new Map([[people.vi.p, 0], [nb, 0]]);
+    for (const x of views.keys()) x.ws.on('message', (d) => { if (JSON.parse(String(d)).t === 'view') views.set(x, views.get(x) + 1); });
+    heardOf(people.vi.band, 6, names.slice(1).map((n, i) => [people[n].air, -40 - i * 5]));
+    for (const n of names.slice(1)) heardOf(people[n].band, 6, []);
+    await pause(150);
+    assert.deepEqual([views.get(people.vi.p), views.get(nb)], [0, 0], 'a report alone pushes nothing');
+    own.tickNear();
+    await people.vi.p.until((v) => v.near.length === 6);
+    assert.deepEqual(listed(people.vi.p), ['nb', 'p0', 'p1', 'p2', 'p3', 'p4']);
+    assert.equal(/rssi|score|rank|-4\d|-5\d|-6\d|-70/.test(JSON.stringify(people.vi.p.view)), false, 'never a number');
+    await pause(100);
+    assert.equal(views.get(nb), 0, "nb has no band and nb's list did not change: nothing pushed");
+    const before = views.get(people.vi.p);
+    own.tickNear();
+    await pause(150);
+    assert.equal(views.get(people.vi.p), before, 'nothing changed, nothing pushed');
+  });
+});
+
+test('a heard frame is dropped whole: from a band paired to nobody, malformed, too long, or sooner than HEARD_GAP_MS after the last', async () => {
+  await heldRelay(async (on, clock, own) => {
+    const names = ['vi', 'p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
+    const { people } = await nearFloor(on, 'near-drop', names);
+    for (const n of names.slice(1)) heardOf(people[n].band, 6, []);
+    const vi = people.vi;
+    const a = (n) => people[n].air;
+    const whole = ['nb', ...names.slice(1)];
+    const after = async () => { await pause(40); own.tickNear(); await pause(60); return listed(vi.p); };
+    const loose = await on.wristband(62, { air: '02ffffffffff' });
+    heardOf(loose, 6, [[a('p0'), -30]]);
+    assert.deepEqual(await after(), whole, 'a band paired to nobody');
+    for (const bad of [
+      { ch: 0, near: [[a('p0'), -40]] }, { ch: 15, near: [[a('p0'), -40]] }, { ch: '6', near: [[a('p0'), -40]] },
+      { ch: 6, near: 'p0' }, { ch: 6, near: [[a('p0')]] }, { ch: 6, near: [[a('p0'), -40, 1]] },
+      { ch: 6, near: [[a('p0').toUpperCase(), -40]] }, { ch: 6, near: [[a('p0').slice(1), -40]] },
+      { ch: 6, near: [[a('p0'), 1]] }, { ch: 6, near: [[a('p0'), -101]] }, { ch: 6, near: [[a('p0'), -40.5]] },
+      { ch: 6, near: [[a('p0'), '-40']] }, { ch: 6, near: [[123456789012, -40]] },
+      { ch: 6, near: [...Array(17)].map(() => [a('p0'), -40]) },
+    ]) {
+      vi.band.send({ t: 'heard', ...bad });
+      assert.deepEqual(await after(), whole, JSON.stringify(bad).slice(0, 80));
+    }
+    heardOf(vi.band, 6, [[a('p0'), -40]]);
+    assert.deepEqual(await after(), ['nb', 'p0'], 'a good one, after all those, is taken');
+    clock.t += HEARD_GAP_MS - 1;
+    heardOf(vi.band, 6, [[a('p1'), -40]]);
+    assert.deepEqual(await after(), ['nb', 'p0'], 'too soon');
+    clock.t += 1;
+    heardOf(vi.band, 6, [...Array(16)].map(() => [a('p1'), -45]));
+    assert.deepEqual(await after(), ['nb', 'p0', 'p1'], 'sixteen, HEARD_GAP_MS after the last');
+  });
+});
+
+test('an air counts only as the air of exactly one band paired in the same room', async () => {
+  await heldRelay(async (on, clock, own) => {
+    const names = ['vi', 'p0', 'p1', 'p2'];
+    const { people } = await nearFloor(on, 'near-air', names);
+    // p2's air on a band in another room; p0's on a band paired to nobody; p1's on a second band in this room.
+    const elsewhere = await on.wristband(62, { air: people.p2.air });
+    await on.pairBand(await on.phone('near-air-elsewhere'), elsewhere);
+    await on.wristband(62, { air: people.p0.air });
+    const twin = await on.wristband(62, { air: people.p1.air });
+    await on.pairBand(await on.phone('near-air'), twin);
+    for (const n of ['p0', 'p1', 'p2']) heardOf(people[n].band, 6, []);
+    heardOf(people.vi.band, 6, [[people.p0.air, -50], [people.p1.air, -30], [people.p2.air, -80]]);
+    await pause(60);
+    own.tickNear();
+    await people.vi.p.until((v) => v.near.length === 3);
+    assert.deepEqual(listed(people.vi.p), ['nb', 'p0', 'p2']);
+  });
 });

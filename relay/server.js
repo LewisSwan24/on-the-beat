@@ -22,6 +22,7 @@ export const WS_PATH = '/api/ws';
 export const PAIR_CHECK_MS = 60_000;          // a pending pairing waits this long for YES
 export const BAND_ALONE_MS = 60 * 60_000;     // a wristband alone holds its person, or waits for its owner, this long
 export const GRACE_MS = 120_000;              // a locked screen is not leaving
+export const HEARD_GAP_MS = 5000;             // a wristband may say what it heard at most this often (near spec §2)
 const MAX_FRAME = 1_600_000;          // a five-second clip, base64, with room to spare
 const CLIP_MAX = 1_200_000;           // bytes of video per clip
 const ROOM_CLIPS_MAX = 60_000_000;    // all clips in one room; the oldest go first
@@ -36,6 +37,9 @@ const TRIES_MS = 60_000;              // the window pairing attempts are counted
 const SOCKET_TRIES = 5;               // pairing attempts one socket may make in it
 const ADDRESS_TRIES = 20;             // pairing attempts one address may make in it, over every socket
 const HEX32 = /^[a-f0-9]{32}$/;
+const AIR = /^[a-f0-9]{12}$/;         // a wristband's radio: its Wi-Fi MAC, new every boot
+const HEARD_MAX = 16;                 // the most bands one report may name
+const NEAR_TICK_MS = 5000;            // how often each room works out who is near whom
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
@@ -313,6 +317,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const b = bands.get(ws.band);
     // Only from the wristband's current socket: a set stuck in a replaced one must not land.
     if (!b || b.ws !== ws) return;
+    // What it heard is for the room's next tick, which pushes what changed: nothing to push now.
+    if (m.t === 'heard') { heardFromBand(b, m); return; }
     if (m.t === 'battery') b.battery = clampBattery(m.level);
     // Held: NOT NOW, from the wrist. The phone follows.
     if (m.t === 'hold') holdOn(b);
@@ -321,6 +327,31 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (m.t === 'found' && !foundFromBand(ws, b, m)) return;
     const r = b.key ? rooms.get(b.key) : null;
     if (r) push(r); else showBand(b);
+  }
+
+  /**
+   * What a wristband heard of the others by radio (near spec §2): `ch`, its
+   * Wi-Fi channel, and `near`, [air, rssi] pairs. From a band paired in a room,
+   * at most every HEARD_GAP_MS, whole or not at all. An air counts only as the
+   * air of exactly one band paired in the same room; the room itself ignores the
+   * band's own person and anyone no longer in it.
+   */
+  function heardFromBand(b, m) {
+    const r = b.person && b.key ? rooms.get(b.key) : null;
+    if (!r?.room.has(b.person) || (b.heardAt !== undefined && now() - b.heardAt < HEARD_GAP_MS)) return;
+    if (!Number.isInteger(m.ch) || m.ch < 1 || m.ch > 14 || !Array.isArray(m.near) || m.near.length > HEARD_MAX) return;
+    const fits = (e) => Array.isArray(e) && e.length === 2 && typeof e[0] === 'string' && AIR.test(e[0])
+      && Number.isInteger(e[1]) && e[1] >= -100 && e[1] <= 0;
+    if (!m.near.every(fits)) return;
+    b.heardAt = now();
+    // A band has its room's key only while it is paired there.
+    const here = [...bands.values()].filter((o) => o.key === b.key);
+    const near = [];
+    for (const [air, rssi] of m.near) {
+      const who = here.filter((o) => o.air === air);
+      if (who.length === 1) near.push({ id: who[0].person, rssi });
+    }
+    r.room.heard(b.person, { ch: m.ch, near });
   }
 
   function refuseBand(ws) {
@@ -336,6 +367,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // The key proves the id; a socket says hello once.
     const proven = v2 ? HEX32.test(id) && HEX32.test(key) && bandIdOf(key) === id : /^[a-f0-9]{16,64}$/.test(id);
     if (ws.band || !proven) { refuseBand(ws); return; }
+    // Its radio, if it has one: twelve hex digits, or no hello at all.
+    if (m.air !== undefined && !AIR.test(String(m.air))) { refuseBand(ws); return; }
     const secret = HEX32.test(String(m.secret || '')) ? String(m.secret) : null;
     let b = bands.get(id);
     // A hello with no version never reaches a record made by one with, nor the other way round.
@@ -363,6 +396,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     b.ws = ws;
     b.everWs = true;
     b.lastShow = null;
+    b.air = m.air === undefined ? null : String(m.air);
     ws.band = id;
     if (m.battery !== undefined) b.battery = clampBattery(m.battery);
     if (!b.person && !b.code && !b.pending && !b.waiting) freshLetters(b);
@@ -683,6 +717,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     for (const b of bands.values()) showBand(b, at);
   }
   const lights = setInterval(() => tickBands(), 1000);
+  // Who is near whom, worked out in each room; only the views that changed are sent (push).
+  function tickNear() {
+    for (const r of rooms.values()) if (r.room.nearTick()) push(r);
+  }
+  const nearly = setInterval(() => tickNear(), NEAR_TICK_MS);
   // A venue with nobody in it, nobody in its grace window, no clip still loading
   // and no wristband still worn holds nothing — so it is let go, or a long-lived
   // relay would keep a room object for every venue anyone ever typed.
@@ -739,6 +778,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       expire,
       /** For tests: time out pairing checks and redraw every wristband as if the clock read `at`. */
       tickBands,
+      /** For tests: work out who is near whom now, as the relay does every NEAR_TICK_MS. */
+      tickNear,
       /** For tests: how many wristband records the relay is holding. */
       bandCount: () => bands.size,
       /** For tests: how many venue rooms the relay is holding. */
@@ -748,6 +789,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         clearInterval(beat);
         clearInterval(sweep);
         clearInterval(lights);
+        clearInterval(nearly);
         for (const r of rooms.values()) for (const t of r.left.values()) clearTimeout(t);
         for (const ws of wss.clients) ws.terminate();
         wss.close(() => server.close(() => done()));
