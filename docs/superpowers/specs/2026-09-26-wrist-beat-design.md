@@ -30,7 +30,7 @@ about anyone, and gives way to every reaction.
   background may not have its microphone at all.
 - **Pulsing to the loudness instead of the beat.** It is the fallback if the
   gate in §4 fails, and would then be its own change.
-- **Recording, storing or sending sound.** The band keeps three numbers per
+- **Recording, storing or sending sound.** The band keeps five numbers per
   8 ms and forgets them; nothing about sound leaves it but its own light.
 - **The meeting number, the letters, the check, the test light, NOT NOW and
   every black face.** None of them pulses.
@@ -44,8 +44,10 @@ README's "Where this differs from the canvas, on purpose" gains this.
 
 ## What the spike found (26 Sep 2026)
 
-A throwaway firmware on both bands streamed the microphone's energy in three
-bands every 8 ms while the laptop played a click track and a drum track:
+A throwaway firmware on both bands streamed the microphone's energy every
+8 ms while the laptop played test tracks; the tracker ran on the laptop over
+what the bands streamed. Round 1 had the laptop at 30%, round 2 at 60%, with
+the bands beside its speaker.
 
 - **Both microphones work** through M5Unified: the StickS3's through its
   codec on I2S1, the StickC Plus's PDM microphone on I2S0. No block was lost.
@@ -54,16 +56,36 @@ bands every 8 ms while the laptop played a click track and a drum track:
   interrupts listening for its own length plus about 25 ms.
 - **Listening costs about 6 KB of heap.** The Plus keeps about 72 KB free with
   Wi-Fi and both sound buffers, so it has room.
-- **The bands heard the clicks** — the high band averaged over the beats stood
-  2.6× (StickS3) and 1.7× (Plus) above its median at a fixed delay — **but not
-  the kick**: laptop speakers at 30% make no bass. How well the low band finds
-  a beat in music with real bass is still open, and is the gate in §4.
-- **The tracker of §2, run on the laptop** over energies computed from the
-  test tracks through the band's own filters, with white noise added: a
-  click track and a drum track with a bass line and a pad locked in 1.5 s and
-  1.9 s, and pulsed 97–100% of their beats within 40 ms (mean error about
-  5 ms) up to moderate noise. At a signal-to-noise ratio near 0 dB, and on
-  synthesised speech, it locked nothing and pulsed nothing.
+- **The bands hear any drum a speaker can play** — folded over the beats, a
+  click or a kick with harmonics stood 6–24× above the rest — **but not a
+  kick at 70 Hz alone**: laptop speakers make no bass. A tracker has to find
+  the beat in whatever part of the spectrum carries it.
+- **Round 2, two bands (below 150 Hz and above 2 kHz):** a click track and a
+  rich kick were locked in 2–2.5 s and 91–100% of their beats pulsed within
+  40 ms, spread about ±12 ms. But a grid kept from one track pulsed off the
+  beat into the next, and on the track whose kick it could not hear it held
+  a tempo of 3:2. Timing blocks by `millis()` alone drifted: the microphone
+  hands blocks over in pairs that share one, so blocks are timed by samples
+  counted.
+- **Offline, on harder audio:** a pop mix with bass line, chords and a voice;
+  a medley going from 118 to 128 to a half-time 92 BPM with no gap; a
+  breakdown with the drums out for 8 s; the pop mix under crowd babble and
+  cheers; a band drifting from 116 to 124 BPM — each through three rooms
+  (full range, laptop speakers, a hall with 1.5 s of reverb) with noise.
+  Two bands are not enough for a mix: laptop speakers take the kick away and
+  chords fill the high band, and the round-2 tracker locked almost none of
+  it. The tracker of §2, with five bands, in the full-range and laptop
+  rooms: locks the pop mix in 2 s and pulses all of its beats; relocks the
+  medley's change to 128 BPM in about 2 s with one or two pulses off the
+  beat at the change; pulses 96–100% under the crowd (locked in 2–6 s) and
+  through the drift (about 18 ms late while the tempo climbs); and in the
+  breakdown pulses a few times on the chords' changes, on the grid, before
+  going quiet. In the hall it pulses only 59–84% of beats. The half-time
+  groove it never locks: two to four pulses of the old grid slip into it,
+  then nothing. Over round 2's real recordings it pulses 84–100% of the
+  click and kick beats and nothing in 30 s of speech or in silence.
+- **Round 3 is the gate (§4.1):** the five bands from the real microphones,
+  the microphone's own delay, and a song of the owner's choice.
 
 ## §1. What the wearer sees
 
@@ -78,8 +100,8 @@ bands every 8 ms while the laptop played a click track and a drum track:
   lower. The colour and the words stay as they are; only the
   backlight moves.
 - **When:** only once the band has locked onto a steady beat. Speech, a quiet
-  song or silence leave the card steady. A lost beat returns the card to
-  steady within `BEAT_LOSE_MS`.
+  song or silence leave the card steady. When the beat stops, or the song
+  changes, the card is steady again within two beats.
 - **The switch:** the phone's wristband sheet gains `BEAT: ON` under `SOUND`.
   Off, the band does not open its microphone and the card only stays lit.
   It is the person's own, kept across nights, on by default, and carried by
@@ -94,43 +116,81 @@ table.
 - **Listening:** the band listens only while a card face could pulse (§1),
   its beat switch is on, and it is not in NOT NOW. The wrist says so
   (`listening()`); the firmware opens and closes the microphone to match.
-- **What it hears:** 16 kHz samples in blocks of 128 (8 ms). For each block,
-  the energy below 150 Hz (the kick) and above 2 kHz (hi-hats, clicks, the
-  attack of a snare), from two second-order filters. A pure function in both
-  twins turns samples into these two numbers, and a test holds the twins
-  equal on the same samples.
-- **Onsets:** a rise in log energy above what the last second held, in
-  either band, at least 200 ms after the last one.
-- **Tempo:** once at least five onsets span two seconds, the period between
-  333 and 750 ms (180 and 80 BPM) that the most pairs of onsets in the last
-  `BEAT_WINDOW_MS` sit a whole number of beats apart on, each pair weighted
-  by the weaker of its two.
-- **The grid:** beat *k* is at *t₀ + k·period*. Starting, the grid is laid
-  through the onset most of the others line up with, and every onset already
-  on it counts as a confirmed beat. After that, an onset within
-  `BEAT_TOLERANCE_MS` of a beat confirms it, and *t₀* and the period are the
-  least-squares line through the last eight confirmed beats. An onset off the
-  grid changes nothing, and a beat with no onset is simply skipped: the grid
-  carries on through a missed kick or a reaction's gap. The pulse is drawn at
-  each beat minus `MIC_LATENCY_MS`, the model's measured delay from sound to
-  block, so the light and the sound arrive together.
-- **Locking and letting go:** locked only on a tight grid that most of what
-  was heard lies on: `BEAT_LOCK` confirmed beats in a row, the line's
-  residual within `BEAT_FIT_MS`, and at least `BEAT_SHARE` of the window's
-  onsets on the grid. Let go, and the grid dropped, once no beat was
-  confirmed for `BEAT_LOSE_MS`. **Not pulsing is always better than pulsing
-  off the beat**: in doubt, the card stays steady. Every one is a named
-  constant and a guess until worn. They start at:
+- **What it hears:** 16 kHz samples in blocks of 128 (8 ms), timed by the
+  samples counted rather than by when a block arrives. For each block, the
+  energy in five bands — below 150 Hz, 150–400, 400–1200, 1200–3500 and
+  above 3500 Hz — from second-order filters (a middle band is a high-pass
+  into a low-pass). A pure function in both twins turns samples into these
+  five numbers, and a test holds the twins equal on the same samples.
+- **How strongly each block starts something:** each band's level in dB,
+  and how far it rose above the higher of its two blocks before; the sum over
+  the five bands is the block's onset strength (spectral flux, in dB).
+  Summing bands lets a kick count that is heard only through its harmonics
+  (laptop speakers, a small PA), and a held chord cannot hide a drum.
+- **Tempo:** every `BEAT_LOOK_MS`, the autocorrelation of the last
+  `BEAT_WINDOW_MS` of onset strength over periods from 336 to 752 ms (178 to
+  80 BPM), each helped by its double, and weighted towards `BEAT_PRIOR_MS`
+  with a spread of `BEAT_PRIOR_OCT` octaves: of two readings of the same
+  music, a listener tapping along takes 120 BPM before 80, and the
+  weighting settles the 3:2 of round 2. How far the best period stands out
+  of the rest, in standard deviations, is the confidence; a parabola through
+  the peak gives the period between blocks.
+- **Laying the grid:** once the confidence is at least `BEAT_LOCK_CONF`,
+  the same period has come out `BEAT_LOCK_LOOKS` looks in a row (within 2%),
+  and the last `BEAT_PHASE_MS` folded at that period has one place standing
+  out of the rest by `BEAT_LOCK_CONTRAST`: the grid goes through it. Speech
+  has a rhythm, but not one that keeps a period for a second and stands out
+  of it.
+- **Keeping it:** a beat's window is `BEAT_NEAR` of a period either side of
+  it. Once it has closed, its strongest rise is traced back to where that
+  rise began — where the drum started — and the beat was **heard** if that
+  rise is at least as strong as any in the half beats either side, and at
+  least `BEAT_ONSET` times the window's mean onset strength (never under
+  `BEAT_ONSET_MIN`). A heard
+  beat pulls the grid a part of the way to it: `BEAT_PULL_PHASE` of the
+  error on the next beat, `BEAT_PULL_PERIOD` of it on the period, which
+  stays within `BEAT_CHANGE` of the tempo locked (a phase-locked loop). A
+  noise just before a beat cannot take its place, and an off-beat hi-hat
+  never moves the grid.
+- **Pulsing:** a new grid pulses once its last three beats were all heard,
+  and keeps pulsing while at least `BEAT_CONFIRM` of the last three were. So
+  a song that stops, or a grid left over from the last song, goes quiet
+  within two beats, and a missed kick or a reaction's gap does not stop it.
+  The pulse is drawn at each beat minus `MIC_LATENCY_MS`, the model's
+  measured delay from sound to block, so the light and the sound arrive
+  together.
+- **Another song:** a confident, steady reading at another tempo (off by
+  more than `BEAT_CHANGE`) or on another phase replaces a grid that is not
+  being heard at once, and one that is after `BEAT_OTHER_LOOKS` looks in a
+  row. A grid with no beat heard for `BEAT_LOSE_MS` is dropped.
+- **Not pulsing is always better than pulsing off the beat**: in doubt, the
+  card stays steady. Every value is a named constant and a guess until worn.
+  They start at what the spike settled on:
 
   | Constant | Start | |
   |---|---|---|
-  | `BEAT_WINDOW_MS` | 6000 | the onsets the tempo is taken from |
-  | `BEAT_LOCK` | 4 | confirmed beats in a row before the first pulse |
-  | `BEAT_TOLERANCE_MS` | 60 | how near an onset must land to confirm a beat |
-  | `BEAT_FIT_MS` | 25 | the most the confirmed beats may stray from the line |
-  | `BEAT_SHARE` | 60% | of the window's onsets that must be on the grid |
-  | `BEAT_LOSE_MS` | 4000 | unconfirmed this long, and the card is steady again |
+  | `BEAT_BANDS_HZ` | 150, 400, 1200, 3500 | the edges of the five bands |
+  | `BEAT_ONSET` | 2.5 | a heard beat's rise, against the window's mean onset strength… |
+  | `BEAT_ONSET_MIN` | 6 dB | …and never below this (a quiet room's own rises stay under it) |
+  | `BEAT_WINDOW_MS` | 6000 | the onset strength the tempo is read from |
+  | `BEAT_LOOK_MS` | 128 | how often the tempo is read |
+  | `BEAT_PRIOR_MS`, `BEAT_PRIOR_OCT` | 500, 0.7 | the tempo a listener would tap, and how firmly |
+  | `BEAT_LOCK_CONF` | 4.0 | how far the best period must stand out |
+  | `BEAT_LOCK_CONTRAST` | 4.5 | how far the beat must stand out of its own period |
+  | `BEAT_LOCK_LOOKS` | 6 | looks in a row with the same period |
+  | `BEAT_PHASE_MS` | 2000 | the stretch folded to place the grid |
+  | `BEAT_NEAR` | 12% | of a period, either side of a beat |
+  | `BEAT_PULL_PHASE`, `BEAT_PULL_PERIOD` | 0.3, 0.05 | how far a heard beat pulls the grid |
+  | `BEAT_CHANGE` | 5% | the most the period moves from its lock; more is another song |
+  | `BEAT_CONFIRM` | 2 of 3 | heard beats that keep a grid pulsing |
+  | `BEAT_OTHER_LOOKS` | 8 | looks before a heard grid gives way |
+  | `BEAT_LOSE_MS` | 4000 | nothing heard this long, and the grid is dropped |
   | `MIC_LATENCY_MS` | measured | per model, at the gate (§4.1) |
+- **What it costs:** eight biquads per sample at 16 kHz, and every 128 ms
+  an autocorrelation of 750 values over 53 periods and their doubles —
+  about 0.6 million multiply-adds a second — and 6 KB for the onset
+  strength and its times.
+  Measured on the Plus with Wi-Fi and TLS on in §4.6.
 - **Reactions come first.** A reaction's sound takes the audio channel: the
   firmware closes the microphone, plays, and opens it again, and the clock
   keeps running through the gap. A reaction's flash replaces the pulse while
@@ -138,7 +198,8 @@ table.
 
 ## §3. Who does what
 
-- **The wrist (both twins):** `hear(low, high, now)` per block; the tracker;
+- **The wrist (both twins):** `hear(levels, now)` per block, with the five
+  band energies; the tracker;
   `listening()`; the pulse applied to the light of a pulsing face in
   `face(now)`. The table gains a step that feeds a generated block sequence —
   a tempo, a level, noise, a gap — expanded identically for both twins, so the
@@ -152,7 +213,7 @@ table.
   its colour on the beat; it hears loudness only, and records and sends
   nothing.
 - **The firmware (`main.cpp`):** opens the microphone while `listening()`,
-  turns each block into the two energies and hands them to the wrist, hands
+  turns each block into the five energies and hands them to the wrist, hands
   the channel to the speaker for each sound and takes it back, and draws the
   light `face(now)` gives on every loop. The console's `face` shows the light
   moving, so a real band can be checked without eyes on it.
@@ -162,20 +223,32 @@ table.
 
 ## §4. Tests and proof
 
-1. **The gate, before anything is built.** A second round of the spike on
-   both real bands, with music that has a real kick, loud and close (the
-   owner turns the volume up, or a speaker with bass), the tracker run on
-   the laptop over what the bands streamed. It passes if, on both bands:
-   - a steady beat is locked within 4 s of the drums starting;
-   - once locked, at least 90% of beats are pulsed within 40 ms of the kick
-     reaching the band (people notice sound and light apart from about 45 ms);
-   - speech and silence lock nothing.
-   If it fails, the owner decides between the loudness fallback and stopping.
-   `MIC_LATENCY_MS` for each model is measured here.
-2. **The table**, on both twins: lock at 80, 120 and 180 BPM; noise between
-   the beats; a missed beat carried by the clock; a tempo change; a gap for a
-   reaction's sound; silence and irregular onsets locking nothing; the pulse's
-   shape; every face that must not pulse; the switch off; NOT NOW.
+1. **The gate, before anything is built.** Round 3 of the spike on both real
+   bands, streaming the five bands, with the laptop at round 2's volume and
+   the bands beside it: the pop mix, the medley, the breakdown, the crowd and
+   the drift of the offline tests, then a song of the owner's choosing played
+   from a phone. The tracker runs on the laptop over what the bands
+   streamed. It passes if, on both bands:
+   - the pop mix, the crowd and the drift are locked within 4 s of the drums
+     starting, and once locked at least 90% of beats are pulsed within 40 ms
+     of the drum reaching the band (people notice sound and light apart from
+     about 45 ms);
+   - the medley's change to 128 BPM is relocked within 4 s, with no more
+     than two pulses off the beat at the change;
+   - speech and silence pulse nothing;
+   - in the owner's song, once both are locked, at least 90% of one band's
+     pulses fall within 40 ms of the other's.
+   The half-time section and the breakdown are recorded, not judged. If it
+   fails, the owner decides between the loudness fallback and stopping.
+   `MIC_LATENCY_MS` for each model is measured here: the owner presses each
+   band's face button a few times, and the delay is from the press to the
+   block that hears its click.
+2. **The table**, on both twins: lock at 90, 120 and 160 BPM; noise between
+   the beats; an off-beat hi-hat that does not move the grid; a missed beat
+   carried by the clock; a song that stops (quiet within two beats); a tempo
+   change; a gap for a reaction's sound; silence and irregular onsets
+   locking nothing; the pulse's shape; every face that must not pulse; the
+   switch off; NOT NOW.
 3. **The energy function** in both twins, equal on the same samples.
 4. **The relay and the phone,** as the sound switch's tests are: said once,
    carried only to the person's own band, kept across nights, the row's words.
@@ -197,8 +270,10 @@ table.
 - **A venue is not a laptop.** Crowd noise, reverb, a band's wrist moving and
   songs without a steady kick may keep it from locking. Then the card stays
   steady, which is today's behaviour; it never flashes wrongly for long.
+  Reverb is the known weak point: in the offline hall a third of the beats
+  went unpulsed. A half-time groove is not locked at all.
 - **A microphone on a wrist worries people.** It opens only while a card is
-  lit and the switch is on, keeps three numbers per 8 ms and forgets them, and
+  lit and the switch is on, keeps five numbers per 8 ms and forgets them, and
   nothing about sound leaves the band. README and "How this works" say so.
 - **Battery.** The microphone and the sums cost a few milliamps while a card
   is lit; the pulse's lower average light gives some of it back. Measured on
