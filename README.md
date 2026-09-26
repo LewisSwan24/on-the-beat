@@ -626,10 +626,20 @@ relay could drive what a wrist shows.
   small machine holds, or a restart nobody notices, needs the rooms kept
   outside the process first. A phone that used a tunnel address starts over
   at the fixed one: a browser keeps the app's storage per address.
-- **Who is near has not met a crowd.** It has run through the real room on
-  a modelled floor, and not yet on the real bands. Bodies and reflections on
-  a real floor may differ from the model; ranking the strongest was chosen
-  because it leans on them least, and a walk through a venue is the check.
+- **Who is near has not met a crowd.** On 27 Sep 2026 it ran on both real
+  bands through the Fly relay, each paired to a stand-in phone on SAY HI with
+  a third phone that had no band. Each band joined the Wi-Fi under an address
+  new at that boot, not its chip's, and heard the other on channel 1 (the Plus
+  heard the StickS3 at -23 dBm, the StickS3 the Plus at -30), beaconing about
+  twice a second with none refused. Told to listen without beaconing, both
+  reported hearing nobody, and 25 s later each phone had dropped the other
+  while the phone with no band kept both; one band beaconing again brought
+  both back in 9 s. A band gone quiet hid nobody. The Plus, face dark, drew
+  59.2 mA beaconing and listening and 61.2 mA with neither, the mean of a
+  minute each: no cost the reading can show. A crowd is still only modelled.
+  Bodies and reflections on a real floor may differ from the model; ranking
+  the strongest was chosen because it leans on them least, and a walk
+  through a venue is the check.
   Not built: markers a venue puts up (`near the bar`, `by the stage`); a
   correction between models, though a StickS3 heard a Plus 7 dB weaker than
   the Plus heard it; and more than one Wi-Fi channel, since a band hears only
