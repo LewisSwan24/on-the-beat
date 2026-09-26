@@ -231,6 +231,8 @@ on purpose" say so.
      meeting call until each wearer presses a key.
    - Two people raising their wrists to show the same number is how they
      find each other.
+   - The number goes after fifteen minutes, or at once when both say they
+     found each other (`2026-09-26-wrist-found-design.md`).
 4. **A wave nobody answers** is never reported as declined (promise 4).
    - It stays for the night unless one of them blocks the other.
    - While the waver is not showing blue, not visible or not in the room,

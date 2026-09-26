@@ -189,8 +189,9 @@ that was taken.
 - **What it shows** is decided by the relay, in `relay/band.js`, from the same
   `viewFor()` its person's phone is sent, so it can never show more than the
   phone could: its person's colour and card words while a card is armed, the
-  two-digit meeting number for fifteen minutes after a match (the same number
-  on both wrists), and nothing at all under NOT NOW. While its person shows
+  two-digit meeting number for fifteen minutes after a match or until both say
+  they found each other (the same number on both wrists), and nothing at all
+  under NOT NOW. While its person shows
   SAY HI it is also told that someone waved and how many wait: the newest
   one's handle, a count and a number, the same size however many wait. Never a
   name, never anyone else's pick, never a contact. At 15% battery it dims
@@ -235,6 +236,21 @@ that was taken.
   phone. Waves are numbered by the relay's clock, so a band never calls twice
   for one wave, even past a relay restart, and never misses the next. The
   phone buzzes for a wave only when no live wristband calls instead.
+- **Found each other, from the wrist or the phone.** Woken, the meeting face
+  says `HOLD SIDE: FOUND`, and a side hold there says the two of you found
+  each other (a side press still opens the chooser; the key that answers the
+  call does nothing else). So does `WE FOUND EACH OTHER` on the person's
+  screen (S11), which now also shows the number while the meeting is on. It
+  counts only once both have said it, as keeping does. Said on one side, the
+  number stays and reads `FOUND: WAITING` on that wrist only, and the phone
+  says *found on your side. they won't know unless they say so too.* The
+  other person sees nothing. Once both have, both numbers go at once, both
+  bands play a `found` chirp and flash the meeting's card three times, both
+  phones say *you found each other at 21:14*, and Tonight counts it as met,
+  at that time. A band out of reach then plays it when it is back within a
+  minute; the phone buzzes only when no live wristband plays it. Refused or
+  out of reach, the band says `NOT SENT`. Never said by both, the number goes
+  at fifteen minutes, and nothing says why.
 - **The sound can be switched off, on the phone.** The wristband sheet has
   `SOUND: ON` under TEST THE LIGHT; off, the band only lights up. The switch is
   the person's own: the phone keeps it across nights and re-says it after
@@ -430,6 +446,12 @@ the relay reaches it.
   about anyone else but the meeting number. The owner chose on 25 Sep 2026
   that it also says that someone waved at its person and how many wait, and
   can wave back to the newest. Still no name, no photo, no pick and no area.
+- **A meeting ends when both say they found each other.** Revision 6 shows
+  `MEET` and the number for as long as the meeting lasts, and S11 has no way
+  to say a meeting happened. The owner chose on 26 Sep 2026 a side hold on the
+  band, or `WE FOUND EACH OTHER` on S11, counted only when both say it: the
+  meeting face gains `FOUND: WAITING`, both bands a *found* reaction, and
+  Tonight's `met` counts meetings found, not matches.
 
 ## Abuse resistance
 
@@ -591,6 +613,10 @@ relay could drive what a wrist shows.
   match. The physical buttons, and the three blue flashes seen by eye, are
   left for a person. Answering from the wrist is only waving back: a like
   needs the other person's pick, which the wrist never shows.
+- **Found each other has run in tests and a browser, not yet on the real
+  bands.** Saying it by bumping two wristbands together, with the motion
+  sensor, is a later change, after a spike shows a fist bump can be told
+  apart from two people dancing to the same beat.
 - **The timings are guesses until worn** — six seconds awake, 1.5 s holds,
   three to send, ten to wait. They are named constants for that reason.
 - **Recording has run on Chrome's fake camera, not a phone's.** Headless
