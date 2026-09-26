@@ -21,6 +21,10 @@
 //
 // A wave at its person calls (docs/superpowers/specs/2026-09-25-wrist-waves-
 // design.md): hello, and the HI blue three times, whatever the keys do.
+//
+// A SIDE hold on the meeting face says the two of you found each other
+// (docs/superpowers/specs/2026-09-26-wrist-found-design.md). The relay counts
+// it only once both have said it; until then the face says FOUND: WAITING.
 
 import { bandIdOf } from './sha256.js';
 
@@ -123,7 +127,7 @@ export function createWrist({ key }) {
   let wakeUntil = 0;
   const k1 = { down: false, since: 0, fired: false };
   const k2 = { down: false, since: 0, fired: false };
-  let mode = 'rest';          // rest | look | choosing | sending | result | waves | waveback
+  let mode = 'rest';          // rest | look | choosing | sending | result | waves | waveback | found
   let preview = '';           // hi | song | dance | off
   let fromQuiet = false;
   let frozen = false;
@@ -166,6 +170,8 @@ export function createWrist({ key }) {
   const blinking = (now) => calling && mode === 'rest' && !stale(now) && show?.kind === 'meet';
   // The letters or the check on the face: the band is nobody's yet, and a key only says where to go.
   const pairingFace = (now) => !stale(now) && !quiet.pending && (show?.kind === 'pairing' || show?.kind === 'check');
+  // A meeting's number on the face, believed and not under NOT NOW: a SIDE hold there says found. A number is two digits.
+  const meetingFace = (now) => show?.kind === 'meet' && /^[1-9][0-9]$/.test(show.big) && !stale(now) && !quiet.pending;
   const current = () => (quiet.pending || show?.quiet ? 'notnow' : show?.armed || 'off');
   const pct = () => (battery >= 0 ? battery + '%' : '');
 
@@ -318,6 +324,15 @@ export function createWrist({ key }) {
     react('double');
   }
 
+  /** A SIDE hold on the meeting face: the two of them found each other. Out of reach, NOT SENT at once. */
+  function sayFound(now) {
+    if (!link.up) { result(now, 'NOT SENT'); return; }
+    send({ t: 'found', number: show.big });
+    mode = 'found';
+    sentAt = now;
+    react('double');
+  }
+
   function step(now) {
     if (k1.down || frozen || mode === 'sending' || mode === 'waveback') return;
     if (mode === 'result') rest();
@@ -347,6 +362,7 @@ export function createWrist({ key }) {
     if (mode === 'choosing') commit(now, true);
     else if (mode === 'waves') waveBack(now);
     else if (mode === 'look') stepAt = now;
+    else if ((mode === 'rest' || mode === 'result') && meetingFace(now)) sayFound(now);
     else if (mode === 'rest' || mode === 'result') step(now);
   }
 
@@ -373,8 +389,8 @@ export function createWrist({ key }) {
       result(now, 'NOT SENT');
       if (link.up) { out.push('DROP'); closed(now); }
       if (fromQuiet) { quiet.pending = true; quiet.sent = false; }
-    } else if (mode === 'waveback' && now - sentAt >= CONFIRM_MS) {
-      // As for a choice: NOT SENT, and the socket dropped, so a wave stuck in it can no longer land.
+    } else if ((mode === 'waveback' || mode === 'found') && now - sentAt >= CONFIRM_MS) {
+      // As for a choice: NOT SENT, and the socket dropped, so a wave or a found stuck in it can no longer land.
       result(now, 'NOT SENT');
       if (link.up) { out.push('DROP'); closed(now); }
     } else if (mode === 'result' && now >= resultUntil) rest();
@@ -483,6 +499,14 @@ export function createWrist({ key }) {
       }
       return;
     }
+    // The relay's answer to a found. Taken: the face rests, and FOUND: WAITING, or the found itself, comes as a show.
+    if (m.t === 'found' && typeof m.ok === 'boolean') {
+      if (mode === 'found') {
+        if (m.ok) rest();
+        else result(now, 'NOT SENT');
+      }
+      return;
+    }
     if (m.t !== 'show' || !m.show || typeof m.show !== 'object') return;
     const was = show;
     const wasSilent = silent;
@@ -560,7 +584,11 @@ export function createWrist({ key }) {
     if (s.kind === 'pairing') big = s.code;
     else if (s.kind === 'check') { big = s.big; small = 'ON YOUR PHONE?'; }
     else if (s.kind === 'waiting') { big = 'OPEN YOUR PHONE'; small = 'OR SWITCH ME OFF'; }
-    else if (lit(s)) { big = s.big; small = s.small.toUpperCase(); }
+    else if (lit(s)) {
+      big = s.big;
+      // Woken, the meeting face says what a SIDE hold does there.
+      small = s.kind === 'meet' && awake && s.small === 'MEET' ? 'HOLD SIDE: FOUND' : s.small.toUpperCase();
+    }
     else if (s.kind === 'off' && awake) {
       if (offline) ({ big, small } = noSignal());
       else if (s.quiet) { big = 'NOT NOW'; small = pct(); }
@@ -602,6 +630,8 @@ export function createWrist({ key }) {
       f = words('SOMEONE WAVED', waves.n > 1 ? count + ' WAITING - HOLD SIDE' : 'HOLD SIDE: WAVE BACK', 'black', 'hi', LIGHT_AWAKE);
     } else if (mode === 'waveback') {
       f = words('WAVE BACK', 'SENDING', 'black', 'hi', LIGHT_AWAKE);
+    } else if (mode === 'found') {
+      f = { ...restFace(now, true), small: 'SENDING' };  // the meeting face, while its found is on the way
     } else {
       f = restFace(now, wakeUntil > now || mode === 'result');
       if (mode === 'result') f = { ...f, small: word };

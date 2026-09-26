@@ -1206,6 +1206,119 @@
         { "at": "7000", "show": "HI", "rev": 3, "with": { "waves": { "ref": "a1b2c3d4e5", "n": 1, "seq": 1790337603000 } } },
         { "at": "8000", "press": 1, "face": { "big": "SOMEONE WAVED" } }
       ]
+    },
+    {
+      "name": "a SIDE hold on the resting meeting face says found with a double; SENDING on the meeting face until the relay takes it, then the face rests",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "sounds": ["jingle"] },
+        { "at": "2000", "press": 1, "face": { "big": "27", "small": "MEET", "light": "LIGHT_FULL" } },
+        { "at": "4000", "key2": "down", "sounds": ["tick"] },
+        { "at": "4000+HOLD_MS", "sent": [{ "t": "found", "number": "27" }], "sounds": ["double"], "face": { "big": "27", "small": "SENDING", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "5600", "key2": "up", "face": { "big": "27", "small": "SENDING", "field": "song" } },
+        { "at": "6000", "frame": { "t": "found", "ok": true }, "face": { "big": "27", "small": "MEET", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "6100", "show": "MEET", "rev": 3, "with": { "small": "FOUND: WAITING" }, "face": { "big": "27", "small": "FOUND: WAITING", "field": "song", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "woken, the meeting face says HOLD SIDE: FOUND for the wake time; the key that answers the call sends nothing; FOUND: WAITING stays as it is",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "sounds": ["jingle"] },
+        { "at": "2000", "key2": "down", "sounds": ["tick"] },
+        { "at": "2000+HOLD_MS", "face": { "big": "27", "small": "MEET", "light": "LIGHT_FULL" } },
+        { "at": "4000", "key2": "up", "face": { "big": "27", "small": "MEET", "light": "LIGHT_FULL" } },
+        { "at": "5000", "press": 1, "face": { "big": "27", "small": "HOLD SIDE: FOUND", "field": "song", "ink": "ink", "light": "LIGHT_FULL" } },
+        { "at": "5099+WAKE_MS", "face": { "big": "27", "small": "HOLD SIDE: FOUND" } },
+        { "at": "5100+WAKE_MS", "face": { "big": "27", "small": "MEET" } },
+        { "at": "12000", "show": "MEET", "rev": 3, "with": { "small": "FOUND: WAITING" } },
+        { "at": "13000", "press": 1, "face": { "big": "27", "small": "FOUND: WAITING" } }
+      ]
+    },
+    {
+      "name": "a SIDE press on the meeting face still opens the chooser, and a SIDE hold in it says nothing found",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "sounds": ["jingle"] },
+        { "at": "2000", "press": 1, "face": { "big": "27", "small": "MEET" } },
+        { "at": "3000", "press": 2, "face": { "big": "HI :)", "small": "SIDE TO CHANGE", "field": "hi" } },
+        { "at": "4000", "key2": "down", "sounds": ["tick"] },
+        { "at": "4000+HOLD_MS", "face": { "big": "HI :)", "small": "SIDE TO CHANGE" } },
+        { "at": "6000", "key2": "up", "face": { "big": "HI :)", "small": "SIDE TO CHANGE" } }
+      ]
+    },
+    {
+      "name": "out of reach, a SIDE hold on the meeting face shows NOT SENT with low and orange and sends nothing; once the show is not believed, it is a look",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "sounds": ["jingle"] },
+        { "at": "2000", "press": 1 },
+        { "at": "3000", "link": "down", "face": { "big": "27", "small": "MEET" } },
+        { "at": "4000", "key2": "down", "sounds": ["tick"] },
+        { "at": "4000+HOLD_MS", "sounds": ["low"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "6000", "key2": "up" },
+        { "at": "6800", "face": { "big": "27", "small": "NOT SENT" } },
+        { "at": "3000+STALE_MS", "key2": "down", "sounds": ["tick"] },
+        { "at": "3000+STALE_MS+HOLD_MS", "face": { "big": "NO SIGNAL" } }
+      ]
+    },
+    {
+      "name": "a found with no answer in CONFIRM_MS shows NOT SENT and drops the socket",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "sounds": ["jingle"] },
+        { "at": "2000", "press": 1 },
+        { "at": "3000", "key2": "down", "sounds": ["tick"] },
+        { "at": "3000+HOLD_MS", "sent": [{ "t": "found", "number": "27" }], "sounds": ["double"], "face": { "big": "27", "small": "SENDING" } },
+        { "at": "5000", "key2": "up" },
+        { "at": "4500+CONFIRM_MS-1", "face": { "big": "27", "small": "SENDING" } },
+        { "at": "4500+CONFIRM_MS", "sent": ["DROP"], "sounds": ["low"], "face": { "field": "orange" } },
+        { "at": "5700+CONFIRM_MS", "face": { "big": "27", "small": "NOT SENT" } }
+      ]
+    },
+    {
+      "name": "a found refused shows NOT SENT, and a SIDE hold on it says found again; answers of the wrong shape, or with no found under way, change nothing, and SIDE does nothing while it sends",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "sounds": ["jingle"] },
+        { "at": "2000", "press": 1 },
+        { "at": "2500", "frame": { "t": "found", "ok": false, "why": "gone" }, "face": { "big": "27", "small": "MEET" } },
+        { "at": "3000", "key2": "down", "sounds": ["tick"] },
+        { "at": "3000+HOLD_MS", "sent": [{ "t": "found", "number": "27" }], "sounds": ["double"], "face": { "small": "SENDING" } },
+        { "at": "5000", "key2": "up", "face": { "small": "SENDING" } },
+        { "at": "5500", "press": 2, "face": { "big": "27", "small": "SENDING" } },
+        { "at": "6000", "frame": { "t": "found" }, "face": { "small": "SENDING" } },
+        { "at": "6100", "frame": { "t": "wave", "ok": false, "why": "gone" }, "face": { "small": "SENDING" } },
+        { "at": "7000", "frame": { "t": "found", "ok": false, "why": "gone" }, "sounds": ["low"], "face": { "field": "orange", "light": "LIGHT_FULL" } },
+        { "at": "8300", "face": { "big": "27", "small": "NOT SENT" } },
+        { "at": "8500", "key2": "down", "sounds": ["tick"] },
+        { "at": "8500+HOLD_MS", "sent": [{ "t": "found", "number": "27" }], "sounds": ["double"], "face": { "big": "27", "small": "SENDING" } },
+        { "at": "10500", "key2": "up" },
+        { "at": "11000", "frame": { "t": "found", "ok": true }, "face": { "big": "27", "small": "MEET" } }
+      ]
+    },
+    {
+      "name": "a meeting number that is not two digits takes a SIDE hold as anywhere else",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "with": { "big": "7\"" }, "sounds": ["jingle"] },
+        { "at": "2000", "press": 1 },
+        { "at": "3000", "key2": "down", "sounds": ["tick"] },
+        { "at": "3000+HOLD_MS", "face": { "big": "HI :)", "small": "SIDE TO CHANGE" } }
+      ]
+    },
+    {
+      "name": "in NOT NOW before the relay has heard it, a SIDE hold on what was the meeting says nothing found",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "MEET", "rev": 3, "sounds": ["jingle"] },
+        { "at": "2000", "press": 1 },
+        { "at": "3000", "key1": "down", "sounds": ["tick"] },
+        { "at": "3000+HOLD_MS", "sounds": ["down"], "sent": [{ "t": "hold" }], "face": { "big": "", "light": "LIGHT_OFF" } },
+        { "at": "5000", "key1": "up" },
+        { "at": "5100", "key2": "down" },
+        { "at": "5100+HOLD_MS", "face": { "big": "NOT NOW", "small": "SIDE TO CHANGE" } }
+      ]
     }
   ]
 }

@@ -743,7 +743,9 @@ inline Words wordsFor(const Face& f, bool awake, int battery, Signal signal) {
   if (s.kind == "pairing") return {s.code, ""};
   if (s.kind == "check") return {s.big, "ON YOUR PHONE?"};
   if (s.kind == "waiting") return {"OPEN YOUR PHONE", "OR SWITCH ME OFF"};
-  if (lit(s)) return {fold(s.big), upper(fold(s.small))};
+  // Woken, the meeting face says what a SIDE hold does there.
+  if (lit(s))
+    return {fold(s.big), s.kind == "meet" && awake && s.small == "MEET" ? "HOLD SIDE: FOUND" : upper(fold(s.small))};
   if (s.kind != "off" || !awake) return {};
   if (f.offline) {
     const std::string why = signal == Signal::NO_WIFI ? "NO WI-FI" : "NO RELAY";
@@ -1273,6 +1275,14 @@ class Wrist {
       }
       return;
     }
+    // The relay's answer to a found. Taken: the face rests, and FOUND: WAITING, or the found itself, comes as a show.
+    if (f.t == "found" && f.hasOk) {
+      if (mode_ == FOUND) {
+        if (f.ok) rest();
+        else result(now, "NOT SENT");
+      }
+      return;
+    }
     if (f.t != "show" || !f.hasShow) return;
     // Reactions come from changes; a show that differs only in its sound switch is no change.
     const bool same = haveShow_ && show_ == f.show;
@@ -1412,8 +1422,8 @@ class Wrist {
       }
       // Hiding may arrive late; showing may not. Leaving NOT NOW failed, so hold it again.
       if (fromQuiet_) quiet_.held();
-    } else if (mode_ == WAVEBACK && now - sentAt_ >= CONFIRM_MS) {
-      // As for a choice: NOT SENT, and the socket dropped, so a wave stuck in it can no longer land.
+    } else if ((mode_ == WAVEBACK || mode_ == FOUND) && now - sentAt_ >= CONFIRM_MS) {
+      // As for a choice: NOT SENT, and the socket dropped, so a wave or a found stuck in it can no longer land.
       result(now, "NOT SENT");
       if (link_.up()) {
         out_.push_back("DROP");
@@ -1444,6 +1454,9 @@ class Wrist {
                 LIGHT_AWAKE);
     } else if (mode_ == WAVEBACK) {
       f = words("WAVE BACK", "SENDING", "black", "hi", LIGHT_AWAKE);
+    } else if (mode_ == FOUND) {
+      f = restFace(now, true);  // the meeting face, while its found is on the way
+      f.small = "SENDING";
     } else {
       f = restFace(now, static_cast<int32_t>(wakeUntil_ - now) > 0 || mode_ == RESULT);
       if (mode_ == RESULT) f.small = word_;
@@ -1477,7 +1490,7 @@ class Wrist {
   }
 
  private:
-  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT, WAVES, WAVEBACK };
+  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT, WAVES, WAVEBACK, FOUND };
   struct Key {
     bool down = false;
     bool fired = false;
@@ -1614,6 +1627,13 @@ class Wrist {
     return !link_.stale(now) && !quiet_.dark() && haveShow_ && (show_.kind == "pairing" || show_.kind == "check");
   }
 
+  /** A meeting's number on the face, believed and not under NOT NOW: a SIDE hold there says found. A number is two digits. */
+  bool meetingFace(uint32_t now) const {
+    const std::string& n = show_.big;
+    const bool number = n.size() == 2 && n[0] >= '1' && n[0] <= '9' && n[1] >= '0' && n[1] <= '9';
+    return haveShow_ && show_.kind == "meet" && number && !link_.stale(now) && !quiet_.dark();
+  }
+
   /** A press shows the face for WAKE_MS; the waiting face, which sleeps, stays lit PAIR_AWAKE_MS from it. */
   void wake(uint32_t now) {
     wakeUntil_ = now + WAKE_MS;
@@ -1732,6 +1752,18 @@ class Wrist {
     react("double");
   }
 
+  /** A SIDE hold on the meeting face: the two of them found each other. Out of reach, NOT SENT at once. */
+  void sayFound(uint32_t now) {
+    if (!link_.up()) {
+      result(now, "NOT SENT");
+      return;
+    }
+    out_.push_back("{\"t\":\"found\",\"number\":\"" + show_.big + "\"}");
+    mode_ = FOUND;
+    sentAt_ = now;
+    react("double");
+  }
+
   /** A KEY2 press let go before HOLD_MS. */
   void step(uint32_t now) {
     if (k1_.down || frozen_ || mode_ == SENDING || mode_ == WAVEBACK) return;
@@ -1763,6 +1795,7 @@ class Wrist {
     if (mode_ == CHOOSING) commit(now, true);
     else if (mode_ == WAVES) waveBack(now);
     else if (mode_ == LOOK) stepAt_ = now;
+    else if ((mode_ == REST || mode_ == RESULT) && meetingFace(now)) sayFound(now);
     else if (mode_ == REST || mode_ == RESULT) step(now);
   }
 
