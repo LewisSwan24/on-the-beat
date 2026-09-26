@@ -5,7 +5,9 @@
 //
 //   1. Nobody sees where you are. A person carries a BAND — `in this room`,
 //      `near the bar`, `by the stage`, `somewhere out the back` — and nothing
-//      finer, ever. There is no position here to leak.
+//      finer, ever. There is no position here to leak. What wristbands hear
+//      of each other only takes people off SAY HI's list, and what they heard
+//      never leaves the room.
 //   2. No name and no photo until you both say yes. Before a mutual yes a
 //      person is a handle, a band and at most the track they picked. Handles
 //      are per viewer: the same person has a different handle on every phone,
@@ -44,6 +46,11 @@ const CONTACT_MAX = 60;
 const TRACK_MAX = 60;
 const REPORTS_MAX = 1000;      // the newest kept; a real venue forwards these to its own dashboard
 
+// Near (docs/superpowers/specs/2026-09-26-wrist-near-design.md §2).
+export const HEARD_MS = 30_000;   // what a band heard, and that it listened at all, counts this long
+export const NEAR_FIVE = 5;       // of the people wearing a band, the most a list shows
+export const NEAR_KEEP = 10;      // one of the five stays while still among this many heard most strongly
+
 /** A pair's key, the same whichever way round it is asked. */
 const pairKey = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
 const clip = (s, n) => String(s ?? '').trim().slice(0, n);
@@ -74,6 +81,12 @@ export function createRoom({
   const tombs = new Map();
   const reports = [];
   let nextMatch = 1;
+  // Near: what each person's wristband heard, never shown to anyone. pairKey -> [{ at, rssi }], from
+  // either band hearing the other; id -> { at, ch }, when their band last reported and on which Wi-Fi
+  // channel; id -> the five nearTick() last worked out for them.
+  const samples = new Map();
+  const listening = new Map();
+  const fives = new Map();
 
   const handle = (viewer, target) =>
     createHash('sha256').update(salt + '|' + viewer + '|' + target).digest('hex').slice(0, 10);
@@ -339,8 +352,83 @@ export function createRoom({
 
   /** Everyone a person may see right now: nobody while they are NOT NOW. */
   const seen = (id) => (people.get(id)?.invisible ? [] : [...people.values()].filter((p) => shows(id, p.id)));
-  /** SAY HI's list: who is showing blue to this person. The phone's list and wavesAt() both come from here. */
-  const blue = (id) => seen(id).filter((p) => p.armed === 'hi');
+  /**
+   * SAY HI's list: who is showing blue to this person, less anyone near hides
+   * (below). The phone's list and wavesAt() both come from here.
+   */
+  const blue = (id) => seen(id).filter((p) => p.armed === 'hi' && !hidden(id, p.id));
+
+  // ---------- near ----------
+
+  /** Has this person's band reported in the last HEARD_MS? */
+  const listens = (id) => listening.has(id) && now() - listening.get(id).at <= HEARD_MS;
+  /** Listed whatever the bands say: a wave either way, or a match tonight. */
+  const bound = (a, b) => waves.has(a + '>' + b) || waves.has(b + '>' + a) || matches.has(pairKey(a, b));
+
+  /**
+   * Hidden from a viewer only on evidence: both bands listening, on one
+   * channel, the viewer's five worked out, and the other not in it nor bound
+   * to them. A band just on, gone quiet or on another channel hides nobody.
+   */
+  function hidden(viewer, t) {
+    if (!fives.has(viewer) || !listens(viewer) || !listens(t) || bound(viewer, t)) return false;
+    return listening.get(viewer).ch === listening.get(t).ch && !fives.get(viewer).has(t);
+  }
+
+  /** What one person's band heard: `near` is [{ id, rssi }] of other people in the room. */
+  function heard(id, { ch, near = [] } = {}) {
+    if (!people.has(id)) return;
+    const at = now();
+    listening.set(id, { at, ch });
+    for (const { id: other, rssi } of near) {
+      if (other === id || !people.has(other)) continue;
+      const k = pairKey(id, other);
+      if (!samples.has(k)) samples.set(k, []);
+      samples.get(k).push({ at, rssi });
+    }
+  }
+
+  /** A pair's score: the median of what either band heard of the other, or null. nearTick() drops the old first. */
+  function score(a, b) {
+    const s = (samples.get(pairKey(a, b)) ?? []).map((x) => x.rssi);
+    return s.length ? s.sort((x, y) => x - y)[Math.floor(s.length / 2)] : null;
+  }
+
+  /**
+   * Works out each listening person's five: of the people on SAY HI whose
+   * bands have a score with theirs, last time's five stay while among the
+   * NEAR_KEEP strongest, and the free places go to the strongest others.
+   * People bound to them take no place. True if anyone's five changed.
+   */
+  function nearTick() {
+    for (const [k, list] of samples) {
+      const kept = list.filter((x) => now() - x.at <= HEARD_MS);
+      if (kept.length) samples.set(k, kept);
+      else samples.delete(k);
+    }
+    for (const id of [...listening.keys()]) if (!people.has(id) || !listens(id)) listening.delete(id);
+    let changed = false;
+    for (const id of [...fives.keys()]) {
+      if (!listening.has(id)) {
+        fives.delete(id);
+        changed = true;
+      }
+    }
+    for (const id of listening.keys()) {
+      const ranked = seen(id)
+        .filter((p) => p.armed === 'hi' && listening.has(p.id) && !bound(id, p.id))
+        .map((p) => ({ id: p.id, s: score(id, p.id) }))
+        .filter((x) => x.s !== null)
+        .sort((x, y) => y.s - x.s);
+      const strongest = new Set(ranked.slice(0, NEAR_KEEP).map((x) => x.id));
+      const last = fives.get(id) ?? new Set();
+      const five = [...last].filter((x) => strongest.has(x));
+      for (const x of ranked) if (five.length < NEAR_FIVE && !five.includes(x.id)) five.push(x.id);
+      if (!fives.has(id) || five.length !== last.size || five.some((x) => !last.has(x))) changed = true;
+      fives.set(id, new Set(five));
+    }
+    return changed;
+  }
 
   /**
    * The waves a person's phone lists as waved at them and not yet waved back,
@@ -397,7 +485,7 @@ export function createRoom({
 
   return {
     join, leave, setBand, setProfile, arm, setInvisible, fromPhone, pick, postClip,
-    wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, found, viewFor,
+    wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, found, heard, nearTick, viewFor,
     /** For the relay: who is here, so it knows whose view to push. */
     ids: () => [...people.keys()],
     has: (id) => people.has(id),
