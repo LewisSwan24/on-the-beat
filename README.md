@@ -558,11 +558,16 @@ relay could drive what a wrist shows.
   bands. A night's worth of battery, and the Plus's face button, are not
   tried. CI builds both envs with PlatformIO on every push — the ESP32 image
   is about 1.2 MB of its 3 MB app partition — and keeps each image to flash.
-- **The reactions have not been heard on a wrist yet.** The stand-in has
-  played them through Web Audio in a browser, with the phone's switch both
-  ways, and both firmware envs build with them. The Plus's buzzer playing the
-  same samples, its free memory with both buffers, and the check's words and
-  the hint whole on a real screen are the next check; if the buzzer stays
+- **The reactions have run on both real bands, but nobody has listened yet.**
+  On 26 Sep 2026, driven from their USB consoles through the Fly relay, both
+  bands played each reaction where it belongs: `ask` at the check, `up` on
+  YES, `hello`, `double`, `jingle`, a `tick` per press, and a warning as a
+  band lost its pairing. TEST THE LIGHT with the phone's switch off showed its
+  white and played nothing. A meeting blinked, the light 0 and 255 in turn as
+  `face` read it, until a press that only ticked. The Plus keeps 72,728 bytes
+  free with both sound buffers, 63,880 at the least. Whether the Plus's buzzer
+  can be heard, how each sound and colour lands on a wrist, and the words
+  whole on a real screen still need someone there; if the buzzer stays
   silent, the fallback drives its pin with LEDC tones. Flashing on the
   music's beat is a later spec.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
@@ -574,12 +579,18 @@ relay could drive what a wrist shows.
   it for its hour, including someone who has since been blocked. The address
   is 96 random bits and only ever shown inside a room.
 - **Reports go to a log**, not to a person.
-- **Waves on the wrist have been tried only in the tables and a browser.**
-  Both twins pass the shared cases and the relay's tests hold every refusal,
-  but a wave, its call and a wave back from a band are not yet tried on the
-  two real bands with two real people. Answering from the wrist is only
-  waving back: a like needs the other person's pick, which the wrist never
-  shows.
+- **Waves have run on the real bands from their consoles, not yet by hand.**
+  On 26 Sep 2026, through the Fly relay, a stand-in phone paired the StickC
+  Plus and a scripted one the StickS3, each saying YES only once the band's
+  own console showed the same number, and a third person without a band
+  joined them. Each wave called the Plus, with `hello` and a count of
+  `1 waiting`, then `2 waiting`. `press face` opened `SOMEONE WAVED` /
+  `2 WAITING - HOLD SIDE` at light 110, and `hold side` played `double` and
+  waved back to the newest. The relay took it: both bands showed `MEET 63`
+  and played the jingle in the same second, and both phones showed the
+  match. The physical buttons, and the three blue flashes seen by eye, are
+  left for a person. Answering from the wrist is only waving back: a like
+  needs the other person's pick, which the wrist never shows.
 - **The timings are guesses until worn** — six seconds awake, 1.5 s holds,
   three to send, ten to wait. They are named constants for that reason.
 - **Recording has run on Chrome's fake camera, not a phone's.** Headless
