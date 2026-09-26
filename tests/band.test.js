@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CODE_LETTERS, MEET_MS, bandShow, cleanCode, newCode } from '../relay/band.js';
+import { CODE_LETTERS, FOUND_SHOW_MS, MEET_MS, bandShow, cleanCode, newCode } from '../relay/band.js';
 
 const T = Date.UTC(2026, 8, 23, 11, 0);
 const view = (me = {}, matches = []) => ({ me: { armed: null, invisible: false, pick: null, ...me }, matches });
@@ -117,6 +117,38 @@ test('the waves waiting ride on a show about a person on SAY HI, as the newest, 
   assert.equal('waves' in bandShow({ view: view({ armed: 'hi' }), now: T }), false);
 });
 
+// ---------- found each other (docs/superpowers/specs/2026-09-26-wrist-found-design.md §2) ----------
+
+test('a meeting its person alone said found keeps its number, and says FOUND: WAITING', () => {
+  const m = { id: 'm1', intent: 'song', number: 27, at: T, found: false, foundAt: null };
+  const before = bandShow({ view: view({ armed: 'hi' }, [m]), now: T + 60_000 });
+  assert.deepEqual([before.kind, before.big, before.small], ['meet', '27', 'MEET']);
+  const said = bandShow({ view: view({ armed: 'hi' }, [{ ...m, found: true }]), now: T + 60_000 });
+  assert.deepEqual([said.kind, said.big, said.small], ['meet', '27', 'FOUND: WAITING'], 'the number stays up');
+  assert.equal('found' in said, false, 'nothing to play yet');
+});
+
+test('found by both: the number goes at once, and every show about its person names it for FOUND_SHOW_MS', () => {
+  const at = T + 60_000;
+  const m = { id: 'm1', intent: 'song', number: 27, at: T, found: true, foundAt: at };
+  const hi = bandShow({ view: view({ armed: 'hi' }, [m]), now: at });
+  assert.deepEqual([hi.kind, hi.found], ['hi', { n: 27, intent: 'song' }], 'its card again, well inside MEET_MS, and the flash is the meeting\'s own card');
+  for (const v of [view({ armed: 'song' }, [m]), view({ armed: 'dance' }, [m]), view({}, [m])]) {
+    assert.deepEqual(bandShow({ view: v, now: at + FOUND_SHOW_MS - 1 }).found, { n: 27, intent: 'song' }, JSON.stringify(v.me));
+  }
+  assert.equal('found' in bandShow({ view: view({ armed: 'hi' }, [m]), now: at + FOUND_SHOW_MS }), false, 'a minute on, no more');
+  for (const s of [bandShow({ view: view({ armed: 'hi', invisible: true }, [m]), now: at }), bandShow({ view: view({ armed: 'hi' }, [m]), code: 'KXRT', now: at }),
+    bandShow({ view: view({ armed: 'hi' }, [m]), check: 12, now: at }), bandShow({ view: view({ armed: 'hi' }, [m]), testUntil: at + 1, now: at }),
+    bandShow({ view: null, waiting: true, now: at }), bandShow({ view: null, now: at })]) {
+    assert.equal('found' in s, false, 'NOT NOW and the shows about nobody: ' + JSON.stringify(s));
+  }
+  const later = { id: 'm2', intent: 'dance', number: 41, at: T + 1_000, found: true, foundAt: at + 5_000 };
+  assert.deepEqual(bandShow({ view: view({ armed: 'hi' }, [m, later]), now: at + 6_000 }).found, { n: 41, intent: 'dance' }, 'the newest found');
+  const other = { id: 'm3', intent: 'hi', number: 55, at: T + 2_000, found: false, foundAt: null };
+  const both = bandShow({ view: view({ armed: 'hi' }, [m, other]), now: at });
+  assert.deepEqual([both.kind, both.big, both.found], ['meet', '55', { n: 27, intent: 'song' }], 'another meeting still on shows, and names the one found');
+});
+
 test('the longest show the relay can make fits the band, however many wait', () => {
   // The band drops a frame longer than its buffer whole: firmware/src/main.cpp, struct Event.
   const cpp = readFileSync(new URL('../firmware/src/main.cpp', import.meta.url), 'utf8');
@@ -124,9 +156,11 @@ test('the longest show the relay can make fits the band, however many wait', () 
   const worst = '\u0001'.repeat(60);   // clip() keeps it, and JSON writes each one as six bytes
   const big = Number.MAX_SAFE_INTEGER;
   const waves = Array.from({ length: 5000 }, (_, i) => ({ handle: 'ffffffffff', n: big - i }));
-  const m = { id: 'm1', intent: 'dance', number: 99, at: T };
+  const m = { id: 'm1', intent: 'dance', number: 99, at: T, found: true, foundAt: null };
+  const done = { id: 'm2', intent: 'dance', number: 98, at: T, found: true, foundAt: T };
   const shows = [
-    bandShow({ view: view({ armed: 'hi', pick: worst, rev: big }, [m]), battery: 1, sound: false, waves, now: T }),
+    bandShow({ view: view({ armed: 'hi', pick: worst, rev: big }, [m, done]), battery: 1, sound: false, waves, now: T }),
+    bandShow({ view: view({ armed: 'hi', pick: worst, rev: big }, [done]), battery: 1, sound: false, waves, now: T }),
     bandShow({ view: view({ armed: 'hi', pick: worst, rev: big }), battery: 1, sound: false, waves, now: T }),
     bandShow({ view: view({ armed: 'song', pick: worst, rev: big }), battery: 1, sound: false, now: T }),
     bandShow({ view: view({ armed: 'dance', rev: big }), battery: 1, sound: false, now: T }),

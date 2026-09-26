@@ -12,6 +12,7 @@
 /** Pairing codes: letters only, none that look like another (no I, L or O). */
 export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 export const MEET_MS = 15 * 60_000;   // the number shows while the two of you find each other
+export const FOUND_SHOW_MS = 60_000;  // found by both: a band still plays it this long, if it was out of reach
 export const DIM_AT = 15;             // percent; at or below it the light drops to half
 
 const short = (s, n) => {
@@ -48,6 +49,12 @@ const short = (s, n) => {
  * person's own phone knows it), how many wait, and the newest one's number.
  * It is the same size however many wait, so it never outgrows the band's
  * buffer. Every other show carries none, which the wrist reads as nobody.
+ *
+ * A meeting its person said found keeps its number up, `FOUND: WAITING`, until
+ * the other says it too (docs/superpowers/specs/2026-09-26-wrist-found-design.md).
+ * Found by both, it is gone, and for FOUND_SHOW_MS every show about its person
+ * but NOT NOW names it (`found`), so the band plays it once, even one that was
+ * out of reach at the moment.
  */
 export function bandShow({ view = null, battery = null, code = null, check = null, waiting = false, testUntil = 0, sound = null, waves = [], now = Date.now() }) {
   if (check) return { kind: 'check', big: String(check) };
@@ -61,15 +68,19 @@ export function bandShow({ view = null, battery = null, code = null, check = nul
   // NOT NOW is black, completely. Nothing broadcasting, and nothing to read.
   if (view.me.invisible) return { kind: 'off', battery, quiet: true, ...about };
   const waved = view.me.armed === 'hi' && waves.length ? { waves: { ref: waves[0].handle, n: waves.length, seq: waves[0].n } } : {};
+  const done = view.matches
+    .filter((m) => m.foundAt && now - m.foundAt < FOUND_SHOW_MS)
+    .sort((a, b) => b.foundAt - a.foundAt)[0];
+  const found = done ? { found: { n: done.number, intent: done.intent } } : {};
   const meet = view.matches
-    .filter((m) => now - m.at < MEET_MS)
+    .filter((m) => now - m.at < MEET_MS && !m.foundAt)
     .sort((a, b) => b.at - a.at)[0];
-  if (meet) return { kind: 'meet', intent: meet.intent, big: String(meet.number), small: 'MEET', dim, ...about, ...waved };
+  if (meet) return { kind: 'meet', intent: meet.intent, big: String(meet.number), small: meet.found ? 'FOUND: WAITING' : 'MEET', dim, ...about, ...waved, ...found };
   switch (view.me.armed) {
-    case 'hi': return { kind: 'hi', intent: 'hi', big: 'HI :)', small: 'blue means hello', dim, ...about, ...waved };
-    case 'song': return { kind: 'song', intent: 'song', big: 'FIRST SONG?', small: short(view.me.pick, 16), dim, ...about };
-    case 'dance': return { kind: 'dance', intent: 'dance', big: "LET'S DANCE!", small: '', dim, ...about };
-    default: return { kind: 'off', battery, ...about };
+    case 'hi': return { kind: 'hi', intent: 'hi', big: 'HI :)', small: 'blue means hello', dim, ...about, ...waved, ...found };
+    case 'song': return { kind: 'song', intent: 'song', big: 'FIRST SONG?', small: short(view.me.pick, 16), dim, ...about, ...found };
+    case 'dance': return { kind: 'dance', intent: 'dance', big: "LET'S DANCE!", small: '', dim, ...about, ...found };
+    default: return { kind: 'off', battery, ...about, ...found };
   }
 }
 
