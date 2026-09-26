@@ -80,10 +80,10 @@ the bands beside its speaker.
   after the change; pulses every beat under the crowd (locked in 2–6 s) and
   through the drift (about 18 ms late while the tempo climbs); and goes
   quiet within two or three beats of the breakdown. In the hall it pulses
-  72–100% of beats and takes up to 10 s to lock. The half-time groove it never locks:
-  one to four pulses of the old grid slip into it, then nothing. Over round
-  2's real recordings it pulses 88–100% of the click and kick beats and
-  nothing in 30 s of speech or in silence.
+  72–100% of beats and takes up to 10 s to lock. The half-time groove it
+  never locks: one to four pulses of the old grid slip into it, then
+  nothing. Over round 2's real recordings it pulses 88–100% of the click
+  and kick beats and nothing in 30 s of speech or in silence.
 - **Round 3 is the gate (§4.1):** the five bands from the real microphones,
   the microphone's own delay, and a song of the owner's choice.
 
@@ -144,15 +144,14 @@ table.
 - **Keeping it:** a beat's window is `BEAT_NEAR` of a period either side of
   it. Once it has closed, its strongest rise is traced back to where that
   rise began — where the drum started — and the beat was **heard** if that
-  drum started within `BEAT_TIGHT_MS` of the beat, and its rise is at least
-  as strong as any in the half beats either side and at least `BEAT_ONSET`
-  times the window's mean onset strength (never under `BEAT_ONSET_MIN`). A
-  heard
-  beat pulls the grid a part of the way to it: `BEAT_PULL_PHASE` of the
-  error on the next beat, `BEAT_PULL_PERIOD` of it on the period, which
-  stays within `BEAT_CHANGE` of the tempo locked (a phase-locked loop). A
-  noise just before a beat cannot take its place, and an off-beat hi-hat
-  never moves the grid.
+  drum started within `BEAT_TIGHT_MS` of the beat, its rise is at least as
+  strong as any in the half beat before and after, and at least
+  `BEAT_ONSET` times the window's mean onset strength (never under
+  `BEAT_ONSET_MIN`). A heard beat pulls the grid a part of the way to it:
+  `BEAT_PULL_PHASE` of the error on the next beat, `BEAT_PULL_PERIOD` of it
+  on the period, which stays within `BEAT_CHANGE` of the tempo locked (a
+  phase-locked loop). A noise just before a beat cannot take its place, and
+  an off-beat hi-hat never moves the grid.
 - **Pulsing:** a new grid pulses once its last three beats were all heard,
   and keeps pulsing while at least `BEAT_CONFIRM` of the last three were —
   or while one of them was and the last `BEAT_PHASE_MS`, folded on the
@@ -160,10 +159,9 @@ table.
   fold's mean. The fold is what carries it through reverb, where the
   strongest rise of a single beat is often a reflection. So a song that
   stops, or a grid left over from the last song, goes quiet within two
-  beats, and a missed kick or a reaction's gap does not stop it.
-  The pulse is drawn at each beat minus `MIC_LATENCY_MS`, the model's
-  measured delay from sound to block, so the light and the sound arrive
-  together.
+  beats, and a missed kick or a reaction's gap does not stop it. The pulse
+  is drawn at each beat minus `MIC_LATENCY_MS`, the model's measured delay
+  from sound to block, so the light and the sound arrive together.
 - **Another song:** a confident, steady reading at another tempo (off by
   more than `BEAT_CHANGE`) or on another phase replaces a grid that is not
   being heard at once, and one that is after `BEAT_OTHER_LOOKS` looks in a
@@ -196,8 +194,8 @@ table.
 - **What it costs:** eight biquads per sample at 16 kHz, and every 128 ms
   an autocorrelation of 750 values over 53 periods and their doubles —
   about 0.6 million multiply-adds a second — and 6 KB for the onset
-  strength and its times.
-  Measured on the Plus with Wi-Fi and TLS on in §4.6.
+  strength and its times. Measured on the Plus with Wi-Fi and TLS on in
+  §4.6.
 - **Reactions come first.** A reaction's sound takes the audio channel: the
   firmware closes the microphone, plays, and opens it again, and the clock
   keeps running through the gap. A reaction's flash replaces the pulse while
@@ -206,11 +204,11 @@ table.
 ## §3. Who does what
 
 - **The wrist (both twins):** `hear(levels, now)` per block, with the five
-  band energies; the tracker;
-  `listening()`; the pulse applied to the light of a pulsing face in
-  `face(now)`. The table gains a step that feeds a generated block sequence —
-  a tempo, a level, noise, a gap — expanded identically for both twins, so the
-  cases say when a band locks, where it pulses and when it lets go.
+  band energies; the tracker; `listening()`; the pulse applied to the light
+  of a pulsing face in `face(now)`. The table gains a step that feeds a
+  generated block sequence — a tempo, a level, noise, a gap — expanded
+  identically for both twins, so the cases say when a band locks, where it
+  pulses and when it lets go.
 - **The relay:** the beat switch per person, `{ t: 'beat', on }` from the
   phone, and `beat` on every show to their band once said, as `sound` is
   (`relay/band.js`, `relay/server.js`).
