@@ -25,17 +25,19 @@ const lines = [];
 afterEach(() => { for (const n of lines.splice(0)) n.close(); });
 const open = (opts = {}) => { const n = connect({ venue: 'v', me: 'a'.repeat(32), ...opts }); lines.push(n); return n; };
 
-test('a page load queues nothing: what it holds goes out only as again copies, in order, claim first', () => {
+test('a page load queues nothing: what it holds goes out only as again copies, in order, the sound switch and then the claim first', () => {
   const n = open();
   n.keep('arm', { t: 'arm', intent: null, seq: 7 });
   n.keep('pick', { t: 'pick', track: 'Treasure' });
   n.keep('profile', { t: 'profile', name: 'Rae', contact: '' });
   n.keep('invisible', { t: 'invisible', on: false, seq: 7 });
   n.keep('pair', { t: 'pair', band: 'b'.repeat(32), secret: 'c'.repeat(32) });
+  // It touches nothing in the room, and a band claimed after a restart gets it in its first show.
+  n.keep('sound', { t: 'sound', on: false });
   const [sock] = FakeSocket.all;
   assert.deepEqual(sock.sent, [], 'nothing before the socket opens');
   sock.open();
-  assert.deepEqual(sock.sent.map((m) => m.t), ['join', 'pair', 'invisible', 'profile', 'pick', 'arm']);
+  assert.deepEqual(sock.sent.map((m) => m.t), ['join', 'sound', 'pair', 'invisible', 'profile', 'pick', 'arm']);
   assert.ok(sock.sent.slice(1).every((m) => m.again === true), 'every fact is marked again');
   assert.equal(sock.sent[0].quiet, undefined, 'a visible phone joins without quiet');
 });

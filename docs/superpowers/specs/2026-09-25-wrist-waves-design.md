@@ -6,6 +6,8 @@ decisions after review"). It builds on the reactions spec
 (`2026-09-25-wrist-reactions-design.md`): its sounds, flashes, calls, sound
 switch and NOT NOW silence. Build it after that one.
 
+Approved by the owner on 25 Sep 2026.
+
 The owner said that quick finding, matching and staying in step between two
 or more wristbands matters a great deal. His flow: a WAVE sent on a phone
 reaches the other person's wristband; once they answer, both wristbands
@@ -229,6 +231,8 @@ on purpose" say so.
      meeting call until each wearer presses a key.
    - Two people raising their wrists to show the same number is how they
      find each other.
+   - The number goes after fifteen minutes, or at once when both say they
+     found each other (`2026-09-26-wrist-found-design.md`).
 4. **A wave nobody answers** is never reported as declined (promise 4).
    - It stays for the night unless one of them blocks the other.
    - While the waver is not showing blue, not visible or not in the room,

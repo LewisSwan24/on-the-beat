@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HUE, PROMISES, matchName, someone } from './copy.js';
+import { SOUND_SAY, soundRow } from './lib/bandsound.js';
 import { battery, buzz, toBase64 } from './lib/device.js';
 import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
+import { meetingOn, newlyFound } from './lib/found.js';
 import { connect } from './lib/net.js';
 import { phaseLine, phaseOf } from './lib/phase.js';
 import * as store from './lib/store.js';
+import { WAVES_HOW, buzzes, newWaves } from './lib/waved.js';
 import { Bar, Home } from './screens/Home.jsx';
 import { Beacon, Near, WristBeacon } from './screens/Hi.jsx';
 import { Pair, bandLine } from './screens/Band.jsx';
@@ -146,6 +149,7 @@ export default function App() {
     // A page load says nothing new (§3): what this phone holds is kept, and re-said only as again copies.
     const st = night.state || {};
     const seq = st.seq ?? 0;
+    n.keep('sound', { t: 'sound', on: s.bandSound });
     n.keep('profile', { t: 'profile', name: s.name, contact: s.contact });
     n.keep('invisible', { t: 'invisible', on: !!st.invisible, seq });
     n.keep('arm', { t: 'arm', intent: st.armed ?? null, seq });
@@ -260,6 +264,36 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
   useEffect(() => { seen.current = null; }, [night?.me]);
+
+  // A wave at you the phone has not seen: one buzz, unless a live wristband calls instead. Seen either way.
+  const wavesSeen = useRef(null);
+  useEffect(() => {
+    if (!view.me) return;
+    const known = wavesSeen.current ?? new Set(night?.waves || []);
+    wavesSeen.current = known;
+    const fresh = newWaves(view, known);
+    if (!fresh.length) return;
+    for (const r of fresh) known.add(r.handle);
+    update((prev) => store.noteWaves(prev, fresh.map((r) => r.handle)));
+    if (buzzes(fresh, view)) buzz([90]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+  useEffect(() => { wavesSeen.current = null; }, [night?.me]);
+
+  // Found by both, news to this phone: a buzz, unless a live wristband plays it instead (found §1). The record
+  // keeps foundAt (noteMatch, above), so a reload buzzes for nothing already found.
+  const foundSeen = useRef(null);
+  useEffect(() => {
+    if (!view.me) return;
+    const known = foundSeen.current ?? new Set(Object.values(night?.matches || {}).filter((m) => m.foundAt).map((m) => m.id));
+    foundSeen.current = known;
+    const fresh = newlyFound(view, known);
+    if (!fresh.length) return;
+    for (const m of fresh) known.add(m.id);
+    if (buzzes(fresh, view)) buzz([70, 50, 70, 50, 70]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+  useEffect(() => { foundSeen.current = null; }, [night?.me]);
 
   // The relay decides (§3): a view that passes rule 4 sets the cards, the screen and what is re-said.
   useEffect(() => {
@@ -393,6 +427,7 @@ export default function App() {
       ...PROMISES.map((p) => ({ icon: p.icon, label: p.main, sub: p.sub, fg: '#fff', onTap: () => {} })),
       { icon: 'watch', label: 'Hold the face button on your wristband to go invisible. Hold its side button to come back.', fg: '#fff', onTap: () => {} },
       { icon: 'touch_app', label: 'Press the side button to see your card, and again to change it. Your phone follows.', fg: '#fff', onTap: () => {} },
+      { icon: 'waving_hand', label: WAVES_HOW, fg: '#fff', onTap: () => {} },
     ],
   });
 
@@ -404,13 +439,23 @@ export default function App() {
     say('unpaired. your phone is your light again.');
   };
 
+  // The wristband's sound: the person's own, kept across nights; the relay carries it to their band.
+  const flipSound = () => {
+    const on = !s.bandSound;
+    update((prev) => ({ ...prev, bandSound: on }));
+    net.current?.say('sound', { t: 'sound', on });
+    setSheet(null);
+    say(on ? SOUND_SAY.on : SOUND_SAY.off);
+  };
+
   const bandSheet = () => setSheet({
     title: 'Your wristband', sub: bandLine(bandShown), close: 'Done',
     rows: [
       ...(bandShown?.offline ? [{ icon: 'link', label: 'PAIR AGAIN', sub: 'it has been away a while. show its letters and pair it again.', fg: '#fff',
         onTap: () => { unpair(); go('pair'); } }] : []),
-      { icon: 'flashlight_on', label: 'TEST THE LIGHT', sub: 'it flashes white for two seconds.', fg: '#fff',
+      { icon: 'flashlight_on', label: 'TEST THE LIGHT', sub: 'it flashes white for two seconds, and chirps unless its sound is off or it is in NOT NOW.', fg: '#fff',
         onTap: () => { net.current?.send({ t: 'testLight' }); setSheet(null); say('watch your wrist.'); } },
+      { ...soundRow(s.bandSound), fg: '#fff', onTap: flipSound },
       { icon: 'link_off', label: 'UNPAIR', sub: 'it forgets you, and shows new letters.', fg: 'var(--stop)', onTap: unpair },
     ],
   });
@@ -430,6 +475,12 @@ export default function App() {
       return;
     }
     net.current?.send({ t: 'keep', match: m.id, on });
+  };
+
+  // WE FOUND EACH OTHER: the same as the side hold on the wrist, counted once both say it. Queued offline.
+  const sayFound = (m) => {
+    net.current?.send({ t: 'found', match: m.id });
+    if (status !== 'live') say("Saved. It'll sync when you're out.");
   };
 
   const sendClip = async (blob, type) => {
@@ -624,7 +675,8 @@ export default function App() {
     case 'floor': body = <Floor floor={view.floor} mine={view.me?.clip} room={room} onBack={back} onTile={tileSheet} />; break;
     case 'mate':
       body = match ? (
-        <Mate match={match} onBack={back} onKeep={(on) => keep(match, on)} onTonight={() => go('tonight')}
+        <Mate match={match} number={paired && meetingOn(match, now.getTime()) ? match.number : null}
+          onBack={back} onFound={() => sayFound(match)} onKeep={(on) => keep(match, on)} onTonight={() => go('tonight')}
           onMore={() => personSheet(match.id, matchName(match))} />
       ) : null;
       break;

@@ -45,19 +45,19 @@ export function helpers(port) {
 
   /**
    * A wristband: a socket that says hello as the firmware does — its id, the
-   * key that proves it, v2, and a secret when it has one — and remembers the
-   * last show and the secret it is given.
+   * key that proves it, v2, a secret when it has one and its radio's `air`
+   * when given — and remembers the last show and the secret it is given.
    */
-  async function wristband(battery = 62, { key = newKey(), secret = null, quiet = false, v1 = false } = {}) {
+  async function wristband(battery = 62, { key = newKey(), secret = null, quiet = false, v1 = false, air = null } = {}) {
     const ws = new WebSocket(address());
     clients.add(ws);
     const id = v1 ? randomBytes(16).toString('hex') : bandIdOf(key);
-    const b = { ws, id, key, secret, show: null, replies: [], waiters: [] };
+    const b = { ws, id, key, secret, air, show: null, replies: [], waiters: [] };
     ws.on('message', (data) => {
       const m = JSON.parse(String(data));
       if (m.t === 'show') b.show = m.show;
       if (m.t === 'paired') b.secret = m.secret;
-      if (m.t === 'set' || m.t === 'error') b.replies.push(m);
+      if (m.t === 'set' || m.t === 'wave' || m.t === 'found' || m.t === 'error') b.replies.push(m);
       b.waiters = b.waiters.filter((w) => !w());
     });
     await new Promise((resolve) => ws.once('open', resolve));
@@ -67,7 +67,9 @@ export function helpers(port) {
       const timer = setTimeout(() => reject(new Error('band timed out; last show ' + JSON.stringify(b.show))), ms);
       if (!check()) b.waiters.push(check);
     });
-    b.send(v1 ? { t: 'wristband', id, battery } : { t: 'wristband', id, key, v: 2, battery, ...(secret ? { secret } : {}), ...(quiet ? { quiet: true } : {}) });
+    b.send(v1 ? { t: 'wristband', id, battery } : {
+      t: 'wristband', id, key, v: 2, battery, ...(secret ? { secret } : {}), ...(quiet ? { quiet: true } : {}), ...(air ? { air } : {}),
+    });
     await b.until(() => true);
     return b;
   }

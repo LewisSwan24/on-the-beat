@@ -16,8 +16,12 @@ const PING_EVERY = 2000;
 const DEAF_MS = 6000;
 const QUEUE_MAX = 40;
 
-/** The order facts are re-said in: the claim first, so a wristband's kept hold lands before anything else. */
-export const SAID_ORDER = ['pair', 'invisible', 'profile', 'pick', 'arm', 'leave'];
+/**
+ * The order facts are re-said in. The sound switch first: it touches nothing in the room, and a wristband
+ * claimed after a restart gets it in its first show. Then the claim, so the wristband's kept hold lands
+ * before anything that changes the room.
+ */
+export const SAID_ORDER = ['sound', 'pair', 'invisible', 'profile', 'pick', 'arm', 'leave'];
 
 export function connect({ venue, me, onView, onStatus, onMessage }) {
   let ws = null;

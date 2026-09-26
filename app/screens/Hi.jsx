@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { someone } from '../copy.js';
 import { holdScreen } from '../lib/device.js';
+import { WAVED_LINE } from '../lib/waved.js';
 import { Back, Icon, More, Pill } from '../ui.jsx';
 import { BandFace } from './Band.jsx';
 
@@ -91,7 +92,7 @@ export function Near({ near, offline, onBack, onWave, onMore }) {
           </div>
         ) : null}
         {near.map((p) => {
-          const label = p.waved ? "Waved — they'll see a blue dot" : p.wavedAtYou ? someone(p.band) + ' waved at you' : someone(p.band);
+          const label = p.waved ? WAVED_LINE : p.wavedAtYou ? someone(p.band) + ' waved at you' : someone(p.band);
           return (
             <div key={p.handle} className="row" style={p.wavedAtYou && !p.waved ? { borderColor: 'var(--hi)' } : undefined}>
               <div className="person">

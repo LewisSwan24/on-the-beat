@@ -101,7 +101,7 @@ What each kind of yes shows the other side before it is returned:
 
 | | seen by the other person? |
 |---|---|
-| a wave (SAY HI) | yes — a blue dot on a row that is still only a band, so they can wave back |
+| a wave (SAY HI) | yes — a blue dot on a row that is still only a band, so they can wave back; and on their wristband, a short call and a count of who waits, never who |
 | a like (FIRST SONG?) | never — it was for an answer, not a face |
 | a dance back (LET'S DANCE!) | yes — the clip goes straight to them, with no name on it |
 
@@ -189,9 +189,13 @@ that was taken.
 - **What it shows** is decided by the relay, in `relay/band.js`, from the same
   `viewFor()` its person's phone is sent, so it can never show more than the
   phone could: its person's colour and card words while a card is armed, the
-  two-digit meeting number for fifteen minutes after a match (the same number
-  on both wrists), and nothing at all under NOT NOW. Never a name, never
-  anyone else's pick, never a contact. At 15% battery it dims itself.
+  two-digit meeting number for fifteen minutes after a match or until both say
+  they found each other (the same number on both wrists), and nothing at all
+  under NOT NOW. While its person shows
+  SAY HI it is also told that someone waved and how many wait: the newest
+  one's handle, a count and a number, the same size however many wait. Never a
+  name, never anyone else's pick, never a contact. At 15% battery it dims
+  itself.
 - **Its two buttons.** The face button (KEY1): a press wakes it for six
   seconds; held for 1.5 s it is NOT NOW — dark at once — and the phone
   follows to the invisible screen. The side button (KEY2): a press shows
@@ -200,6 +204,64 @@ that was taken.
   which decides; the face says `SET`, `CHANGED` or `NOT SENT`.
   Coming back from NOT NOW takes holding the side button. The pair screen
   says to *press* its face button, not to hold it.
+- **It answers in sound and light**, and is quiet unless its wearer did
+  something on it or something came for them. Every key ticks as it goes
+  down. A choice from the wrist ends in `SET` (a rising chirp, and the card's
+  colour twice; white for OFF), `CHANGED` (a falling one, and red three times)
+  or `NOT SENT` (a low one, and orange twice). The pairing check asks with two
+  notes and two white flashes; `YES` and TEST THE LIGHT chirp up, and a check
+  that ends without `YES` falls. A meeting number plays a jingle and blinks
+  the face once a second until a key answers it, and that key does nothing
+  else. Five facts about the band warn, in orange, once each time they begin:
+  out of reach for ten seconds, the battery at 15% and again at 5%, waiting
+  ten seconds for its owner after a relay restart, away, and unpaired. NOT NOW
+  is silent, but for the hold that starts it and a `SET` from the wrist that
+  ends it; a warning that came up meanwhile plays once, after. A change made
+  on the phone to one's own card or NOT NOW is silent on the wrist. Each sound
+  and flash is one line in a table both twins keep, `SOUNDS` and `FLASHES`,
+  held equal by `tests/firmware.test.js`; the notes are starting points, to be
+  tuned by ear on a band. `/band` plays the same notes through Web Audio once
+  its page has been tapped, which is when a browser first lets a page sound.
+- **A wave reaches the wrist, and is answered there.** A wave at someone on
+  SAY HI calls their wristband: a short `hello` and the HI blue three times,
+  whatever the keys do. During it a key only ticks, and only a face hold still
+  goes NOT NOW, so how long it lasts says nothing about whether it was seen;
+  waves that arrive meanwhile join it. A face press on the resting HI or
+  meeting face then opens `SOMEONE WAVED` over `HOLD SIDE: WAVE BACK`, or
+  `3 WAITING - HOLD SIDE` when more wait (`9+` past nine). A side hold there
+  waves back to the newest, and the relay answers it as it answers a choice:
+  one that lands makes the match, and both wristbands show the same `MEET`
+  number and call it; one that does not shows `NOT SENT`, or `CHANGED` if its
+  own person's card moved meanwhile. Anyone else waiting is answered on the
+  phone. Waves are numbered by the relay's clock, so a band never calls twice
+  for one wave, even past a relay restart, and never misses the next. The
+  phone buzzes for a wave only when no live wristband calls instead.
+- **Found each other, from the wrist or the phone.** Woken, the meeting face
+  says `HOLD SIDE: FOUND`, and a side hold there says the two of you found
+  each other (a side press still opens the chooser; the key that answers the
+  call does nothing else). So does `WE FOUND EACH OTHER` on the person's
+  screen (S11), which now also shows the number while the meeting is on. It
+  counts only once both have said it, as keeping does. Said on one side, the
+  number stays and reads `FOUND: WAITING` on that wrist only, and the phone
+  says *found on your side. they won't know unless they say so too.* The
+  other person sees nothing. Once both have, both numbers go at once, both
+  bands play a `found` chirp and flash the meeting's card three times, both
+  phones say *you found each other at 21:14*, and Tonight counts it as met,
+  at that time. A band out of reach then plays it when it is back within a
+  minute; the phone buzzes only when no live wristband plays it. Refused or
+  out of reach, the band says `NOT SENT`. Never said by both, the number goes
+  at fifteen minutes, and nothing says why.
+- **The sound can be switched off, on the phone.** The wristband sheet has
+  `SOUND: ON` under TEST THE LIGHT; off, the band only lights up. The switch is
+  the person's own: the phone keeps it across nights and re-says it after
+  every reconnect, and the relay carries it on the shows to that person's
+  band and to no other. A band nobody has claimed chirps as it is, and a
+  claimed band has the switch in its first show.
+- **Letters go dark after two minutes.** An unclaimed band's letters and QR,
+  and the face of one waiting for its owner after a restart, light for two
+  minutes and then only the backlight goes off; a press lights them again.
+  A press on the letters or on the check puts `PAIR ON YOUR PHONE` on the
+  face for 3 s, and does nothing else there.
 - **Who a wristband is.** It makes a random key at every boot and keeps it
   only in RAM; its id is the first half of the key's SHA-256, and every hello
   proves the id with the key. Knowing an id — every phone that ever paired it
@@ -249,7 +311,7 @@ a dead socket. Its two buttons work as above.
 ```
 cd firmware
 pio run -t upload       # build it and flash it over USB
-pio device monitor      # its console: ssid, pass, relay, show, forget
+pio device monitor      # its console: ssid, pass, relay, show, forget, press, hold, face
 
 pio run -e m5sticks3 -t upload    # the same, for a StickS3
 ```
@@ -264,10 +326,20 @@ what the band is doing: the Wi-Fi coming and going and the reason the radio
 gave, each hello and whether it carries its secret (never the secret), each
 choice sent from the wrist, each refusal, and each change in what the relay
 shows.
+The console can also press the buttons, so a real band is tested without a
+hand on it: `press face` or `press side` is a press, let go after 120 ms;
+`hold face` or `hold side` is let go 200 ms after the hold counts. Either is
+down through the same edges as the button itself, so the band cannot tell
+them apart. `face` says what the screen shows: its words, field and light,
+the pairing letters included. `sound found`, or any of the band's sounds by
+name, plays it, to hear the speaker without a room around the band. Only the
+USB cable reaches the console, and
+whoever holds the cable holds the band and its buttons anyway; no frame from
+the relay reaches it.
 
 - **Everything that decides anything is in `src/band_logic.h`**, plain C++ with
-  no hardware in it; `src/main.cpp` is only the screen, the two buttons, the
-  battery, Wi-Fi and the socket. `npm test` builds that logic with the
+  no hardware in it; `src/main.cpp` is only the screen, the speaker, the two
+  buttons, the battery, Wi-Fi and the socket. `npm test` builds that logic with the
   machine's own compiler, under the address and undefined-behaviour sanitizers
   where it can, and `tests/firmware.test.js` puts it in front of the real
   relay: the frames it sends pair it, report its battery and make its person
@@ -285,6 +357,37 @@ shows.
   relay. The socket runs on a task of its own, so a connection that hangs — a
   captive portal can hold a TLS handshake open for two minutes — never holds
   up the button or the screen.
+- **A sound plays from a buffer of its own.** When the wrist names a sound,
+  `main.cpp` renders all its notes as one 8-bit triangle wave at 16 kHz
+  (`render()`, in `band_logic.h`, so the host tests hold it) and hands that
+  to `M5.Speaker.playRaw()`, so painting the face cannot bend a tune's
+  rhythm. There are two buffers of 9.6 KB, used in turn, and one is written
+  again only once M5Unified says the speaker has let it go: its buffer
+  release callback, which is why the firmware needs M5Unified 0.2.22 or
+  later. The StickC Plus plays the same sounds through its buzzer, which
+  runs off the 5V output the StickS3 keeps off so as to charge, so `setup()`
+  switches that output back on for the Plus alone. A buzzer is loud only
+  high up, from about 2.8 to 4.7 kHz on the Plus, so there each sound goes
+  up whole octaves, as far as its highest note stays under 4.7 kHz: the same
+  tune, every note as long, so the wrist's timings hold (`buzzerFactor()`).
+  `down` and `warn` go up two octaves; `jingle` and `found`, already high,
+  stay as they are. Octaves alone made `low`, NOT SENT, into `fall`,
+  CHANGED: the same fifth down an octave apart, they landed on the same
+  notes. So on a buzzer `low` falls that fifth from 4.7 kHz instead, above
+  CHANGED (`BUZZER_OWN`), and a host test holds that no two sounds are
+  alike on either. The first
+  M5StickC has no speaker; it says so once on the console and only lights up.
+  The Plus has no PSRAM, and the buffers take its static RAM from 51 KB to
+  70 KB of 320 KB; `show` prints the free heap.
+- **A change of light alone only turns the backlight.** A flash's dark steps
+  and the meeting's blink never repaint the face, so a call that blinks for
+  fifteen minutes never holds up the loop or misses a tap.
+- **`npm test` also compiles the logic as the band's compiler does.** The ESP32
+  core builds C++ as gnu++11, after `Arduino.h` has made names like `LOW` and
+  `HIGH` into macros; the laptop build is C++17 and has neither. So
+  `firmware/host/as_band.cpp` compiles `band_logic.h` that way: a note table
+  called `LOW` and a `constexpr` loop once passed every test and broke only
+  in PlatformIO.
 - **Its key is 128 random bits, made at every boot**, never the chip's MAC, and
   kept only in RAM with the pairing's secret.
 - **The pairing code is as wide as the screen allows**, with four light modules
@@ -345,6 +448,23 @@ shows.
 - **Pairing ends with a check** shown on the wrist and confirmed on the phone.
   Without it a decoy code would pair silently, and with `set` a wrongly paired
   wristband could make someone visible.
+- **The wristband flashes and chirps.** Revision 6 §8 rules out vibration or
+  light patterns that pretend to carry a message. The owner chose on 25 Sep
+  2026 that the band flashes and sounds, and none of it pretends: each
+  reaction answers something the wearer just did, or says one fact about the
+  band. The two about another person are the meeting call, for a number the
+  band already shows, and a wave's call.
+- **The wristband says that someone waved.** Revision 6 §8 keeps names,
+  photos and other people's picks off the wristband, and it showed nothing
+  about anyone else but the meeting number. The owner chose on 25 Sep 2026
+  that it also says that someone waved at its person and how many wait, and
+  can wave back to the newest. Still no name, no photo, no pick and no area.
+- **A meeting ends when both say they found each other.** Revision 6 shows
+  `MEET` and the number for as long as the meeting lasts, and S11 has no way
+  to say a meeting happened. The owner chose on 26 Sep 2026 a side hold on the
+  band, or `WE FOUND EACH OTHER` on S11, counted only when both say it: the
+  meeting face gains `FOUND: WAITING`, both bands a *found* reaction, and
+  Tonight's `met` counts meetings found, not matches.
 
 ## Abuse resistance
 
@@ -384,6 +504,17 @@ was red-teamed and hardened. A red/blue pass found and closed:
   news; a showing change names the revision it was chosen from. A person who
   left under NOT NOW and comes back is still invisible, and a join made while
   holding NOT NOW makes them invisible from the first moment.
+- **A wristband's yes for its person.** A band can wave back, which makes a
+  match and shows both names. It speaks for its person only with the secret of
+  its pairing, so no other band can wave as them. Its wave is dropped whole
+  unless it is exactly one, then refused `too fast` (one a second, counted
+  before any handle is looked up and whether or not it lands, so a flood of
+  made-up handles buys nothing), `unpaired`, `no room`, `changed` (its
+  person's revision moved, or they are not on SAY HI) and `gone` when the
+  handle is not someone waiting on its person, which a block reads exactly
+  like. A band never starts a wave: with none to answer, nothing is recorded.
+  A lent, taken or forgotten band can still make a match for its person, with
+  or without their phone; blocking undoes it.
 - **Rooms that never emptied.** A venue with nobody in it, nobody in its grace
   window, no clip still loading and no wristband still worn is now reclaimed, so
   a long-lived relay does not keep a room object for every venue anyone typed.
@@ -462,6 +593,28 @@ relay could drive what a wrist shows.
   bands. A night's worth of battery, and the Plus's face button, are not
   tried. CI builds both envs with PlatformIO on every push — the ESP32 image
   is about 1.2 MB of its 3 MB app partition — and keeps each image to flash.
+- **The reactions have run on both real bands, but nobody has listened yet.**
+  On 26 Sep 2026, driven from their USB consoles through the Fly relay, both
+  bands played each reaction where it belongs: `ask` at the check, `up` on
+  YES, `hello`, `double`, `jingle`, a `tick` per press, and a warning as a
+  band lost its pairing. TEST THE LIGHT with the phone's switch off showed its
+  white and played nothing. A meeting blinked, the light 0 and 255 in turn as
+  `face` read it, until a press that only ticked. The Plus keeps 72,728 bytes
+  free with both sound buffers, 63,880 at the least. The Plus's buzzer was
+  silent at first: it runs off the 5V output the firmware had switched off
+  for the StickS3's sake. With that output back on, a laptop microphone
+  beside it heard the band play every one of its eleven sounds from the
+  console, three times each, measured note by note at one fixed delay, with
+  the same measure 0.7 s either way as the control. Played at the S3's
+  pitches, `ask`, `down`, `low` and `warn` did not rise over the room at
+  all; a sweep a semitone at a time found the buzzer loud only from about
+  2.8 to 4.7 kHz. Raised by octaves (above), every one of them came through,
+  most notes 10 to 34 dB over the room, and the ticks as well; still faint
+  are `up`'s first two notes, at 2.1 and 2.6 kHz. With the 5V output on and
+  USB in, the Plus held 100% for 50 minutes, most of them on the Wi-Fi,
+  where the StickS3 in the same state ran down. How each sound lands on a
+  wrist, and each colour, and the words whole on a real screen, still need
+  someone there. Flashing on the music's beat is a later spec.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was
@@ -471,9 +624,31 @@ relay could drive what a wrist shows.
   it for its hour, including someone who has since been blocked. The address
   is 96 random bits and only ever shown inside a room.
 - **Reports go to a log**, not to a person.
-- **Answering someone from the wrist** (phase B) is not built: only waving back
-  at a SAY HI could be, since a like needs the other person's pick, which the
-  wrist never shows.
+- **Waves have run on the real bands from their consoles, not yet by hand.**
+  On 26 Sep 2026, through the Fly relay, a stand-in phone paired the StickC
+  Plus and a scripted one the StickS3, each saying YES only once the band's
+  own console showed the same number, and a third person without a band
+  joined them. Each wave called the Plus, with `hello` and a count of
+  `1 waiting`, then `2 waiting`. `press face` opened `SOMEONE WAVED` /
+  `2 WAITING - HOLD SIDE` at light 110, and `hold side` played `double` and
+  waved back to the newest. The relay took it: both bands showed `MEET 63`
+  and played the jingle in the same second, and both phones showed the
+  match. The physical buttons, and the three blue flashes seen by eye, are
+  left for a person. Answering from the wrist is only waving back: a like
+  needs the other person's pick, which the wrist never shows.
+- **Found each other has run on the real bands from their consoles, not yet
+  by hand.** On 26 Sep 2026, through the Fly relay, two stand-in phones with
+  SOUND off paired the StickS3 and the StickC Plus (each YES only once the
+  band's own console showed the number), and a wave and a wave back made
+  MEET 65 on both. A side hold on the S3 said found: its console showed
+  `meet 65 (found: waiting)` and its face `FOUND: WAITING`, and the Plus's
+  console said nothing at all. A side hold on the Plus then gave both
+  `hi (found 65)`, both faces lost the number, and both phones had the same
+  found time. With SOUND off nothing could show that the `found` sound and
+  flash played on the hardware; they, and the buttons pressed by hand, still
+  need someone there. Saying it by bumping two wristbands together, with the
+  motion sensor, is a later change, after a spike shows a fist bump can be
+  told apart from two people dancing to the same beat.
 - **The timings are guesses until worn** — six seconds awake, 1.5 s holds,
   three to send, ten to wait. They are named constants for that reason.
 - **Recording has run on Chrome's fake camera, not a phone's.** Headless

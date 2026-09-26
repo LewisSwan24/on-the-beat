@@ -15,13 +15,14 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { createRoom, INTENTS, SPOTS } from './room.js';
-import { bandShow, cleanCode, newCode } from './band.js';
+import { MEET_MS, bandShow, cleanCode, newCode } from './band.js';
 import { nightOf } from './night.js';
 
 export const WS_PATH = '/api/ws';
 export const PAIR_CHECK_MS = 60_000;          // a pending pairing waits this long for YES
 export const BAND_ALONE_MS = 60 * 60_000;     // a wristband alone holds its person, or waits for its owner, this long
 export const GRACE_MS = 120_000;              // a locked screen is not leaving
+export const HEARD_GAP_MS = 5000;             // a wristband may say what it heard at most this often (near spec §2)
 const MAX_FRAME = 1_600_000;          // a five-second clip, base64, with room to spare
 const CLIP_MAX = 1_200_000;           // bytes of video per clip
 const ROOM_CLIPS_MAX = 60_000_000;    // all clips in one room; the oldest go first
@@ -30,10 +31,15 @@ const CLIP_TTL_MS = 3_600_000;        // "it loops on the floor for an hour"
 const PING_MS = 15_000;
 const BAND_GRACE_MS = 60_000;         // a wristband that drops keeps its letters this long
 const SET_GAP_MS = 1000;              // a wristband may change its person at most once a second
+const WAVE_GAP_MS = 1000;             // and wave back at most once a second, on a stamp of its own
+const FOUND_GAP_MS = 1000;            // and say found at most once a second, on a stamp of its own
 const TRIES_MS = 60_000;              // the window pairing attempts are counted in
 const SOCKET_TRIES = 5;               // pairing attempts one socket may make in it
 const ADDRESS_TRIES = 20;             // pairing attempts one address may make in it, over every socket
 const HEX32 = /^[a-f0-9]{32}$/;
+const AIR = /^[a-f0-9]{12}$/;         // a wristband's radio: its Wi-Fi MAC, new every boot
+const HEARD_MAX = 16;                 // the most bands one report may name
+const NEAR_TICK_MS = 5000;            // how often each room works out who is near whom
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
@@ -93,7 +99,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
       const show = shows.find((s) => s.id === key);
       const spots = Array.isArray(show?.spots) && show.spots.length ? show.spots.map(String) : SPOTS;
-      rooms.set(key, { key, room: createRoom({ spots }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map() });
+      // sound: each person's sound switch, as their phone last said it. Leaving forgets it; the grace does not.
+      // The room reads the relay's clock: a wave's number is the time it was made, so it only goes up.
+      rooms.set(key, { key, room: createRoom({ spots, now }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(), sound: new Map() });
     }
     return rooms.get(key);
   }
@@ -165,6 +173,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     waitingAt: 0,
     quiet: false,       // a hold with nobody in a room to hide, kept until they are
     setAt: 0,           // when this wristband last changed its person (rule 1)
+    waveAt: 0,          // when it last waved back, landed or not
+    foundTry: 0,        // when it last said found, landed or not
   });
 
   // How long a record has been dead weight: a live wristband is never that, a
@@ -189,8 +199,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
 
   function showBand(b, now = clock()) {
     if (!b.ws) return;
-    const view = b.key ? rooms.get(b.key)?.room.viewFor(b.person) ?? null : null;
-    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, waiting: b.waiting, testUntil: b.testUntil, now }) });
+    const r = b.key ? rooms.get(b.key) : null;
+    const view = r?.room.viewFor(b.person) ?? null;
+    const sound = r?.sound.get(b.person) ?? null;
+    const waves = view ? r.room.wavesAt(b.person) : [];
+    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, waiting: b.waiting, testUntil: b.testUntil, sound, waves, now }) });
     if (text !== b.lastShow) { b.lastShow = text; b.ws.send(text); }
   }
 
@@ -252,16 +265,93 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     return true;
   }
 
+  /**
+   * A wave back from the wrist, to the newest who waved at its person
+   * (docs/superpowers/specs/2026-09-25-wrist-waves-design.md §3). The relay
+   * answers ok, or no and why; a refused wave changes nothing and tells
+   * nobody else. Returns whether it landed.
+   */
+  function waveFromBand(ws, b, m) {
+    // Dropped whole, unanswered and unstamped, unless it is exactly a wave.
+    if (typeof m.ref !== 'string' || !/^[a-f0-9]{10}$/.test(m.ref) || !Number.isInteger(m.basis)) return false;
+    const answer = (why) => { ws.send(JSON.stringify(why ? { t: 'wave', ok: false, why } : { t: 'wave', ok: true })); return !why; };
+    // Stamped before anything is looked up, refused or not: finding a handle is a pass over the room.
+    if (now() - b.waveAt < WAVE_GAP_MS) return answer('too fast');
+    b.waveAt = now();
+    if (!b.person) return answer('unpaired');
+    const room = rooms.get(b.key)?.room;
+    if (!room?.has(b.person)) return answer('no room');
+    if (m.basis !== room.revOf(b.person) || room.armedOf(b.person) !== 'hi') return answer('changed');
+    // Not someone who waved at its person, or no longer someone it may wave at. A block must read exactly as
+    // leaving (promise 4). A band never starts a wave: with none to answer, nothing is recorded.
+    if (!room.wavedAtYou(b.person, m.ref) || room.wave(b.person, m.ref) === false) return answer('gone');
+    return answer(null);
+  }
+
+  /**
+   * We found each other, said on the wrist's meeting face
+   * (docs/superpowers/specs/2026-09-26-wrist-found-design.md §2): for its
+   * person's meeting with that number, under MEET_MS old and not yet found by
+   * both. The relay answers ok, or no and why; a refused one changes nothing
+   * and tells nobody. Returns whether it landed.
+   */
+  function foundFromBand(ws, b, m) {
+    // Dropped whole, unanswered and unstamped, unless it is exactly a found: a meeting's number is two digits.
+    if (typeof m.number !== 'string' || !/^[1-9][0-9]$/.test(m.number)) return false;
+    const answer = (why) => { ws.send(JSON.stringify(why ? { t: 'found', ok: false, why } : { t: 'found', ok: true })); return !why; };
+    // Stamped before anything is looked up, refused or not: finding the meeting is a view of the person.
+    if (now() - b.foundTry < FOUND_GAP_MS) return answer('too fast');
+    b.foundTry = now();
+    if (!b.person) return answer('unpaired');
+    const room = rooms.get(b.key)?.room;
+    if (!room?.has(b.person)) return answer('no room');
+    // The meeting its face shows: the newest with that number. Over, found by both, or blocked, it is gone.
+    const meeting = room.viewFor(b.person).matches
+      .filter((x) => String(x.number) === m.number && now() - x.at < MEET_MS && !x.foundAt)
+      .sort((x, y) => y.at - x.at)[0];
+    if (!meeting || !room.found(b.person, meeting.id)) return answer('gone');
+    return answer(null);
+  }
+
   function handleBand(ws, m) {
     const b = bands.get(ws.band);
     // Only from the wristband's current socket: a set stuck in a replaced one must not land.
     if (!b || b.ws !== ws) return;
+    // What it heard is for the room's next tick, which pushes what changed: nothing to push now.
+    if (m.t === 'heard') { heardFromBand(b, m); return; }
     if (m.t === 'battery') b.battery = clampBattery(m.level);
     // Held: NOT NOW, from the wrist. The phone follows.
     if (m.t === 'hold') holdOn(b);
     if (m.t === 'set' && !setFromBand(ws, b, m)) return;
+    if (m.t === 'wave' && !waveFromBand(ws, b, m)) return;
+    if (m.t === 'found' && !foundFromBand(ws, b, m)) return;
     const r = b.key ? rooms.get(b.key) : null;
     if (r) push(r); else showBand(b);
+  }
+
+  /**
+   * What a wristband heard of the others by radio (near spec §2): `ch`, its
+   * Wi-Fi channel, and `near`, [air, rssi] pairs. From a band paired in a room,
+   * at most every HEARD_GAP_MS, whole or not at all. An air counts only as the
+   * air of exactly one band paired in the same room; the room itself ignores the
+   * band's own person and anyone no longer in it.
+   */
+  function heardFromBand(b, m) {
+    const r = b.person && b.key ? rooms.get(b.key) : null;
+    if (!r?.room.has(b.person) || (b.heardAt !== undefined && now() - b.heardAt < HEARD_GAP_MS)) return;
+    if (!Number.isInteger(m.ch) || m.ch < 1 || m.ch > 14 || !Array.isArray(m.near) || m.near.length > HEARD_MAX) return;
+    const fits = (e) => Array.isArray(e) && e.length === 2 && typeof e[0] === 'string' && AIR.test(e[0])
+      && Number.isInteger(e[1]) && e[1] >= -100 && e[1] <= 0;
+    if (!m.near.every(fits)) return;
+    b.heardAt = now();
+    // A band has its room's key only while it is paired there.
+    const here = [...bands.values()].filter((o) => o.key === b.key);
+    const near = [];
+    for (const [air, rssi] of m.near) {
+      const who = here.filter((o) => o.air === air);
+      if (who.length === 1) near.push({ id: who[0].person, rssi });
+    }
+    r.room.heard(b.person, { ch: m.ch, near });
   }
 
   function refuseBand(ws) {
@@ -277,6 +367,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // The key proves the id; a socket says hello once.
     const proven = v2 ? HEX32.test(id) && HEX32.test(key) && bandIdOf(key) === id : /^[a-f0-9]{16,64}$/.test(id);
     if (ws.band || !proven) { refuseBand(ws); return; }
+    // Its radio, if it has one: twelve hex digits, or no hello at all.
+    if (m.air !== undefined && !AIR.test(String(m.air))) { refuseBand(ws); return; }
     const secret = HEX32.test(String(m.secret || '')) ? String(m.secret) : null;
     let b = bands.get(id);
     // A hello with no version never reaches a record made by one with, nor the other way round.
@@ -304,6 +396,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     b.ws = ws;
     b.everWs = true;
     b.lastShow = null;
+    b.air = m.air === undefined ? null : String(m.air);
     ws.band = id;
     if (m.battery !== undefined) b.battery = clampBattery(m.battery);
     if (!b.person && !b.code && !b.pending && !b.waiting) freshLetters(b);
@@ -468,6 +561,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         if (b) { b.testUntil = now() + 2000; showBand(b); }
         break;
       }
+      case 'sound':
+        // The person's own switch, for their own band's shows. Like TEST THE LIGHT it reaches nobody else's.
+        if (typeof m.on !== 'boolean') return;
+        r.sound.set(me, m.on);
+        break;
       case 'pick': room.pick(me, m.track); break;
       case 'wave': room.wave(me, m.handle); break;
       case 'like': room.like(me, m.handle); break;
@@ -478,6 +576,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         if (room.report(me, m.handle || null, m.why)) console.log('REPORT', JSON.stringify(room.reports().at(-1)));
         break;
       case 'keep': room.keep(me, m.match, m.on); break;
+      case 'found': room.found(me, m.match); break;
       case 'clip': {
         const to = m.to ? String(m.to) : null;
         const ref = keepClip(r, me, m.mime, m.data, to ? 'to:' + to : 'floor');
@@ -497,6 +596,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         const b = bandOf(r.key, me);
         if (b) unpairBand(b);
         stopGrace(r, me);
+        r.sound.delete(me);
         room.leave(me);
         r.sockets.delete(ws);
         ws.r = null;
@@ -617,6 +717,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     for (const b of bands.values()) showBand(b, at);
   }
   const lights = setInterval(() => tickBands(), 1000);
+  // Who is near whom, worked out in each room; only the views that changed are sent (push).
+  function tickNear() {
+    for (const r of rooms.values()) if (r.room.nearTick()) push(r);
+  }
+  const nearly = setInterval(() => tickNear(), NEAR_TICK_MS);
   // A venue with nobody in it, nobody in its grace window, no clip still loading
   // and no wristband still worn holds nothing — so it is let go, or a long-lived
   // relay would keep a room object for every venue anyone ever typed.
@@ -673,6 +778,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       expire,
       /** For tests: time out pairing checks and redraw every wristband as if the clock read `at`. */
       tickBands,
+      /** For tests: work out who is near whom now, as the relay does every NEAR_TICK_MS. */
+      tickNear,
       /** For tests: how many wristband records the relay is holding. */
       bandCount: () => bands.size,
       /** For tests: how many venue rooms the relay is holding. */
@@ -682,6 +789,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         clearInterval(beat);
         clearInterval(sweep);
         clearInterval(lights);
+        clearInterval(nearly);
         for (const r of rooms.values()) for (const t of r.left.values()) clearTimeout(t);
         for (const ws of wss.clients) ws.terminate();
         wss.close(() => server.close(() => done()));

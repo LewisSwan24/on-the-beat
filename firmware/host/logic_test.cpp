@@ -15,6 +15,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <utility>
 
 // On the wristband, Arduino.h comes first and defines these as macros, so a
 // name in band_logic.h that matches one breaks the device build (HEX did).
@@ -367,6 +368,87 @@ void colour() {
   }
 }
 
+void sound() {
+  static uint8_t buf[SOUND_SAMPLES];
+  const size_t ms = SOUND_RATE / 1000;  // samples a millisecond
+  // One buffer holds the longest sound, jingle and warn at 0.6 s, and so every sound.
+  CHECK(SOUND_SAMPLES == 600 * ms);
+  for (const Sound& s : SOUNDS) CHECK(soundMs(s.name) * ms <= SOUND_SAMPLES);
+  // A sound is as long as its notes.
+  CHECK(render("tick", buf, sizeof buf) == 25 * ms);
+  CHECK(render("jingle", buf, sizeof buf) == SOUND_SAMPLES);
+  // A rest is silence, the middle of the range.
+  CHECK(render("double", buf, sizeof buf) == 110 * ms);
+  bool rest = true;
+  for (size_t i = 25 * ms; i < 85 * ms; ++i) rest = rest && buf[i] == 128;
+  CHECK(rest);
+  // A note is a triangle over the whole range, never 0, starting from the middle so it does not click in.
+  render("tick", buf, sizeof buf);
+  uint8_t lo = 255, hi = 0;
+  int ups = 0;
+  for (size_t i = 0; i < 25 * ms; ++i) {
+    lo = std::min(lo, buf[i]);
+    hi = std::max(hi, buf[i]);
+    if (i > 0 && buf[i - 1] < 128 && buf[i] >= 128) ++ups;
+  }
+  CHECK(buf[0] == 128 && lo >= 1 && lo <= 8 && hi >= 247);
+  CHECK(ups >= 44 && ups <= 45);  // 1800 Hz for 25 ms: 45 waves
+  // No more than the room it is given, and nothing for a name it does not know.
+  CHECK(render("jingle", buf, 100) == 100);
+  CHECK(render("hum", buf, sizeof buf) == 0);
+  // On a buzzer a sound goes up whole octaves, as far as its highest note stays within BUZZER_TOP_HZ...
+  const std::pair<const char*, uint32_t> octaves[] = {{"tick", 2}, {"double", 2}, {"down", 4},   {"up", 2},
+                                                      {"fall", 2}, {"ask", 2},    {"jingle", 1}, {"warn", 4},
+                                                      {"hello", 2}, {"found", 1}};
+  CHECK(sizeof octaves / sizeof octaves[0] + 1 == sizeof SOUNDS / sizeof SOUNDS[0]);  // and low, below
+  for (const auto& o : octaves) CHECK(soundFor(o.first) && !buzzerOwn(o.first) && buzzerFactor(*soundFor(o.first)) == o.second);
+  for (const Sound& s : SOUNDS) {
+    const uint32_t top = highestHz(s.notes, s.count) * buzzerFactor(s);
+    CHECK(top <= BUZZER_TOP_HZ && top * 2 > BUZZER_TOP_HZ);
+  }
+  // ...but low, NOT SENT, falls a fifth from 4699 Hz: two octaves up it would be CHANGED's own notes.
+  CHECK(buzzerOwn("low") && buzzerNote(*soundFor("low"), 0).hz == 4699 && buzzerNote(*soundFor("low"), 1).hz == 3136);
+  // Every note on a buzzer keeps its length, its rests and the way each step goes, within BUZZER_TOP_HZ.
+  const auto dir = [](uint32_t a, uint32_t b) { return (b > a) - (b < a); };
+  for (const Sound& s : SOUNDS)
+    for (size_t k = 0; k < s.count; ++k) {
+      const Note n = buzzerNote(s, k);
+      CHECK(n.ms == s.notes[k].ms && !n.hz == !s.notes[k].hz && n.hz <= BUZZER_TOP_HZ);
+      if (k && n.hz && s.notes[k - 1].hz)
+        CHECK(dir(buzzerNote(s, k - 1).hz, n.hz) == dir(s.notes[k - 1].hz, s.notes[k].hz));
+    }
+  // And no two sounds are alike, on the speaker or the buzzer: as many notes, each within a semitone.
+  const auto alike = [](const Sound& a, const Sound& b, bool buzzer) {
+    if (a.count != b.count) return false;
+    for (size_t k = 0; k < a.count; ++k) {
+      const uint32_t x = buzzer ? buzzerNote(a, k).hz : a.notes[k].hz;
+      const uint32_t y = buzzer ? buzzerNote(b, k).hz : b.notes[k].hz;
+      if (!x != !y || (x && std::max(x, y) * 1000 >= std::min(x, y) * 1060)) return false;
+    }
+    return true;
+  };
+  for (const Sound& a : SOUNDS)
+    for (const Sound& b : SOUNDS)
+      if (&a != &b) CHECK(!alike(a, b, false) && !alike(a, b, true));
+  // Its length stays, so the wrist's timings hold; only the pitch moves: 3600 Hz for 25 ms is 90 waves.
+  static uint8_t plain[SOUND_SAMPLES];
+  CHECK(render("tick", buf, sizeof buf, true) == 25 * ms);
+  CHECK(render("double", buf, sizeof buf, true) == 110 * ms);
+  CHECK(render("warn", buf, sizeof buf, true) == render("warn", plain, sizeof plain));
+  render("tick", buf, sizeof buf, true);
+  ups = 0;
+  for (size_t i = 1; i < 25 * ms; ++i)
+    if (buf[i - 1] < 128 && buf[i] >= 128) ++ups;
+  CHECK(buf[0] == 128 && ups >= 89 && ups <= 90);
+  // A sound already high enough is left as it is, sample for sample.
+  const size_t n = render("found", buf, sizeof buf, true);
+  CHECK(n == render("found", plain, sizeof plain) && std::equal(buf, buf + n, plain));
+  // The flash colours: plain fills. Black, white and the cards are drawn another way.
+  CHECK(plainField("red") && *plainField("red") == (Rgb{0xFF, 0x6B, 0x6B}));
+  CHECK(plainField("orange") && *plainField("orange") == (Rgb{0xFF, 0x8A, 0x00}));
+  CHECK(!plainField("black") && !plainField("white") && !plainField("hi"));
+}
+
 void pairing() {
   CHECK(pairUrl("https://a.example//", "KXRT") == "https://a.example/pair/KXRT");
   CHECK(qrVersion(17) == 1 && qrVersion(18) == 2 && qrVersion(53) == 3 && qrVersion(78) == 4);
@@ -425,6 +507,8 @@ void console() {
   CHECK(saidLine(helloFrame(id, key, 62, secret, true)) == "hello to the relay, with its secret");
   CHECK(saidLine("{\"t\":\"set\",\"intent\":\"hi\",\"basis\":7}") == "a choice from the wrist: HI :)");
   CHECK(saidLine("{\"t\":\"set\",\"intent\":null,\"basis\":7}") == "a choice from the wrist: OFF");
+  CHECK(saidLine("{\"t\":\"wave\",\"ref\":\"a1b2c3d4e5\",\"basis\":7}") == "a wave back from the wrist");
+  CHECK(saidLine("{\"t\":\"found\",\"number\":\"27\"}") == "found, from the wrist");
 
   std::string shown;
   const auto heard = [&shown](const std::string& text) {
@@ -448,6 +532,51 @@ void console() {
   CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"meet\",\"intent\":\"hi\",\"big\":\"42\",\"small\":\"MEET\"}}") == "the relay shows: meet 42");
   CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"waiting\"}}") == "the relay shows: waiting");
   CHECK(heard("{\"t\":\"ping\"}").empty());
+  // Who waits is part of what it shows, as a count; never the handle.
+  const std::string hi = "{\"t\":\"show\",\"show\":{\"kind\":\"hi\",\"intent\":\"hi\",\"armed\":\"hi\",\"rev\":7";
+  CHECK(heard(hi + "}}") == "the relay shows: hi");
+  const std::string two = heard(hi + ",\"waves\":{\"ref\":\"a1b2c3d4e5\",\"n\":2,\"seq\":1790337603000}}}");
+  CHECK(two == "the relay shows: hi (2 waiting)" && two.find("a1b2") == std::string::npos);
+  CHECK(heard(hi + ",\"waves\":{\"ref\":\"f6a7b8c9d0\",\"n\":2,\"seq\":1790337603005}}}").empty());
+  // Found each other: said on this side, the meeting waits; said by both, the show names the number it found.
+  CHECK(heard("{\"t\":\"show\",\"show\":{\"kind\":\"meet\",\"intent\":\"hi\",\"big\":\"42\",\"small\":\"FOUND: WAITING\"}}") ==
+        "the relay shows: meet 42 (found: waiting)");
+  CHECK(heard(hi + ",\"found\":{\"n\":42,\"intent\":\"song\"}}}") == "the relay shows: hi (found 42)");
+  CHECK(heard(hi + ",\"found\":{\"n\":42,\"intent\":\"song\"}}}").empty());
+  CHECK(heard("{\"t\":\"found\",\"ok\":true}") == "the relay took the found");
+  CHECK(heard("{\"t\":\"found\",\"ok\":false,\"why\":\"gone\"}") == "the relay did not take the found: gone");
+  CHECK(heard("{\"t\":\"wave\",\"ok\":true}") == "the relay took the wave back");
+  CHECK(heard("{\"t\":\"wave\",\"ok\":false,\"why\":\"gone\"}") == "the relay did not take the wave back: gone");
+
+  // Keys typed at the USB console are the presses a finger makes: a press shows no bar, a hold is past the hold.
+  CHECK(PRESS_MS < BAR_MS && PRESS_HOLD_MS > HOLD_MS);
+  KeyPress p = pressFor(readCommand("press face"));
+  CHECK(p.key == 1 && p.ms == PRESS_MS);
+  p = pressFor(readCommand("HOLD Side "));
+  CHECK(p.key == 2 && p.ms == PRESS_HOLD_MS);
+  CHECK(pressFor(readCommand("press")).key == 0 && pressFor(readCommand("press elbow")).key == 0);
+  CHECK(pressFor(readCommand("show")).key == 0 && pressFor(readCommand("face")).key == 0);
+  CHECK(pressFor(readCommand("ssid side")).key == 0);  // a network called "side" is not a press
+
+  // And the console can say what the screen shows: the words, the field and the light.
+  Screen waves;
+  waves.big = "SOMEONE WAVED";
+  waves.small = "2 WAITING - HOLD SIDE";
+  waves.light = LIGHT_AWAKE;
+  CHECK(faceLine(waves) == "face: SOMEONE WAVED / 2 WAITING - HOLD SIDE (black, light 110)");
+  Screen flash;
+  flash.field = "hi";
+  flash.light = LIGHT_FULL;
+  CHECK(faceLine(flash) == "face: no words (hi, light 255)");
+  Screen held;
+  held.big = "KEEP HOLDING";
+  held.light = LIGHT_AWAKE;
+  held.bar = 40;
+  CHECK(faceLine(held) == "face: KEEP HOLDING (black, light 110, bar 40)");
+  Wrist w("000102030405060708090a0b0c0d0e0f");
+  w.linkUp(1000);
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"pairing\",\"code\":\"UDXE\"}}", 1000);
+  CHECK(faceLine(w.face(1000)) == "face: UDXE (black, light 160)");  // the letters, read without eyes on it
 }
 
 void said() {
@@ -526,11 +655,36 @@ std::string answer(const Command& c) {
            ",\"COMMIT_MS\":" + std::to_string(COMMIT_MS) + ",\"CONFIRM_MS\":" + std::to_string(CONFIRM_MS) +
            ",\"RESULT_MS\":" + std::to_string(RESULT_MS) + ",\"PING_EVERY_MS\":" + std::to_string(PING_EVERY_MS) +
            ",\"DEAF_MS\":" + std::to_string(DEAF_MS) + ",\"STALE_MS\":" + std::to_string(STALE_MS) +
-           ",\"QUIET_CONFIRM_MS\":" + std::to_string(QUIET_CONFIRM_MS) + ",\"LIGHT_FULL\":" + std::to_string(LIGHT_FULL) +
+           ",\"QUIET_CONFIRM_MS\":" + std::to_string(QUIET_CONFIRM_MS) + ",\"BLINK_MS\":" + std::to_string(BLINK_MS) +
+           ",\"HINT_MS\":" + std::to_string(HINT_MS) + ",\"PAIR_AWAKE_MS\":" + std::to_string(PAIR_AWAKE_MS) +
+           ",\"LIGHT_FULL\":" + std::to_string(LIGHT_FULL) +
            ",\"LIGHT_DIM\":" + std::to_string(LIGHT_DIM) + ",\"LIGHT_PAIR\":" + std::to_string(LIGHT_PAIR) +
            ",\"LIGHT_AWAKE\":" + std::to_string(LIGHT_AWAKE) + ",\"LIGHT_OFF\":" + std::to_string(LIGHT_OFF) +
            ",\"CARD_WORDS\":{\"hi\":" + quote(cardWords("hi")) + ",\"song\":" + quote(cardWords("song")) +
            ",\"dance\":" + quote(cardWords("dance")) + "}}";
+  }
+  if (c.verb == "sounds") {
+    // SOUNDS, as app/lib/wrist.js has it: {"tick":[[1800,25]],...}
+    std::string out = "{";
+    for (const Sound& s : SOUNDS) {
+      out += std::string(out.size() > 1 ? "," : "") + quote(s.name) + ":[";
+      for (size_t i = 0; i < s.count; ++i)
+        out += std::string(i ? "," : "") + "[" + std::to_string(s.notes[i].hz) + "," + std::to_string(s.notes[i].ms) + "]";
+      out += "]";
+    }
+    return out + "}";
+  }
+  if (c.verb == "flashes") {
+    // FLASHES, as app/lib/wrist.js has it: {"set":{"colour":"card","count":2,"on":150,"off":100},...}
+    std::string out = "{";
+    for (const Flash& f : FLASHES)
+      out += std::string(out.size() > 1 ? "," : "") + quote(f.name) + ":{\"colour\":" + quote(f.colour) +
+             ",\"count\":" + std::to_string(f.count) + ",\"on\":" + std::to_string(f.on) + ",\"off\":" + std::to_string(f.off) + "}";
+    return out + "}";
+  }
+  if (c.verb == "flashcolours") {
+    // The flash fields, as app/lib/wrist.js FLASH_COLOURS has them.
+    return "{\"red\":" + quote(hex(*plainField("red"))) + ",\"orange\":" + quote(hex(*plainField("orange"))) + "}";
   }
   if (c.verb == "hues") {
     std::string out = "{";
@@ -600,12 +754,13 @@ int runWrist() {
       else w->keyUp(k, t);
     }
     else if (verb == "frame") w->frame(arg, t);
-    else if (verb == "battery") w->setBattery(std::atoi(arg.c_str()));
+    else if (verb == "battery") w->setBattery(std::atoi(arg.c_str()), t);
     else if (verb == "wifi") w->setWifi(arg == "1");
-    std::string sent;
+    std::string sent, sounds;
     for (const std::string& f : w->take()) sent += (sent.empty() ? "" : ",") + (f == "DROP" ? std::string("\"DROP\"") : f);
+    for (const std::string& n : w->sounds()) sounds += (sounds.empty() ? "" : ",") + quote(n);
     const Screen s = w->face(t);
-    std::cout << "{\"sent\":[" << sent << "],\"face\":{\"big\":" << quote(s.big) << ",\"small\":" << quote(s.small)
+    std::cout << "{\"sent\":[" << sent << "],\"sounds\":[" << sounds << "],\"face\":{\"big\":" << quote(s.big) << ",\"small\":" << quote(s.small)
               << ",\"field\":" << quote(s.field) << ",\"ink\":" << quote(s.ink) << ",\"light\":" << int(s.light)
               << ",\"bar\":" << s.bar << ",\"code\":" << quote(s.code) << "}}\n";
   }
@@ -629,6 +784,7 @@ int main(int argc, char** argv) {
   text();
   face();
   colour();
+  sound();
   pairing();
   relay();
   rejoin();
