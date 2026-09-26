@@ -76,14 +76,14 @@ the bands beside its speaker.
   chords fill the high band, and the round-2 tracker locked almost none of
   it. The tracker of §2, with five bands, in the full-range and laptop
   rooms: locks the pop mix in 2 s and pulses all of its beats; relocks the
-  medley's change to 128 BPM in about 2 s with one or two pulses off the
-  beat at the change; pulses 96–100% under the crowd (locked in 2–6 s) and
-  through the drift (about 18 ms late while the tempo climbs); and in the
-  breakdown pulses a few times on the chords' changes, on the grid, before
-  going quiet. In the hall it pulses only 59–84% of beats. The half-time
-  groove it never locks: two to four pulses of the old grid slip into it,
-  then nothing. Over round 2's real recordings it pulses 84–100% of the
-  click and kick beats and nothing in 30 s of speech or in silence.
+  medley's change to 128 BPM in about 2 s with two pulses of the old grid
+  after the change; pulses every beat under the crowd (locked in 2–6 s) and
+  through the drift (about 18 ms late while the tempo climbs); and goes
+  quiet within two or three beats of the breakdown. In the hall it pulses
+  72–100% of beats and takes up to 10 s to lock. The half-time groove it never locks:
+  one to four pulses of the old grid slip into it, then nothing. Over round
+  2's real recordings it pulses 88–100% of the click and kick beats and
+  nothing in 30 s of speech or in silence.
 - **Round 3 is the gate (§4.1):** the five bands from the real microphones,
   the microphone's own delay, and a song of the owner's choice.
 
@@ -144,18 +144,23 @@ table.
 - **Keeping it:** a beat's window is `BEAT_NEAR` of a period either side of
   it. Once it has closed, its strongest rise is traced back to where that
   rise began — where the drum started — and the beat was **heard** if that
-  rise is at least as strong as any in the half beats either side, and at
-  least `BEAT_ONSET` times the window's mean onset strength (never under
-  `BEAT_ONSET_MIN`). A heard
+  drum started within `BEAT_TIGHT_MS` of the beat, and its rise is at least
+  as strong as any in the half beats either side and at least `BEAT_ONSET`
+  times the window's mean onset strength (never under `BEAT_ONSET_MIN`). A
+  heard
   beat pulls the grid a part of the way to it: `BEAT_PULL_PHASE` of the
   error on the next beat, `BEAT_PULL_PERIOD` of it on the period, which
   stays within `BEAT_CHANGE` of the tempo locked (a phase-locked loop). A
   noise just before a beat cannot take its place, and an off-beat hi-hat
   never moves the grid.
 - **Pulsing:** a new grid pulses once its last three beats were all heard,
-  and keeps pulsing while at least `BEAT_CONFIRM` of the last three were. So
-  a song that stops, or a grid left over from the last song, goes quiet
-  within two beats, and a missed kick or a reaction's gap does not stop it.
+  and keeps pulsing while at least `BEAT_CONFIRM` of the last three were —
+  or while one of them was and the last `BEAT_PHASE_MS`, folded on the
+  grid, peaks within `BEAT_NEAR` of its beat at `BEAT_HOLD` times the
+  fold's mean. The fold is what carries it through reverb, where the
+  strongest rise of a single beat is often a reflection. So a song that
+  stops, or a grid left over from the last song, goes quiet within two
+  beats, and a missed kick or a reaction's gap does not stop it.
   The pulse is drawn at each beat minus `MIC_LATENCY_MS`, the model's
   measured delay from sound to block, so the light and the sound arrive
   together.
@@ -180,9 +185,11 @@ table.
   | `BEAT_LOCK_LOOKS` | 6 | looks in a row with the same period |
   | `BEAT_PHASE_MS` | 2000 | the stretch folded to place the grid |
   | `BEAT_NEAR` | 12% | of a period, either side of a beat |
+  | `BEAT_TIGHT_MS` | 30 | how near its beat a drum must start for the beat to be heard |
   | `BEAT_PULL_PHASE`, `BEAT_PULL_PERIOD` | 0.3, 0.05 | how far a heard beat pulls the grid |
   | `BEAT_CHANGE` | 5% | the most the period moves from its lock; more is another song |
   | `BEAT_CONFIRM` | 2 of 3 | heard beats that keep a grid pulsing |
+  | `BEAT_HOLD` | 4 | or one heard, with the fold on the grid peaking this far above its mean |
   | `BEAT_OTHER_LOOKS` | 8 | looks before a heard grid gives way |
   | `BEAT_LOSE_MS` | 4000 | nothing heard this long, and the grid is dropped |
   | `MIC_LATENCY_MS` | measured | per model, at the gate (§4.1) |
@@ -270,8 +277,9 @@ table.
 - **A venue is not a laptop.** Crowd noise, reverb, a band's wrist moving and
   songs without a steady kick may keep it from locking. Then the card stays
   steady, which is today's behaviour; it never flashes wrongly for long.
-  Reverb is the known weak point: in the offline hall a third of the beats
-  went unpulsed. A half-time groove is not locked at all.
+  Reverb is the known weak point: in the offline hall up to a quarter of
+  the beats went unpulsed, and a lock took up to 10 s. A half-time groove
+  is not locked at all.
 - **A microphone on a wrist worries people.** It opens only while a card is
   lit and the switch is on, keeps five numbers per 8 ms and forgets them, and
   nothing about sound leaves the band. README and "How this works" say so.
