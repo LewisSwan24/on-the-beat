@@ -636,10 +636,19 @@ relay could drive what a wrist shows.
   match. The physical buttons, and the three blue flashes seen by eye, are
   left for a person. Answering from the wrist is only waving back: a like
   needs the other person's pick, which the wrist never shows.
-- **Found each other has run in tests and a browser, not yet on the real
-  bands.** Saying it by bumping two wristbands together, with the motion
-  sensor, is a later change, after a spike shows a fist bump can be told
-  apart from two people dancing to the same beat.
+- **Found each other has run on the real bands from their consoles, not yet
+  by hand.** On 26 Sep 2026, through the Fly relay, two stand-in phones with
+  SOUND off paired the StickS3 and the StickC Plus (each YES only once the
+  band's own console showed the number), and a wave and a wave back made
+  MEET 65 on both. A side hold on the S3 said found: its console showed
+  `meet 65 (found: waiting)` and its face `FOUND: WAITING`, and the Plus's
+  console said nothing at all. A side hold on the Plus then gave both
+  `hi (found 65)`, both faces lost the number, and both phones had the same
+  found time. With SOUND off nothing could show that the `found` sound and
+  flash played on the hardware; they, and the buttons pressed by hand, still
+  need someone there. Saying it by bumping two wristbands together, with the
+  motion sensor, is a later change, after a spike shows a fist bump can be
+  told apart from two people dancing to the same beat.
 - **The timings are guesses until worn** — six seconds awake, 1.5 s holds,
   three to send, ten to wait. They are named constants for that reason.
 - **Recording has run on Chrome's fake camera, not a phone's.** Headless
