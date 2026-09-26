@@ -608,6 +608,109 @@ void said() {
   CHECK(readCommand("   ").verb.empty());
 }
 
+/** A band's address as a report writes it: 02 00 00 00 00 <i>. */
+std::string airOf(int i) {
+  const uint8_t mac[6] = {0x02, 0, 0, 0, 0, static_cast<uint8_t>(i)};
+  return airHex(mac);
+}
+
+void hear(Hearing& h, int i, int rssi) {
+  const uint8_t mac[6] = {0x02, 0, 0, 0, 0, static_cast<uint8_t>(i)};
+  h.heard(mac, rssi);
+}
+
+void hearing() {
+  const uint8_t written[6] = {0x02, 0xab, 0xcd, 0xef, 0x01, 0x23};
+  CHECK(airHex(written) == "02abcdef0123");
+
+  // A new address every boot, from the band's own noise: locally administered and unicast, never the chip's.
+  uint8_t mac[6];
+  uint32_t n = 0;
+  makeAir(mac, [&n] { return n++ ? 0x00006655u : 0x44332211u; });
+  CHECK(airHex(mac) == "122233445566");
+  for (const uint32_t noise : {0x00000000u, 0xFFFFFFFFu, 0x000000FDu}) {
+    makeAir(mac, [noise] { return noise; });
+    CHECK((mac[0] & 0x01) == 0 && (mac[0] & 0x02) == 0x02);
+  }
+
+  // A listen that heard nobody still reports: a band that listened and heard nobody is evidence too.
+  Hearing h;
+  CHECK(h.size() == 0 && h.frame(6) == "{\"t\":\"heard\",\"ch\":6,\"near\":[]}");
+
+  // Each band once, at the strongest of its beacons; the strongest band first.
+  hear(h, 0x0a, -70);
+  hear(h, 0x0b, -50);
+  hear(h, 0x0a, -60);
+  hear(h, 0x0a, -80);
+  CHECK(h.size() == 2);
+  CHECK(h.frame(11) == "{\"t\":\"heard\",\"ch\":11,\"near\":[[\"02000000000b\",-50],[\"02000000000a\",-60]]}");
+  h.clear();
+  CHECK(h.size() == 0 && h.frame(11) == "{\"t\":\"heard\",\"ch\":11,\"near\":[]}");
+
+  // A reading the relay would not take is brought into its range, not dropped.
+  hear(h, 1, -120);
+  hear(h, 2, 3);
+  CHECK(h.frame(1) == "{\"t\":\"heard\",\"ch\":1,\"near\":[[\"020000000002\",0],[\"020000000001\",-100]]}");
+  CHECK(saidLine(h.frame(1)).empty());  // a report every ten seconds is not said on the console; `near` says it
+
+  // More than HEARD_MAX: the strongest HEARD_MAX, in whatever order they were heard.
+  auto strongest = [](int from, int to) {  // bands from..to, heard at -80 + i, strongest first
+    std::string f = "{\"t\":\"heard\",\"ch\":6,\"near\":[";
+    for (int i = to; i >= from; --i) f += std::string(i == to ? "" : ",") + "[\"" + airOf(i) + "\"," + std::to_string(-80 + i) + "]";
+    return f + "]}";
+  };
+  Hearing up, down;
+  for (int i = 0; i < 20; ++i) hear(up, i, -80 + i);
+  for (int i = 19; i >= 0; --i) hear(down, i, -80 + i);
+  CHECK(up.size() == HEARD_MAX && down.size() == HEARD_MAX);
+  CHECK(up.frame(6) == strongest(8, 19) && down.frame(6) == strongest(8, 19));
+  // One pushed out comes back when it is heard stronger, and the weakest goes.
+  hear(down, 0, -10);
+  CHECK(down.frame(6).rfind("{\"t\":\"heard\",\"ch\":6,\"near\":[[\"" + airOf(0) + "\",-10],[\"" + airOf(19) + "\",-61]", 0) == 0);
+  CHECK(down.frame(6).find(airOf(8)) == std::string::npos && down.frame(6).find(airOf(9)) != std::string::npos);
+
+  // The longest frames a band sends fit its outbox: a full report on channel 14, and the longest hello.
+  Hearing full;
+  for (int i = 0; i < 16; ++i) {
+    const uint8_t weak[6] = {0xfe, 0xff, 0xff, 0xff, 0xff, static_cast<uint8_t>(i)};
+    full.heard(weak, -100);
+  }
+  CHECK(full.frame(14).size() == 294 && full.frame(14).size() < FRAME_MAX);
+  const std::string f32(32, 'f');
+  CHECK(helloFrame(f32, f32, 100, f32, true, "feffffffffff").size() < FRAME_MAX);
+
+  // The hello says the band's address only when it has one.
+  const std::string key = "000102030405060708090a0b0c0d0e0f", id = idFor(key);
+  CHECK(helloFrame(id, key, 62, "", false, "02abcdef0123") ==
+        "{\"t\":\"wristband\",\"id\":\"" + id + "\",\"key\":\"" + key + "\",\"v\":2,\"battery\":62,\"air\":\"02abcdef0123\"}");
+  Wrist w(key);
+  w.setBattery(62, 1000);
+  w.setAir("02abcdef0123");
+  w.linkUp(1000);
+  CHECK(w.take() == std::vector<std::string>{helloFrame(id, key, 62, "", false, "02abcdef0123")});
+
+  // It beacons and listens only on the Wi-Fi, paired, and not in NOT NOW.
+  CHECK(!w.nearOn());  // not paired
+  w.frame("{\"t\":\"paired\",\"secret\":\"" + f32 + "\"}", 1000);
+  CHECK(w.nearOn());
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"quiet\":true}}", 1000);
+  CHECK(!w.nearOn());  // NOT NOW from the relay
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"off\"}}", 1000);
+  CHECK(w.nearOn());
+  w.keyDown(1, 2000);
+  w.tick(2000 + HOLD_MS);
+  CHECK(!w.nearOn());  // NOT NOW from the wrist, before the relay has shown it
+  w.keyUp(1, 2000 + HOLD_MS);
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"off\"}}", 4000);
+  CHECK(w.nearOn());
+  w.linkDown(5000);
+  CHECK(!w.nearOn());  // off the relay
+  w.linkUp(6000);
+  CHECK(w.nearOn());
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"pairing\",\"code\":\"UDXE\"}}", 6000);
+  CHECK(!w.nearOn());  // unpaired
+}
+
 // ---------- speak: this code, in front of the real relay ----------
 
 std::string quote(const std::string& s) {
@@ -638,12 +741,27 @@ std::string answer(const Command& c) {
     return sha256Hex(bytes.empty() ? none : bytes.data(), bytes.size());
   }
   if (c.verb == "hello") {
-    // hello <key> <battery> [secret|-] [quiet]
+    // hello <key> <battery> [secret|-] [quiet|-] [air]
     std::istringstream in(c.arg);
-    std::string key, secret, quiet;
+    std::string key, secret, quiet, air;
     int battery = -1;
-    in >> key >> battery >> secret >> quiet;
-    return helloFrame(idFor(key), key, battery, secret == "-" ? "" : secret, quiet == "quiet");
+    in >> key >> battery >> secret >> quiet >> air;
+    return helloFrame(idFor(key), key, battery, secret == "-" ? "" : secret, quiet == "quiet", air);
+  }
+  if (c.verb == "heard") {
+    // heard <ch> [<air>:<rssi> ...]: one listen, reported as the band reports it
+    std::istringstream in(c.arg);
+    int ch = 0;
+    in >> ch;
+    Hearing h;
+    std::string one;
+    while (in >> one) {
+      const size_t colon = one.find(':');
+      const std::vector<uint8_t> mac = hexBytes(one.substr(0, colon));
+      if (colon == std::string::npos || mac.size() != 6) return "bad " + one;
+      h.heard(mac.data(), std::atoi(one.c_str() + colon + 1));
+    }
+    return h.frame(ch);
   }
   if (c.verb == "battery") return batteryFrame(std::atoi(c.arg.c_str()));
   if (c.verb == "hold") return HOLD_FRAME;
@@ -790,6 +908,7 @@ int main(int argc, char** argv) {
   rejoin();
   console();
   said();
+  hearing();
   std::printf("ok: %d checks\n", checks);
   return 0;
 }

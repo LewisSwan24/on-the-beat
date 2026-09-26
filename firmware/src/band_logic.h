@@ -1155,17 +1155,111 @@ inline std::string idFor(const std::string& keyHex) {
   return sha256Hex(bytes.empty() ? none : bytes.data(), bytes.size()).substr(0, 32);
 }
 
+// ---------- near: what a band hears of the others ----------
+//
+// While it is on the relay, paired and not in NOT NOW, a band beacons four
+// bytes over ESP-NOW under an address new at every boot, and now and then
+// listens for the others' beacons. What it heard goes to the relay, which
+// alone decides who is near (relay/room.js): the band shows none of it, and
+// no phone is ever sent a number. main.cpp holds the radio; this holds what
+// a listen keeps and the report it becomes.
+
+constexpr uint32_t BEACON_MS = 500;        // a beacon this often
+constexpr uint32_t LISTEN_MS = 1000;       // a listen lasts this long...
+constexpr uint32_t HEAR_EVERY_MS = 10000;  // ...once in this long, and is reported as soon as it ends
+constexpr size_t HEARD_MAX = 12;           // a report names the strongest this many bands
+constexpr size_t FRAME_MAX = 320;          // the longest frame a band sends, its ending 0 counted: a full report is 294
+constexpr uint8_t BEACON[4] = {'O', 'T', 'B', '1'};  // all a beacon says; the address it comes from says whose
+
+/** Six address bytes as twelve lower-case hex digits, as the hello's air and a report write them. */
+inline std::string airHex(const uint8_t* mac) {
+  static const char DIGITS[] = "0123456789abcdef";
+  std::string s;
+  for (int i = 0; i < 6; ++i) {
+    s += DIGITS[mac[i] >> 4];
+    s += DIGITS[mac[i] & 0xF];
+  }
+  return s;
+}
+
+/** This boot's address on the air, from the band's own noise: locally administered and unicast, so never the chip's. */
+inline void makeAir(uint8_t* out, const std::function<uint32_t()>& random32) {
+  const uint32_t a = random32(), b = random32();
+  out[0] = static_cast<uint8_t>((a & 0xFC) | 0x02);
+  out[1] = static_cast<uint8_t>(a >> 8);
+  out[2] = static_cast<uint8_t>(a >> 16);
+  out[3] = static_cast<uint8_t>(a >> 24);
+  out[4] = static_cast<uint8_t>(b);
+  out[5] = static_cast<uint8_t>(b >> 8);
+}
+
+/** One listen: each band heard, at the strongest of its beacons, and only the strongest HEARD_MAX bands. */
+class Hearing {
+ public:
+  struct Heard {
+    uint8_t mac[6];
+    int rssi;
+  };
+
+  /** A beacon from `mac` at `rssi` dBm, brought into -100..0, the range the relay takes. */
+  void heard(const uint8_t* mac, int rssi) {
+    rssi = rssi < -100 ? -100 : rssi > 0 ? 0 : rssi;
+    for (Heard& h : heard_) {
+      if (std::equal(h.mac, h.mac + 6, mac)) {
+        if (rssi > h.rssi) h.rssi = rssi;
+        return;
+      }
+    }
+    Heard h;
+    std::copy(mac, mac + 6, h.mac);
+    h.rssi = rssi;
+    if (heard_.size() < HEARD_MAX) {
+      heard_.push_back(h);
+      return;
+    }
+    // Full: a stronger band takes the place of the weakest.
+    auto weakest = std::min_element(heard_.begin(), heard_.end(), [](const Heard& x, const Heard& y) { return x.rssi < y.rssi; });
+    if (rssi > weakest->rssi) *weakest = h;
+  }
+
+  size_t size() const { return heard_.size(); }
+  void clear() { heard_.clear(); }
+
+  /** Everyone heard, the strongest first. */
+  std::vector<Heard> strongest() const {
+    std::vector<Heard> s = heard_;
+    std::stable_sort(s.begin(), s.end(), [](const Heard& x, const Heard& y) { return x.rssi > y.rssi; });
+    return s;
+  }
+
+  /** The report the relay reads: {"t":"heard","ch":6,"near":[["02abcdef0123",-48],...]}. Heard nobody, near is []. */
+  std::string frame(int ch) const {
+    std::string f = "{\"t\":\"heard\",\"ch\":" + std::to_string(ch) + ",\"near\":[";
+    bool first = true;
+    for (const Heard& h : strongest()) {
+      f += std::string(first ? "" : ",") + "[\"" + airHex(h.mac) + "\"," + std::to_string(h.rssi) + "]";
+      first = false;
+    }
+    return f + "]}";
+  }
+
+ private:
+  std::vector<Heard> heard_;
+};
+
 /**
  * The first thing a wristband says on every connection: who it is, the key
  * that proves it, the protocol, and — when it has them — the secret its
- * pairing gave it, a NOT NOW still waiting to be sent, and its battery.
+ * pairing gave it, a NOT NOW still waiting to be sent, its battery, and the
+ * address it beacons under this boot.
  */
 inline std::string helloFrame(const std::string& id, const std::string& key, int battery,
-                              const std::string& secret = "", bool quiet = false) {
+                              const std::string& secret = "", bool quiet = false, const std::string& air = "") {
   std::string f = "{\"t\":\"wristband\",\"id\":\"" + id + "\",\"key\":\"" + key + "\",\"v\":2";
   if (!secret.empty()) f += ",\"secret\":\"" + secret + "\"";
   if (quiet) f += ",\"quiet\":true";
   if (battery >= 0) f += ",\"battery\":" + std::to_string(battery);
+  if (!air.empty()) f += ",\"air\":\"" + air + "\"";
   return f + "}";
 }
 
@@ -1206,6 +1300,11 @@ class Wrist {
   const std::string& id() const { return id_; }
   const std::string& secret() const { return secret_; }
   bool up() const { return link_.up(); }
+
+  /** This boot's address on the air: the hello says it, so the relay knows whose beacons they are. */
+  void setAir(const std::string& air) { air_ = air; }
+  /** Whether to beacon and listen: on the relay, paired, and not in NOT NOW. */
+  bool nearOn() const { return link_.up() && !secret_.empty() && current() != "notnow"; }
 
   /** A battery reading. Low at 15% or below, again only after 20%; very low at 5% or below, again only after 10%. */
   void setBattery(int level, uint32_t now) {
@@ -1304,7 +1403,7 @@ class Wrist {
     // A hold not yet heard rides on the hello: the relay applies it before anything else.
     const bool quiet = quiet_.dark();
     if (quiet) quiet_.sent(now);
-    out_.push_back(helloFrame(id_, key_, battery_, secret_, quiet));
+    out_.push_back(helloFrame(id_, key_, battery_, secret_, quiet, air_));
     settle(now);
   }
 
@@ -1879,7 +1978,7 @@ class Wrist {
     else if (mode_ == REST || mode_ == RESULT) step(now);
   }
 
-  std::string key_, id_, secret_;
+  std::string key_, id_, secret_, air_;
   int battery_ = -1;
   bool wifi_ = true;
   Link link_;
