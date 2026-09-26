@@ -533,7 +533,8 @@ void help() {
       "  forget                  back to what it was built with\n"
       "  press face|side         a press, as a finger makes it\n"
       "  hold face|side          a hold, let go just after it counts\n"
-      "  face                    what the screen shows now");
+      "  face                    what the screen shows now\n"
+      "  sound <name>            play one of the band's sounds, e.g. sound found");
 }
 
 void report() {
@@ -582,6 +583,17 @@ void run(const Command& c) {
                   static_cast<unsigned>(p.ms));
   } else if (c.verb == "face") {
     Serial.println(faceLine(wrist->face(millis())).c_str());
+  } else if (c.verb == "sound") {
+    // One of the band's own sounds, to hear the speaker without a room around it.
+    const std::string name = trim(c.arg);
+    if (!soundFor(name)) {
+      std::string names;
+      for (const Sound& s : SOUNDS) names += std::string(names.empty() ? "" : ", ") + s.name;
+      Serial.printf("sound what? one of: %s\n", names.c_str());
+      return;
+    }
+    if (!speaker) Serial.println("no speaker on this band");
+    soundDue = name;
   } else if (c.verb == "forget") {
     prefs.remove("ssid");
     prefs.remove("pass");
@@ -628,6 +640,11 @@ void setup() {
   // Found on the first real band.
   cfg.output_power = false;
   M5.begin(cfg);
+  // But the StickC Plus's buzzer runs off that same 5V: with it off, the band
+  // played every sound in silence. Measured with a recording beside the band:
+  // no tone with it off, from M5Unified's output or a plain square wave; about
+  // 18 dB over the room with it on, either way.
+  if (M5.getBoard() == m5::board_t::board_M5StickCPlus) M5.Power.setExtOutput(true);
   M5.Display.setRotation(0);
   if (M5.Display.width() > M5.Display.height()) M5.Display.setRotation(1);
   M5.Display.setBrightness(LIGHT_OFF);
@@ -635,7 +652,7 @@ void setup() {
   face.createSprite(M5.Display.width(), M5.Display.height());
   // The speaker, as the sound test had it: the microphone off first (on some
   // bands the two share one I2S), then full volume. The StickC Plus plays the
-  // same samples through its buzzer.
+  // same samples through its buzzer, powered as above.
   M5.Mic.end();
   M5.Speaker.setBufferReleaseCallback(nullptr, soundReleased);
   speaker = M5.Speaker.begin();

@@ -331,7 +331,9 @@ hand on it: `press face` or `press side` is a press, let go after 120 ms;
 `hold face` or `hold side` is let go 200 ms after the hold counts. Either is
 down through the same edges as the button itself, so the band cannot tell
 them apart. `face` says what the screen shows: its words, field and light,
-the pairing letters included. Only the USB cable reaches the console, and
+the pairing letters included. `sound found`, or any of the band's sounds by
+name, plays it, to hear the speaker without a room around the band. Only the
+USB cable reaches the console, and
 whoever holds the cable holds the band and its buttons anyway; no frame from
 the relay reaches it.
 
@@ -362,7 +364,9 @@ the relay reaches it.
   rhythm. There are two buffers of 9.6 KB, used in turn, and one is written
   again only once M5Unified says the speaker has let it go: its buffer
   release callback, which is why the firmware needs M5Unified 0.2.22 or
-  later. The StickC Plus plays the same samples through its buzzer. The first
+  later. The StickC Plus plays the same samples through its buzzer, which
+  runs off the 5V output the StickS3 keeps off so as to charge, so `setup()`
+  switches that output back on for the Plus alone. The first
   M5StickC has no speaker; it says so once on the console and only lights up.
   The Plus has no PSRAM, and the buffers take its static RAM from 51 KB to
   70 KB of 320 KB; `show` prints the free heap.
@@ -587,11 +591,16 @@ relay could drive what a wrist shows.
   band lost its pairing. TEST THE LIGHT with the phone's switch off showed its
   white and played nothing. A meeting blinked, the light 0 and 255 in turn as
   `face` read it, until a press that only ticked. The Plus keeps 72,728 bytes
-  free with both sound buffers, 63,880 at the least. Whether the Plus's buzzer
-  can be heard, how each sound and colour lands on a wrist, and the words
-  whole on a real screen still need someone there; if the buzzer stays
-  silent, the fallback drives its pin with LEDC tones. Flashing on the
-  music's beat is a later spec.
+  free with both sound buffers, 63,880 at the least. The Plus's buzzer was
+  silent at first: it runs off the 5V output the firmware had switched off
+  for the StickS3's sake. With that output back on for the Plus alone, a
+  laptop microphone beside it heard `found` and `jingle` played from its
+  console, three times each: at one fixed delay, every 2093 Hz note stood 15
+  to 22 dB over the room, and moved 0.7 s either way nothing did. The buzzer
+  is uneven — 2093 Hz loud, 2637 Hz and lower notes barely there — so how
+  each sound lands on a wrist, and each colour, and the words whole on a real
+  screen, still need someone there. Flashing on the music's beat is a later
+  spec.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was
