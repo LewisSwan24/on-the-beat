@@ -99,9 +99,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
       const show = shows.find((s) => s.id === key);
       const spots = Array.isArray(show?.spots) && show.spots.length ? show.spots.map(String) : SPOTS;
-      // sound: each person's sound switch, as their phone last said it. Leaving forgets it; the grace does not.
+      // sound, beat: each person's switches, as their phone last said them. Leaving forgets them; the grace does not.
       // The room reads the relay's clock: a wave's number is the time it was made, so it only goes up.
-      rooms.set(key, { key, room: createRoom({ spots, now }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(), sound: new Map() });
+      rooms.set(key, { key, room: createRoom({ spots, now }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(), sound: new Map(), beat: new Map() });
     }
     return rooms.get(key);
   }
@@ -202,8 +202,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const r = b.key ? rooms.get(b.key) : null;
     const view = r?.room.viewFor(b.person) ?? null;
     const sound = r?.sound.get(b.person) ?? null;
+    const beat = r?.beat.get(b.person) ?? null;
     const waves = view ? r.room.wavesAt(b.person) : [];
-    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, waiting: b.waiting, testUntil: b.testUntil, sound, waves, now }) });
+    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, waiting: b.waiting, testUntil: b.testUntil, sound, beat, waves, now }) });
     if (text !== b.lastShow) { b.lastShow = text; b.ws.send(text); }
   }
 
@@ -572,6 +573,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         if (typeof m.on !== 'boolean') return;
         r.sound.set(me, m.on);
         break;
+      case 'beat':
+        // The same, for whether their band's card pulses on the beat.
+        if (typeof m.on !== 'boolean') return;
+        r.beat.set(me, m.on);
+        break;
       case 'pick': room.pick(me, m.track); break;
       case 'wave': room.wave(me, m.handle); break;
       case 'like': room.like(me, m.handle); break;
@@ -603,6 +609,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         if (b) unpairBand(b);
         stopGrace(r, me);
         r.sound.delete(me);
+        r.beat.delete(me);
         room.leave(me);
         r.sockets.delete(ws);
         ws.r = null;
