@@ -2,15 +2,30 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoom, BANDS } from '../relay/room.js';
+import { createRoom, BANDS, MARKS } from '../relay/room.js';
+
+let channel = 1;
+/**
+ * Puts people in areas as the relay does: each one's band hears the marker of
+ * that area loud and clear, then the room ticks. Each band is on a channel of
+ * its own, so hearing a marker hides nobody (near spec §2).
+ */
+function place(room, where) {
+  for (const [id, band] of where) {
+    const area = Object.keys(MARKS).find((a) => MARKS[a] === band);
+    room.heard(id, { ch: channel++, marks: area ? [{ area, rssi: -40 }] : [] });
+  }
+  room.nearTick();
+}
 
 function night() {
   let t = Date.UTC(2026, 8, 23, 11, 4);
   const room = createRoom({ now: () => t, salt: 'test' });
-  for (const [id, band] of [['ana', 'near the bar'], ['ben', 'by the stage'], ['cai', 'in this room']]) {
-    room.join(id, { band });
+  for (const id of ['ana', 'ben', 'cai']) {
+    room.join(id);
     room.setProfile(id, { name: id.toUpperCase(), contact: '@' + id });
   }
+  place(room, [['ana', 'near the bar'], ['ben', 'by the stage'], ['cai', 'in this room']]);
   const handleOf = (viewer, target, list = 'near') =>
     room.viewFor(viewer)[list].find((p) => p.band === room.viewFor(target).me.band)?.handle;
   return { room, handleOf, tick: (ms) => { t += ms; } };
@@ -42,7 +57,8 @@ test('the same person has a different handle on every phone', () => {
 
 test('distance is only ever a band from the fixed four', () => {
   const { room } = night();
-  room.setBand('ana', '12 m from the stage');
+  room.heard('ana', { ch: 0, marks: [{ area: '12 m from the stage', rssi: -30 }] });
+  room.nearTick();
   assert.equal(room.viewFor('ana').me.band, 'near the bar', 'a made-up band is refused');
   room.arm('ana', 'hi');
   for (const p of room.viewFor('ben').near) assert.ok(BANDS.includes(p.band));
@@ -139,10 +155,11 @@ test('wave numbers only go up: two in one millisecond differ, a second wave keep
   tick(-1000);
   // Ben leaves and comes back within the millisecond; the next wave he is sent is still the newest.
   room.leave('ben');
-  room.join('ben', { band: 'by the stage' });
+  room.join('ben');
   room.arm('ben', 'hi');
-  room.join('dee', { band: 'near the bar' });
+  room.join('dee');
   room.arm('dee', 'hi');
+  place(room, [['ben', 'by the stage'], ['dee', 'near the bar']]);
   room.wave('dee', room.viewFor('dee').near.find((p) => p.band === 'by the stage').handle);
   assert.equal(room.wavesAt('ben')[0].n, first + 2);
 });
@@ -263,8 +280,9 @@ test('a block outlives leaving the room — a phone that slept does not come bac
   room.block('ana', handleOf('ana', 'ben'));
   room.leave('ana');
   room.leave('ben');
-  room.join('ana', { band: 'near the bar' });
-  room.join('ben', { band: 'by the stage' });
+  room.join('ana');
+  room.join('ben');
+  place(room, [['ana', 'near the bar'], ['ben', 'by the stage']]);
   room.arm('ana', 'hi');
   room.arm('ben', 'hi');
   assert.deepEqual(room.viewFor('ana').near, []);

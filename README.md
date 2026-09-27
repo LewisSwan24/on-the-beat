@@ -84,7 +84,11 @@ each one.
    `near the bar`, `by the stage`, `somewhere out the back` — and nothing
    finer. There is no position anywhere in the system to leak. On phones
    alone, everyone is `in this room`: a web page cannot tell where in a venue
-   a phone is, and it does not guess. The finer bands wait for the wristbands.
+   a phone is, and it does not guess. Only a marker the venue puts up, heard
+   clearly by a person's own wristband, names a finer band (*Markers*,
+   below). What wristbands hear of each other only takes people off SAY HI's
+   list (*Who is near*, below), and no phone or wristband is ever told how
+   near anyone is.
 2. **No name and no photo until you both say yes.** Before a mutual yes a
    person is a handle, a band and at most a track. Handles are per viewer —
    the same person has a different handle on every phone — so two phones
@@ -115,6 +119,10 @@ never becomes a match.
   put two phones at the same gig into two different rooms that share a name.
   The night is held in memory only; stop the relay and it is gone.
   - After every change the relay pushes each phone its own `viewFor()`.
+  - What each wristband heard of the others and of the markers is kept
+    30 s, in memory, and never leaves the relay; every five seconds each
+    room works out who is near whom and who is in which area, and pushes
+    only the views that changed.
   - A dropped socket is not leaving: a person stays in the room for two
     minutes, so a locked screen does not cost them their place.
   - Clips are kept in memory, one on the floor per person, for an hour —
@@ -251,6 +259,44 @@ that was taken.
   minute; the phone buzzes only when no live wristband plays it. Refused or
   out of reach, the band says `NOT SENT`. Never said by both, the number goes
   at fifteen minutes, and nothing says why.
+- **Who is near comes from the wristbands.** While a band is on the relay,
+  paired and not in NOT NOW, it beacons four bytes by ESP-NOW twice a second,
+  under an address it makes up at every boot, and for one second in every ten
+  it listens for the others and tells the relay whom it heard and how
+  strongly. The relay scores each pair of bands in a room by the median of
+  what each heard of the other in the last 30 s, and every five seconds works
+  out each band's five heard most strongly; one of the five stays while it is
+  among the ten strongest, so the list does not churn as people turn round.
+  With a band, SAY HI then lists those five, everyone without a band as
+  before, and anyone waved with either way or matched. Nobody else is taken
+  off without evidence — both bands heard from in the last 30 s, on the same
+  Wi-Fi channel — so a band just switched on or gone quiet, a band on another
+  channel, and the stand-in at `/band`, which has no radio, hide nobody and
+  are hidden from nobody. No strength, score or order reaches a phone or a
+  band: the list is only shorter, the rows are in the same order, and a row's
+  area comes only from the markers (below). On a modelled floor of 750
+  people, 150 of them banded, with bodies in the way, 99.8% of each five are
+  truly within 10 m, against 33% for five picked at random from what the band
+  heard (`tests/near-crowd.test.js`).
+- **Markers say near the bar and by the stage.** Any wristband can be a
+  marker: `marker bar`, `marker stage` or `marker back` on its console, kept
+  across restarts. A marker joins no Wi-Fi, reaches no relay and has no key:
+  plugged into a charger behind the bar, it beacons five bytes, `OTBM` and
+  its area's letter, twice a second on every Wi-Fi channel from 1 to 13 in
+  turn, so a band hears it whatever channel the venue's Wi-Fi is on. Its face
+  is dark; a press shows `MARKER` over `NEAR THE BAR`, `BY THE STAGE` or `OUT
+  THE BACK`. A band's listen keeps the markers it heard beside the bands, the
+  strongest reading of each, and its report says them. For each person the
+  relay takes the median of each marker's readings in the last 30 s; the
+  loudest names the person's area on every row that shows them if it is -56
+  dBm or louder, and an area holds while its marker is -60 or louder and no
+  other is 4 dB louder. Anyone else is `in this room`: no band, a band gone
+  quiet, or no marker heard clearly. No phone names an area. On the modelled
+  floor with a marker at each end, the wrong marker was named for at most
+  0.21% of the people named, nine in ten of them were within 10 m of their
+  marker, and an area changed at no more than 3.6% of listens
+  (`tests/markers-crowd.test.js`); the price is that most people stay `in
+  this room`, 12 to 35% named, since unnamed is better than named wrong.
 - **The sound can be switched off, on the phone.** The wristband sheet has
   `SOUND: ON` under TEST THE LIGHT; off, the band only lights up. The switch is
   the person's own: the phone keeps it across nights and re-says it after
@@ -311,7 +357,7 @@ a dead socket. Its two buttons work as above.
 ```
 cd firmware
 pio run -t upload       # build it and flash it over USB
-pio device monitor      # its console: ssid, pass, relay, show, forget, press, hold, face
+pio device monitor      # its console: ssid, pass, relay, show, forget, press, hold, face, near, marker
 
 pio run -e m5sticks3 -t upload    # the same, for a StickS3
 ```
@@ -332,7 +378,24 @@ hand on it: `press face` or `press side` is a press, let go after 120 ms;
 down through the same edges as the button itself, so the band cannot tell
 them apart. `face` says what the screen shows: its words, field and light,
 the pairing letters included. `sound found`, or any of the band's sounds by
-name, plays it, to hear the speaker without a room around the band. Only the
+name, plays it, to hear the speaker without a room around the band. `near`
+says whether it is beaconing and listening, the address it is on the air
+under, and what its last listen heard; `near off` stops both, to test a band
+gone quiet, `near listen` stops only the beacon, so two bands both told it
+hear nobody and say so, and `near on` starts both again; the markers the last
+listen heard are listed under the bands. `marker bar`, `marker stage` or
+`marker back` makes the band a marker and restarts it as one. A marker's
+console takes only `show` (its area, its address on the air this boot, the
+beacons sent, lost and refused, and how long the last sweep of the thirteen
+channels took), `press` to light its face, `face` to read back what its
+screen shows (the words, the backlight, and how many pixels are lit),
+`power <dBm>` to cap its radio from 2 to 20 dBm for a test (not kept
+across a restart), another `marker`, and `marker off`, which restarts it
+as a wristband. The cap is no smooth stand-in for distance: with the Plus
+as the marker, the StickS3 read it 17 dB weaker at the lowest cap than at
+the highest, but the caps between moved it in steps, and not always the
+same way (at 6.75 dBm it read weaker than at 5.25). On the Plus, `show` also says
+what the band draws from USB, the mean since the last `show`. Only the
 USB cable reaches the console, and
 whoever holds the cable holds the band and its buttons anyway; no frame from
 the relay reaches it.
@@ -389,7 +452,22 @@ the relay reaches it.
   called `LOW` and a `constexpr` loop once passed every test and broke only
   in PlatformIO.
 - **Its key is 128 random bits, made at every boot**, never the chip's MAC, and
-  kept only in RAM with the pairing's secret.
+  kept only in RAM with the pairing's secret. So is its address on the air:
+  before it joins the Wi-Fi it takes a random, locally administered one, and
+  says it in the hello as `air`. If the radio would not take it, the band
+  neither beacons nor listens.
+- **The beacon and the listen** are the only radio work beside the Wi-Fi. The
+  beacon is an ESP-NOW broadcast at 6 Mbps, so a room of bands takes a sixth
+  of the airtime it would at the default 1 Mbps. The listen is promiscuous
+  mode, because Arduino-ESP32 2.0's ESP-NOW receive callback gives no signal
+  strength; it takes only an ESP-NOW frame that carries `OTB1`, keeps the
+  strongest reading of each band in that second (`Hearing` in
+  `band_logic.h`), and reports the strongest twelve, or that it heard nobody.
+  Tried on both bands before it was built: beside the Wi-Fi and a TLS socket
+  to the relay, no beacon was lost, and the Plus drew about 101 mA while
+  listening against 55 to 75 mA without. A band's outgoing frame is 320
+  bytes now, which a full report (294) fits; it was 256, and a longer frame
+  would have been cut short without a word.
 - **The pairing code is as wide as the screen allows**, with four light modules
   round it. A tunnel address is a version 4 code, and the canvas's 115 pixels
   would make each module two pixels — too small to read off a screen this size.
@@ -465,6 +543,19 @@ the relay reaches it.
   band, or `WE FOUND EACH OTHER` on S11, counted only when both say it: the
   meeting face gains `FOUND: WAITING`, both bands a *found* reaction, and
   Tonight's `met` counts meetings found, not matches.
+- **Near is the five heard most strongly, not everyone heard.** Revision 6
+  lists the people whose wristband yours can hear. On a crowded floor that is
+  nearly everyone, so the list is the five heard most strongly, which is also
+  S5's own limit of five. People without a band cannot be heard, which says
+  nothing about where they are, so they are listed as before; the owner chose
+  that on 26 Sep 2026.
+- **A marker names an area only when it is heard clearly.** Revision 6 takes
+  the loudest marker. Far from every marker the loudest is still some marker,
+  heard faintly across the room, so it names a band only at -56 dBm or
+  louder, and otherwise the person stays `in this room`: the owner chose on
+  27 Sep 2026 that it is better not to say than to say it wrong. A third
+  marker, `somewhere out the back`, which the prompt's list of bands already
+  has, is allowed; revision 6 names only the bar and the stage.
 
 ## Abuse resistance
 
@@ -515,6 +606,26 @@ was red-teamed and hardened. A red/blue pass found and closed:
   like. A band never starts a wave: with none to answer, nothing is recorded.
   A lent, taken or forgotten band can still make a match for its person, with
   or without their phone; blocking undoes it.
+- **What a wristband says it heard.** A report is dropped whole unless it
+  comes from a paired band's current socket, five seconds or more after its
+  last, on a channel from 1 to 14, with at most sixteen entries, each a
+  twelve-hex address and a whole signal strength from -100 to 0; a hello whose
+  `air` is not twelve lower-case hex digits is refused. An address counts only
+  as the address of exactly one band paired in the same room, so one claimed
+  twice, or from another room, counts for nobody. A band that lies changes
+  only its own person's list, and nearness only ever removes, so it can show
+  nobody a phone could not see already. A band beaconing under another's
+  address moves that band's nearness to where the liar stands, among
+  strangers in the same room, and no further. A report's `marks`, when it
+  has any, are at most three, each area `bar`, `stage` or `back` once and each
+  strength a whole number from -100 to 0, or the whole report is dropped; a
+  band that lies about them changes only its own person's area.
+- **A marker anyone can make.** A marker has no key: any ESP32 beaconing
+  `OTBM` and a letter, or repeating a real marker's beacon somewhere else,
+  makes the people whose bands hear it clearly read `near the bar` or the
+  like on others' rows. It chooses only among the three phrases, cannot show
+  anyone who was hidden, and learns nothing. A key would stop only inventing
+  a marker, not copying one, so there is none.
 - **Rooms that never emptied.** A venue with nobody in it, nobody in its grace
   window, no clip still loading and no wristband still worn is now reclaimed, so
   a long-lived relay does not keep a room object for every venue anyone typed.
@@ -564,9 +675,53 @@ relay could drive what a wrist shows.
   small machine holds, or a restart nobody notices, needs the rooms kept
   outside the process first. A phone that used a tunnel address starts over
   at the fixed one: a browser keeps the app's storage per address.
-- **Proximity.** Wristbands pair and light, but nothing measures who is near
-  whom: every person is still `in this room`. Nearness wants ESP-NOW between
-  wristbands, which wants the hardware.
+- **Who is near has not met a crowd.** On 27 Sep 2026 it ran on both real
+  bands through the Fly relay, each paired to a stand-in phone on SAY HI with
+  a third phone that had no band. Each band joined the Wi-Fi under an address
+  new at that boot, not its chip's, and heard the other on channel 1 (the Plus
+  heard the StickS3 at -23 dBm, the StickS3 the Plus at -30), beaconing about
+  twice a second with none refused. Told to listen without beaconing, both
+  reported hearing nobody, and 25 s later each phone had dropped the other
+  while the phone with no band kept both; one band beaconing again brought
+  both back in 9 s. A band gone quiet hid nobody. The Plus, face dark, drew
+  59.2 mA beaconing and listening and 61.2 mA with neither, the mean of a
+  minute each: no cost the reading can show. A crowd is still only modelled.
+  Bodies and reflections on a real floor may differ from the model; ranking
+  the strongest was chosen because it leans on them least, and a walk
+  through a venue is the check.
+  Not built: a correction between models, though a StickS3 heard a Plus 7 dB
+  weaker than the Plus heard it; and more than one Wi-Fi channel, since a
+  band hears only bands on its own channel, so a venue whose access points
+  use several splits its bands into groups, each of which keeps the others
+  listed. Markers do not have this problem: they beacon on every channel.
+- **Markers have met two bands, not a room.** On 27 Sep 2026 the StickC
+  Plus, made `marker bar` at its console, sent 338 beacons in 13 s on
+  channels 1 to 13, none lost or refused, each sweep about 30 ms. The
+  StickS3, on the hotspot's channel 11 and paired to a stand-in phone on SAY
+  HI, heard it across the desk at -45 and -44 dBm. 11.5 s after the marker
+  started, a second phone with no band showed that person `near the bar`, as
+  did their own view, and nothing changed in the next 45 s; 30.5 s after
+  `marker off`, both said `in this room` again. Then, with no hand on either
+  band: the marker's face, read back over its console, was dark, then
+  `MARKER / NEAR THE BAR` 1.5 s after a press of either key (backlight 255,
+  1,833 of 32,400 pixels lit), and dark again 7.5 s after; and the real app,
+  in a browser as a third person with no band, listed `Someone near the bar`
+  beside `Someone in this room`. With the bands a few metres apart, the band
+  heard the marker at -55 and -56 dBm at full power, and the person was
+  `near the bar`. Capped lower, it heard -57 and -58 and the person stayed
+  `near the bar`, as the hold keeps them; at -65 and -64 they turned `in this
+  room`, and stayed so while it heard -60 to -69. Raised again, at -52 they
+  were `near the bar` once more. Readings at one setting spread by up to 8 dB.
+  The way back up never landed between -60 and -56, so that a person coming
+  back must reach the floor itself is held only by the relay's tests. The
+  -56 dBm floor rests on the crowd
+  model's losses for distance and bodies, calibrated on two bands on a desk;
+  a real venue's walls may want another floor, and it is one constant in
+  the relay (`MARK_FLOOR`). There is one floor for every venue, and a marker
+  is not listed or shown to the venue anywhere. Channels 12 and 13 are
+  allowed in Australia and not everywhere: a marker used elsewhere would
+  hop 1 to 11. A marker on a laptop's USB may be switched off with it; a
+  marker wants a wall charger.
 - **The firmware has run on two wristbands, for one day.** On 25 Sep
   2026 a StickS3 and an M5StickC Plus joined an Android phone's hotspot and
   reached the relay through a quick tunnel, with that phone and a laptop

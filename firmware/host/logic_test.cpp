@@ -608,6 +608,174 @@ void said() {
   CHECK(readCommand("   ").verb.empty());
 }
 
+/** A band's address as a report writes it: 02 00 00 00 00 <i>. */
+std::string airOf(int i) {
+  const uint8_t mac[6] = {0x02, 0, 0, 0, 0, static_cast<uint8_t>(i)};
+  return airHex(mac);
+}
+
+void hear(Hearing& h, int i, int rssi) {
+  const uint8_t mac[6] = {0x02, 0, 0, 0, 0, static_cast<uint8_t>(i)};
+  h.heard(mac, rssi);
+}
+
+void hearing() {
+  const uint8_t written[6] = {0x02, 0xab, 0xcd, 0xef, 0x01, 0x23};
+  CHECK(airHex(written) == "02abcdef0123");
+
+  // A new address every boot, from the band's own noise: locally administered and unicast, never the chip's.
+  uint8_t mac[6];
+  uint32_t n = 0;
+  makeAir(mac, [&n] { return n++ ? 0x00006655u : 0x44332211u; });
+  CHECK(airHex(mac) == "122233445566");
+  for (const uint32_t noise : {0x00000000u, 0xFFFFFFFFu, 0x000000FDu}) {
+    makeAir(mac, [noise] { return noise; });
+    CHECK((mac[0] & 0x01) == 0 && (mac[0] & 0x02) == 0x02);
+  }
+
+  // A listen that heard nobody still reports: a band that listened and heard nobody is evidence too.
+  Hearing h;
+  CHECK(h.size() == 0 && h.frame(6) == "{\"t\":\"heard\",\"ch\":6,\"near\":[]}");
+
+  // Each band once, at the strongest of its beacons; the strongest band first.
+  hear(h, 0x0a, -70);
+  hear(h, 0x0b, -50);
+  hear(h, 0x0a, -60);
+  hear(h, 0x0a, -80);
+  CHECK(h.size() == 2);
+  CHECK(h.frame(11) == "{\"t\":\"heard\",\"ch\":11,\"near\":[[\"02000000000b\",-50],[\"02000000000a\",-60]]}");
+  h.clear();
+  CHECK(h.size() == 0 && h.frame(11) == "{\"t\":\"heard\",\"ch\":11,\"near\":[]}");
+
+  // A reading the relay would not take is brought into its range, not dropped.
+  hear(h, 1, -120);
+  hear(h, 2, 3);
+  CHECK(h.frame(1) == "{\"t\":\"heard\",\"ch\":1,\"near\":[[\"020000000002\",0],[\"020000000001\",-100]]}");
+  CHECK(saidLine(h.frame(1)).empty());  // a report every ten seconds is not said on the console; `near` says it
+
+  // More than HEARD_MAX: the strongest HEARD_MAX, in whatever order they were heard.
+  auto strongest = [](int from, int to) {  // bands from..to, heard at -80 + i, strongest first
+    std::string f = "{\"t\":\"heard\",\"ch\":6,\"near\":[";
+    for (int i = to; i >= from; --i) f += std::string(i == to ? "" : ",") + "[\"" + airOf(i) + "\"," + std::to_string(-80 + i) + "]";
+    return f + "]}";
+  };
+  Hearing up, down;
+  for (int i = 0; i < 20; ++i) hear(up, i, -80 + i);
+  for (int i = 19; i >= 0; --i) hear(down, i, -80 + i);
+  CHECK(up.size() == HEARD_MAX && down.size() == HEARD_MAX);
+  CHECK(up.frame(6) == strongest(8, 19) && down.frame(6) == strongest(8, 19));
+  // One pushed out comes back when it is heard stronger, and the weakest goes.
+  hear(down, 0, -10);
+  CHECK(down.frame(6).rfind("{\"t\":\"heard\",\"ch\":6,\"near\":[[\"" + airOf(0) + "\",-10],[\"" + airOf(19) + "\",-61]", 0) == 0);
+  CHECK(down.frame(6).find(airOf(8)) == std::string::npos && down.frame(6).find(airOf(9)) != std::string::npos);
+
+  // The longest frames a band sends fit its outbox: a full report on channel 14, and the longest hello.
+  Hearing full;
+  for (int i = 0; i < 16; ++i) {
+    const uint8_t weak[6] = {0xfe, 0xff, 0xff, 0xff, 0xff, static_cast<uint8_t>(i)};
+    full.heard(weak, -100);
+  }
+  CHECK(full.frame(14).size() == 294 && full.frame(14).size() < FRAME_MAX);
+  const std::string f32(32, 'f');
+  CHECK(helloFrame(f32, f32, 100, f32, true, "feffffffffff").size() < FRAME_MAX);
+
+  // The hello says the band's address only when it has one.
+  const std::string key = "000102030405060708090a0b0c0d0e0f", id = idFor(key);
+  CHECK(helloFrame(id, key, 62, "", false, "02abcdef0123") ==
+        "{\"t\":\"wristband\",\"id\":\"" + id + "\",\"key\":\"" + key + "\",\"v\":2,\"battery\":62,\"air\":\"02abcdef0123\"}");
+  Wrist w(key);
+  w.setBattery(62, 1000);
+  w.setAir("02abcdef0123");
+  w.linkUp(1000);
+  CHECK(w.take() == std::vector<std::string>{helloFrame(id, key, 62, "", false, "02abcdef0123")});
+
+  // It beacons and listens only on the Wi-Fi, paired, and not in NOT NOW.
+  CHECK(!w.nearOn());  // not paired
+  w.frame("{\"t\":\"paired\",\"secret\":\"" + f32 + "\"}", 1000);
+  CHECK(w.nearOn());
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"quiet\":true}}", 1000);
+  CHECK(!w.nearOn());  // NOT NOW from the relay
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"off\"}}", 1000);
+  CHECK(w.nearOn());
+  w.keyDown(1, 2000);
+  w.tick(2000 + HOLD_MS);
+  CHECK(!w.nearOn());  // NOT NOW from the wrist, before the relay has shown it
+  w.keyUp(1, 2000 + HOLD_MS);
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"off\"}}", 4000);
+  CHECK(w.nearOn());
+  w.linkDown(5000);
+  CHECK(!w.nearOn());  // off the relay
+  w.linkUp(6000);
+  CHECK(w.nearOn());
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"pairing\",\"code\":\"UDXE\"}}", 6000);
+  CHECK(!w.nearOn());  // unpaired
+}
+
+void markers() {
+  // Three areas, each a word on the console and in a report (relay/room.js MARKS has the same), and a letter on the air.
+  CHECK(MARK_AREAS == 3);
+  CHECK(markNamed("bar") == 0 && markNamed("stage") == 1 && markNamed("back") == 2);
+  CHECK(markNamed("off") == -1 && markNamed("") == -1 && markNamed("BAR") == -1 && markNamed("bar ") == -1);
+  CHECK(markLettered('b') == 0 && markLettered('s') == 1 && markLettered('o') == 2);
+  CHECK(markLettered('x') == -1 && markLettered('B') == -1 && markLettered(0) == -1 && markLettered('1') == -1);
+
+  // A marker beacons OTBM and its letter, never a band's OTB1, on every channel from 1 to 13 in turn.
+  CHECK(Marker(0).beacon() == std::vector<uint8_t>({'O', 'T', 'B', 'M', 'b'}));
+  CHECK(Marker(1).beacon() == std::vector<uint8_t>({'O', 'T', 'B', 'M', 's'}));
+  CHECK(Marker(2).beacon() == std::vector<uint8_t>({'O', 'T', 'B', 'M', 'o'}));
+  CHECK(!std::equal(BEACON, BEACON + 4, MARK_BEACON));
+  CHECK(markSweep() == std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}));
+  CHECK(std::string(Marker(1).area()) == "stage");
+
+  // `power <dBm>` on a marker's console, for tests: whole dBm from 2 to 20, in the radio's quarter-dBm steps.
+  CHECK(markPower("20") == 80 && markPower("2") == 8 && markPower("8") == 32 && markPower("08") == 32);
+  for (const char* no : {"1", "21", "0", "", "-5", "8.5", "x", "020", "8 "}) CHECK(markPower(no) == -1);
+
+  // Its face is dark; a key lights it for WAKE_MS with what it is, in the screen's alphabet.
+  Marker m(1);
+  CHECK(!m.lit(0) && !m.lit(WAKE_MS));
+  m.press(1000);
+  CHECK(m.lit(1000) && m.lit(1000 + WAKE_MS - 1) && !m.lit(1000 + WAKE_MS));
+  m.press(1000 + WAKE_MS + 5);
+  CHECK(m.lit(1000 + 2 * WAKE_MS));
+  CHECK(m.words().big == "MARKER" && m.words().small == "BY THE STAGE");
+  CHECK(Marker(0).words().small == "NEAR THE BAR" && Marker(2).words().small == "OUT THE BACK");
+  for (int i = 0; i < 3; ++i) CHECK(fold(Marker(i).words().small) == Marker(i).words().small);
+
+  // A listen keeps each marker area once, at the strongest of its beacons, and a letter no marker has is nothing.
+  Hearing h;
+  h.heardMark('s', -80);
+  h.heardMark('b', -60);
+  h.heardMark('b', -52);
+  h.heardMark('b', -70);
+  h.heardMark('x', -10);
+  h.heardMark('B', -10);
+  CHECK(h.size() == 0);  // a marker is never a band
+  CHECK(h.frame(6) == "{\"t\":\"heard\",\"ch\":6,\"near\":[],\"marks\":[[\"bar\",-52],[\"stage\",-80]]}");
+  // Brought into -100..0, the range the relay takes, as a band's reading is; the strongest first.
+  h.heardMark('o', -130);
+  h.heardMark('s', 4);
+  CHECK(h.frame(6) == "{\"t\":\"heard\",\"ch\":6,\"near\":[],\"marks\":[[\"stage\",0],[\"bar\",-52],[\"back\",-100]]}");
+  CHECK(h.marks().size() == 3 && std::string(h.marks()[0].area) == "stage" && h.marks()[0].rssi == 0);
+  // Heard no marker, a report says nothing of markers; cleared, a listen has heard none.
+  h.clear();
+  CHECK(h.marks().empty());
+  hear(h, 1, -40);
+  CHECK(h.frame(6) == "{\"t\":\"heard\",\"ch\":6,\"near\":[[\"020000000001\",-40]]}");
+  hear(h, 2, -45);
+  h.heardMark('b', -50);
+  CHECK(h.frame(6) == "{\"t\":\"heard\",\"ch\":6,\"near\":[[\"020000000001\",-40],[\"020000000002\",-45]],\"marks\":[[\"bar\",-50]]}");
+
+  // The longest report fits the outbox: HEARD_MAX bands and all three markers, on channel 14.
+  Hearing full;
+  for (int i = 0; i < 16; ++i) {
+    const uint8_t weak[6] = {0xfe, 0xff, 0xff, 0xff, 0xff, static_cast<uint8_t>(i)};
+    full.heard(weak, -100);
+  }
+  for (const char c : {'s', 'o', 'b'}) full.heardMark(c, -100);
+  CHECK(full.frame(14).size() == 346 && full.frame(14).size() < FRAME_MAX);
+}
+
 // ---------- speak: this code, in front of the real relay ----------
 
 std::string quote(const std::string& s) {
@@ -638,12 +806,31 @@ std::string answer(const Command& c) {
     return sha256Hex(bytes.empty() ? none : bytes.data(), bytes.size());
   }
   if (c.verb == "hello") {
-    // hello <key> <battery> [secret|-] [quiet]
+    // hello <key> <battery> [secret|-] [quiet|-] [air]
     std::istringstream in(c.arg);
-    std::string key, secret, quiet;
+    std::string key, secret, quiet, air;
     int battery = -1;
-    in >> key >> battery >> secret >> quiet;
-    return helloFrame(idFor(key), key, battery, secret == "-" ? "" : secret, quiet == "quiet");
+    in >> key >> battery >> secret >> quiet >> air;
+    return helloFrame(idFor(key), key, battery, secret == "-" ? "" : secret, quiet == "quiet", air);
+  }
+  if (c.verb == "heard") {
+    // heard <ch> [<air>:<rssi> ...] [<letter>=<rssi> ...]: one listen, bands and markers, reported as the band reports it
+    std::istringstream in(c.arg);
+    int ch = 0;
+    in >> ch;
+    Hearing h;
+    std::string one;
+    while (in >> one) {
+      if (one.size() > 2 && one[1] == '=') {
+        h.heardMark(static_cast<uint8_t>(one[0]), std::atoi(one.c_str() + 2));
+        continue;
+      }
+      const size_t colon = one.find(':');
+      const std::vector<uint8_t> mac = hexBytes(one.substr(0, colon));
+      if (colon == std::string::npos || mac.size() != 6) return "bad " + one;
+      h.heard(mac.data(), std::atoi(one.c_str() + colon + 1));
+    }
+    return h.frame(ch);
   }
   if (c.verb == "battery") return batteryFrame(std::atoi(c.arg.c_str()));
   if (c.verb == "hold") return HOLD_FRAME;
@@ -790,6 +977,8 @@ int main(int argc, char** argv) {
   rejoin();
   console();
   said();
+  hearing();
+  markers();
   std::printf("ok: %d checks\n", checks);
   return 0;
 }
