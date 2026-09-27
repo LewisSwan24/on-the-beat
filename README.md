@@ -706,11 +706,15 @@ relay could drive what a wrist shows.
   `MARKER / NEAR THE BAR` 1.5 s after a press of either key (backlight 255,
   1,833 of 32,400 pixels lit), and dark again 7.5 s after; and the real app,
   in a browser as a third person with no band, listed `Someone near the bar`
-  beside `Someone in this room`. Capping the marker's radio from 17.75 to
-  0.25 dBm took the band's reading from about -32 to -49 dBm, and the person
-  stayed `near the bar` throughout: the two bands were too close for any cap
-  to reach the floor, so the floor and the hold have still only been crossed
-  in the model and in the relay's tests. The -56 dBm floor rests on the crowd
+  beside `Someone in this room`. With the bands a few metres apart, the band
+  heard the marker at -55 and -56 dBm at full power, and the person was
+  `near the bar`. Capped lower, it heard -57 and -58 and the person stayed
+  `near the bar`, as the hold keeps them; at -65 and -64 they turned `in this
+  room`, and stayed so while it heard -60 to -69. Raised again, at -52 they
+  were `near the bar` once more. Readings at one setting spread by up to 8 dB.
+  The way back up never landed between -60 and -56, so that a person coming
+  back must reach the floor itself is held only by the relay's tests. The
+  -56 dBm floor rests on the crowd
   model's losses for distance and bodies, calibrated on two bands on a desk;
   a real venue's walls may want another floor, and it is one constant in
   the relay (`MARK_FLOOR`). There is one floor for every venue, and a marker
