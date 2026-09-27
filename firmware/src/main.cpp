@@ -14,6 +14,9 @@
 // and the listen that tell the relay which bands are near, and a serial
 // console to say which Wi-Fi and which relay. The socket has a task of its
 // own, so nothing the network does can hold up the button or the screen.
+//
+// Or, set so on the console, it is a marker the venue leaves at the bar or by
+// the stage, and does nothing else: it beacons its area on every channel.
 
 #include <M5Unified.h>
 #include <Preferences.h>
@@ -345,13 +348,18 @@ uint32_t lastHeardAt = 0;             // 0 until a listen has ended
 struct Caught {
   uint8_t mac[6];
   int rssi;
+  bool mark;       // a marker's beacon, not a band's
+  uint8_t letter;  // a marker's: its letter, whatever it is (Hearing ignores one no marker has)
 };
 constexpr size_t CAUGHT_MAX = 32;
 Caught caught[CAUGHT_MAX];
 size_t caughtCount = 0;
 portMUX_TYPE caughtLock = portMUX_INITIALIZER_UNLOCKED;
 
-/** On the Wi-Fi task: an ESP-NOW frame (a vendor-specific action frame) that carries BEACON. Its sender is address 2. */
+/**
+ * On the Wi-Fi task: an ESP-NOW frame (a vendor-specific action frame) that
+ * carries BEACON, or MARK_BEACON and a letter. Its sender is address 2.
+ */
 void onAir(void* buf, wifi_promiscuous_pkt_type_t type) {
   if (type != WIFI_PKT_MGMT) return;
   const auto* p = static_cast<const wifi_promiscuous_pkt_t*>(buf);
@@ -359,11 +367,14 @@ void onAir(void* buf, wifi_promiscuous_pkt_type_t type) {
   const int len = static_cast<int>(p->rx_ctrl.sig_len);
   if (len < 29 || d[0] != 0xD0 || d[24] != 127) return;
   for (int i = 25; i + static_cast<int>(sizeof BEACON) <= len; ++i) {
-    if (memcmp(d + i, BEACON, sizeof BEACON) != 0) continue;
+    const bool mark = i + static_cast<int>(sizeof MARK_BEACON) < len && memcmp(d + i, MARK_BEACON, sizeof MARK_BEACON) == 0;
+    if (!mark && memcmp(d + i, BEACON, sizeof BEACON) != 0) continue;
     portENTER_CRITICAL_ISR(&caughtLock);
     if (caughtCount < CAUGHT_MAX) {
       memcpy(caught[caughtCount].mac, d + 10, 6);
       caught[caughtCount].rssi = p->rx_ctrl.rssi;
+      caught[caughtCount].mark = mark;
+      caught[caughtCount].letter = mark ? d[i + sizeof MARK_BEACON] : 0;
       ++caughtCount;
     }
     portEXIT_CRITICAL_ISR(&caughtLock);
@@ -412,7 +423,10 @@ void hearTick(uint32_t now) {
     hearing.clear();
     return;
   }
-  for (size_t i = 0; i < n; ++i) hearing.heard(got[i].mac, got[i].rssi);
+  for (size_t i = 0; i < n; ++i) {
+    if (got[i].mark) hearing.heardMark(got[i].letter, got[i].rssi);
+    else hearing.heard(got[i].mac, got[i].rssi);
+  }
   if (beaconWanted && now - beaconAt >= BEACON_MS) {
     beaconAt = now;
     if (esp_now_send(BROADCAST, BEACON, sizeof BEACON) == ESP_OK) ++beacons;
@@ -453,9 +467,100 @@ void reportNear(uint32_t now) {
     Serial.println("        no listen yet");
     return;
   }
+  const std::vector<Hearing::Marked> marks = lastHeard.marks();
   Serial.printf("        last listen %u s ago, channel %d: %s\n", static_cast<unsigned>((now - lastHeardAt) / 1000), lastChannel,
-                lastHeard.size() ? "heard" : "heard nobody");
+                lastHeard.size() || !marks.empty() ? "heard" : "heard nobody");
   for (const Hearing::Heard& h : lastHeard.strongest()) Serial.printf("        %s  %d dBm\n", airHex(h.mac).c_str(), h.rssi);
+  for (const Hearing::Marked& m : marks) Serial.printf("        marker %s  %d dBm\n", m.area, m.rssi);
+}
+
+// ---------- a marker ----------
+//
+// `marker bar`, `marker stage` or `marker back` on the console makes the band
+// a marker, kept as the Wi-Fi is, and restarts it as one; `marker off` makes
+// it a wristband again. A marker joins no Wi-Fi, reaches no relay, has no key
+// and no letters. Every BEACON_MS it sends Marker::beacon() once on each
+// channel of markSweep(), waiting for each send to leave before it changes
+// channel: on the spike, a sweep of thirteen took 30 ms, 42 at most, and every
+// send got out. Its face is dark until a key lights it (band_logic.h).
+
+Marker* marker = nullptr;             // made in setup() when the band is one: then nothing else runs
+bool markerReady = false;             // ESP-NOW is up
+std::atomic<bool> markSending{false};
+std::atomic<uint32_t> markSent{0}, markLost{0};
+uint32_t markAt = 0, markRefused = 0, markSweepMs = 0;
+
+/** On the Wi-Fi task: a beacon has left, or could not. */
+void onMarkSent(const uint8_t*, esp_now_send_status_t status) {
+  if (status == ESP_NOW_SEND_SUCCESS) ++markSent;
+  else ++markLost;
+  markSending = false;
+}
+
+void startMarker() {
+  WiFi.disconnect();
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("marker: ESP-NOW would not start");
+    return;
+  }
+  esp_now_register_send_cb(onMarkSent);
+  esp_now_peer_info_t peer = {};
+  memcpy(peer.peer_addr, BROADCAST, 6);
+  peer.channel = 0;  // whichever channel the sweep has set
+  peer.ifidx = WIFI_IF_STA;
+  peer.encrypt = false;
+  esp_now_add_peer(&peer);
+  if (esp_wifi_config_espnow_rate(WIFI_IF_STA, WIFI_PHY_RATE_6M) != ESP_OK) Serial.println("marker: 6 Mbps refused");
+  markerReady = true;
+}
+
+/** Every BEACON_MS, one sweep: the beacon on each channel in turn. */
+void markerTick(uint32_t now) {
+  if (!markerReady || now - markAt < BEACON_MS) return;
+  markAt = now;
+  const std::vector<uint8_t> beacon = marker->beacon();
+  for (const int ch : markSweep()) {
+    if (esp_wifi_set_channel(static_cast<uint8_t>(ch), WIFI_SECOND_CHAN_NONE) != ESP_OK) {
+      ++markRefused;
+      continue;
+    }
+    markSending = true;
+    if (esp_now_send(BROADCAST, beacon.data(), beacon.size()) != ESP_OK) {
+      markSending = false;
+      ++markRefused;
+      continue;
+    }
+    const uint32_t sentAt = millis();
+    while (markSending && millis() - sentAt < 20) delay(1);
+  }
+  markSweepMs = millis() - now;
+}
+
+void reportMarker() {
+  Serial.printf("marker  %s, as %s, on channels 1 to %d every %u ms%s\n", marker->area(), airHex(air).c_str(), MARK_CHANNELS,
+                static_cast<unsigned>(BEACON_MS), markerReady ? "" : ": not beaconing, ESP-NOW would not start");
+  Serial.printf("        %u beacons sent, %u lost, %u refused; the last sweep took %u ms\n", static_cast<unsigned>(markSent),
+                static_cast<unsigned>(markLost), static_cast<unsigned>(markRefused), static_cast<unsigned>(markSweepMs));
+  Serial.printf("battery %d%%\n", battery);
+}
+
+/** `marker bar|stage|back|off`: kept, and a restart to be it. */
+void setMarker(const std::string& a) {
+  const int area = markNamed(a);
+  if (area < 0 && a != "off") {
+    Serial.println("marker bar, marker stage, marker back, or marker off");
+    return;
+  }
+  if (area < 0 && !marker) {
+    Serial.println("a wristband already");
+    return;
+  }
+  if (area >= 0) prefs.putString("marker", a.c_str());
+  else prefs.remove("marker");
+  Serial.printf("%s%s: restarting\n", area >= 0 ? "a marker, " : "a wristband", area >= 0 ? MARK_AREA[area].area : "");
+  Serial.flush();
+  delay(200);
+  ESP.restart();
 }
 
 // ---------- the screen ----------
@@ -632,6 +737,23 @@ void draw(uint32_t now) {
   }
 }
 
+/** A marker's face: dark, and what it is while a key has lit it. */
+void drawMarker(uint32_t now) {
+  const bool on = marker->lit(now);
+  if (on && drawn != "marker") {
+    drawn = "marker";
+    const float k = std::min(face.width() / 135.0f, face.height() / 240.0f);
+    face.fillScreen(BLACK);
+    drawWords(marker->words(), WHITE, k);
+    face.pushSprite(0, 0);
+  }
+  const int light = on ? LIGHT_FULL : LIGHT_OFF;
+  if (light != lit) {
+    lit = light;
+    M5.Display.setBrightness(light);
+  }
+}
+
 // ---------- sound ----------
 
 /** The speaker has finished reading a buffer, so it may be written again. Runs on the speaker's own task. */
@@ -683,7 +805,16 @@ void help() {
       "  face                    what the screen shows now\n"
       "  sound <name>            play one of the band's sounds, e.g. sound found\n"
       "  near                    what it last heard of other bands, and whether it beacons\n"
-      "  near off|listen|on      stop both, stop only beaconing, or do both again");
+      "  near off|listen|on      stop both, stop only beaconing, or do both again\n"
+      "  marker bar|stage|back   make it a marker at the bar, by the stage or out the back (it restarts)");
+}
+
+void helpMarker() {
+  Serial.println(
+      "  show                    which marker, and its beacons\n"
+      "  press face|side         light its face, as a finger does\n"
+      "  marker bar|stage|back   another area (it restarts)\n"
+      "  marker off              a wristband again (it restarts)");
 }
 
 void report() {
@@ -710,6 +841,13 @@ void report() {
 }
 
 void run(const Command& c) {
+  if (marker) {  // a marker takes nothing that would join a Wi-Fi or a relay
+    if (c.verb == "marker") setMarker(trim(c.arg));
+    else if (c.verb == "show") reportMarker();
+    else if (c.verb == "press" || c.verb == "hold") marker->press(millis());
+    else helpMarker();
+    return;
+  }
   if (c.verb == "ssid") {
     ssid = trim(c.arg);
     prefs.putString("ssid", ssid.c_str());
@@ -759,6 +897,8 @@ void run(const Command& c) {
       beaconWanted = a == "on";
     }
     reportNear(millis());
+  } else if (c.verb == "marker") {
+    setMarker(trim(c.arg));
   } else if (c.verb == "forget") {
     prefs.remove("ssid");
     prefs.remove("pass");
@@ -852,11 +992,22 @@ void setup() {
   // before, and it is never the chip's own.
   makeAir(air, [] { return static_cast<uint32_t>(esp_random()); });
   airSet = esp_wifi_set_mac(WIFI_IF_STA, air) == ESP_OK;
+  prefs.begin("otb", false);
+  if (prefs.isKey("id")) prefs.remove("id");  // the id an older build kept for good is not kept any more
+  // A marker is nothing else: no Wi-Fi, no relay, no key; the loop only beacons.
+  const int area = markNamed(setting("marker", ""));
+  if (area >= 0) {
+    marker = new Marker(area);
+    startMarker();
+    readBattery(millis());
+    Serial.printf("\nON THE BEAT marker: %s\n", MARK_AREA[area].area);
+    helpMarker();
+    reportMarker();
+    return;
+  }
   // A new wristband at every boot: the key lives in RAM only, and the id is its hash.
   wrist = new Wrist(makeKey([] { return static_cast<uint32_t>(esp_random()); }));
   if (airSet) wrist->setAir(airHex(air));
-  prefs.begin("otb", false);
-  if (prefs.isKey("id")) prefs.remove("id");  // the id an older build kept for good is not kept any more
   loadSettings();
   readBattery(millis());
   wrist->setBattery(battery, millis());
@@ -885,6 +1036,13 @@ void loop() {
   const uint32_t now = millis();
   console();
   readBattery(now);
+  if (marker) {
+    if (M5.BtnA.isPressed() || M5.BtnB.isPressed()) marker->press(now);
+    markerTick(now);
+    drawMarker(now);
+    delay(10);
+    return;
+  }
   readUsb(now);
   drain(now);
   // KEY1 is the face button, KEY2 the side one. The Wrist times the holds. A key
