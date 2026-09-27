@@ -832,6 +832,26 @@ std::string answer(const Command& c) {
     }
     return h.frame(ch);
   }
+  if (c.verb == "levels") {
+    // levels <s,s,...>: whole blocks of samples through one Levels, and each block's five levels
+    std::vector<int16_t> s;
+    std::istringstream in(c.arg);
+    std::string one;
+    while (std::getline(in, one, ',')) s.push_back(static_cast<int16_t>(std::atoi(one.c_str())));
+    Levels lv;
+    std::string out = "[";
+    for (size_t b = 0; b + BEAT_BLOCK <= s.size(); b += BEAT_BLOCK) {
+      const BandLevels l = lv.block(s.data() + b);
+      out += b ? ",[" : "[";
+      for (size_t k = 0; k < BEAT_BANDS; ++k) {
+        char n[32];
+        std::snprintf(n, sizeof n, "%s%.3f", k ? "," : "", static_cast<double>(l.v[k]));
+        out += n;
+      }
+      out += "]";
+    }
+    return out + "]";
+  }
   if (c.verb == "battery") return batteryFrame(std::atoi(c.arg.c_str()));
   if (c.verb == "hold") return HOLD_FRAME;
   if (c.verb == "ping") return PING_FRAME;

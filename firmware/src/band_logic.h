@@ -26,6 +26,8 @@
 #include <string>
 #include <vector>
 
+#include "beat_logic.h"
+
 namespace otb {
 
 constexpr uint32_t WAKE_MS = 6000;            // a KEY1 press shows the face this long
