@@ -688,7 +688,15 @@ relay could drive what a wrist shows.
   band hears only bands on its own channel, so a venue whose access points
   use several splits its bands into groups, each of which keeps the others
   listed. Markers do not have this problem: they beacon on every channel.
-- **Markers are modelled, not walked.** The -56 dBm floor rests on the crowd
+- **Markers have met two bands, not a room.** On 27 Sep 2026 the StickC
+  Plus, made `marker bar` at its console, sent 338 beacons in 13 s on
+  channels 1 to 13, none lost or refused, each sweep about 30 ms. The
+  StickS3, on the hotspot's channel 11 and paired to a stand-in phone on SAY
+  HI, heard it across the desk at -45 and -44 dBm. 11.5 s after the marker
+  started, a second phone with no band showed that person `near the bar`, as
+  did their own view, and nothing changed in the next 45 s; 30.5 s after
+  `marker off`, both said `in this room` again. That the marker's face lights
+  on a press is not yet seen by eye. The -56 dBm floor rests on the crowd
   model's losses for distance and bodies, calibrated on two bands on a desk;
   a real venue's walls may want another floor, and it is one constant in
   the relay (`MARK_FLOOR`). There is one floor for every venue, and a marker
