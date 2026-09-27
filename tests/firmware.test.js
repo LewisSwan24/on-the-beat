@@ -22,6 +22,7 @@ import { INTENTS } from '../relay/cards.js';
 import { HUE } from '../app/copy.js';
 import { codeFrom, pairUrl } from '../app/lib/pairing.js';
 import { CONSTS, FLASH_COLOURS, FLASHES, SOUNDS, cardAfter } from '../app/lib/wrist.js';
+import { BEAT_BLOCK, BEAT_RATE, createLevels } from '../app/lib/beat.js';
 import { TABLE, lines, check } from './wrist-table.js';
 
 const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).digest('hex').slice(0, 32);
@@ -142,6 +143,23 @@ test("the flashes' red and orange are the stand-in's, and red is the phone's own
   assert.deepEqual(JSON.parse(colours), FLASH_COLOURS);
   const css = readFileSync(new URL('../app/styles.css', import.meta.url), 'utf8');
   assert.equal(FLASH_COLOURS.red, css.match(/--stop:\s*(#[0-9A-Fa-f]{6})/)[1].toUpperCase());
+});
+
+test('the firmware hears as the stand-in does: the same samples give the same five levels', { skip }, () => {
+  // Three tones, an offset and seeded noise, 60 blocks, through both twins' filters.
+  let seed = 7;
+  const noise = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32) * 2 - 1;
+  const wave = (hz, a, i) => a * Math.sin((2 * Math.PI * hz * i) / BEAT_RATE);
+  const samples = Array.from({ length: 60 * BEAT_BLOCK }, (_, i) =>
+    Math.round(wave(90, 3000, i) + wave(900, 2000, i) + wave(5000, 1500, i) + 800 * noise() + 500));
+  const js = createLevels();
+  const want = [];
+  for (let b = 0; b < 60; b++) want.push(js.block(samples.slice(b * BEAT_BLOCK, (b + 1) * BEAT_BLOCK)));
+  const band = JSON.parse(speak(['levels ' + samples.join(',')])[0]);
+  assert.equal(band.length, 60);
+  // The band works in float and the stand-in in double: 0.003% apart at worst when measured, held to 0.05%.
+  band.forEach((row, b) => row.forEach((v, k) =>
+    assert.ok(Math.abs(v - want[b][k]) <= 0.0005 * want[b][k] + 0.002, `block ${b} band ${k}: ${v} against ${want[b][k]}`)));
 });
 
 test("the firmware hashes as node:crypto does, and its id is its key's hash", { skip }, () => {
