@@ -387,8 +387,14 @@ listen heard are listed under the bands. `marker bar`, `marker stage` or
 `marker back` makes the band a marker and restarts it as one. A marker's
 console takes only `show` (its area, its address on the air this boot, the
 beacons sent, lost and refused, and how long the last sweep of the thirteen
-channels took), `press` to light its face, another `marker`, and `marker
-off`, which restarts it as a wristband. On the Plus, `show` also says
+channels took), `press` to light its face, `face` to read back what its
+screen shows (the words, the backlight, and how many pixels are lit),
+`power <dBm>` to cap its radio from 2 to 20 dBm for a test (not kept
+across a restart), another `marker`, and `marker off`, which restarts it
+as a wristband. The cap is no smooth stand-in for distance: with the Plus
+as the marker, the StickS3 read it 17 dB weaker at the lowest cap than at
+the highest, but the caps between moved it in steps, and not always the
+same way (at 6.75 dBm it read weaker than at 5.25). On the Plus, `show` also says
 what the band draws from USB, the mean since the last `show`. Only the
 USB cable reaches the console, and
 whoever holds the cable holds the band and its buttons anyway; no frame from
@@ -695,8 +701,16 @@ relay could drive what a wrist shows.
   HI, heard it across the desk at -45 and -44 dBm. 11.5 s after the marker
   started, a second phone with no band showed that person `near the bar`, as
   did their own view, and nothing changed in the next 45 s; 30.5 s after
-  `marker off`, both said `in this room` again. That the marker's face lights
-  on a press is not yet seen by eye. The -56 dBm floor rests on the crowd
+  `marker off`, both said `in this room` again. Then, with no hand on either
+  band: the marker's face, read back over its console, was dark, then
+  `MARKER / NEAR THE BAR` 1.5 s after a press of either key (backlight 255,
+  1,833 of 32,400 pixels lit), and dark again 7.5 s after; and the real app,
+  in a browser as a third person with no band, listed `Someone near the bar`
+  beside `Someone in this room`. Capping the marker's radio from 17.75 to
+  0.25 dBm took the band's reading from about -32 to -49 dBm, and the person
+  stayed `near the bar` throughout: the two bands were too close for any cap
+  to reach the floor, so the floor and the hold have still only been crossed
+  in the model and in the relay's tests. The -56 dBm floor rests on the crowd
   model's losses for distance and bodies, calibrated on two bands on a desk;
   a real venue's walls may want another floor, and it is one constant in
   the relay (`MARK_FLOOR`). There is one floor for every venue, and a marker

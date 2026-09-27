@@ -727,6 +727,10 @@ void markers() {
   CHECK(markSweep() == std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}));
   CHECK(std::string(Marker(1).area()) == "stage");
 
+  // `power <dBm>` on a marker's console, for tests: whole dBm from 2 to 20, in the radio's quarter-dBm steps.
+  CHECK(markPower("20") == 80 && markPower("2") == 8 && markPower("8") == 32 && markPower("08") == 32);
+  for (const char* no : {"1", "21", "0", "", "-5", "8.5", "x", "020", "8 "}) CHECK(markPower(no) == -1);
+
   // Its face is dark; a key lights it for WAKE_MS with what it is, in the screen's alphabet.
   Marker m(1);
   CHECK(!m.lit(0) && !m.lit(WAKE_MS));

@@ -541,7 +541,26 @@ void reportMarker() {
                 static_cast<unsigned>(BEACON_MS), markerReady ? "" : ": not beaconing, ESP-NOW would not start");
   Serial.printf("        %u beacons sent, %u lost, %u refused; the last sweep took %u ms\n", static_cast<unsigned>(markSent),
                 static_cast<unsigned>(markLost), static_cast<unsigned>(markRefused), static_cast<unsigned>(markSweepMs));
+  int8_t cap = 0;
+  if (esp_wifi_get_max_tx_power(&cap) == ESP_OK) Serial.printf("        power %.2f dBm at most, as the radio says\n", cap / 4.0f);
   Serial.printf("battery %d%%\n", battery);
+}
+
+/**
+ * `power <dBm>`, for tests only: the radio capped lower, so the marker reads
+ * as one further away. Not kept: a restart is full power again. With no
+ * number, it says the cap the radio has now.
+ */
+void setMarkPower(const std::string& a) {
+  const int quarters = markPower(a);
+  if (!a.empty() && quarters < 0) {
+    Serial.printf("power %d to %d, in whole dBm\n", MARK_POWER_MIN, MARK_POWER_MAX);
+    return;
+  }
+  if (quarters >= 0 && esp_wifi_set_max_tx_power(static_cast<int8_t>(quarters)) != ESP_OK) Serial.println("power: the radio refused it");
+  int8_t cap = 0;
+  esp_wifi_get_max_tx_power(&cap);
+  Serial.printf("power   %.2f dBm at most, as the radio says\n", cap / 4.0f);
 }
 
 /** `marker bar|stage|back|off`: kept, and a restart to be it. */
@@ -737,6 +756,26 @@ void draw(uint32_t now) {
   }
 }
 
+/**
+ * `face` on a marker's console: what its screen shows, read back, so a test
+ * needs no eyes. The words, the backlight the display driver holds, and how
+ * many of the picture's pixels are lit, counted in the frame last pushed.
+ */
+void markerFace(uint32_t now) {
+  const int light = M5.Display.getBrightness();
+  if (!marker->lit(now) || drawn != "marker") {
+    Serial.printf("face: dark (light %d)\n", light);
+    return;
+  }
+  int on = 0;
+  for (int y = 0; y < face.height(); ++y)
+    for (int x = 0; x < face.width(); ++x)
+      if (face.readPixel(x, y)) ++on;
+  const Words w = marker->words();
+  Serial.printf("face: %s / %s (white on black, light %d, %d of %d pixels lit)\n", w.big.c_str(), w.small.c_str(), light, on,
+                face.width() * face.height());
+}
+
 /** A marker's face: dark, and what it is while a key has lit it. */
 void drawMarker(uint32_t now) {
   const bool on = marker->lit(now);
@@ -813,6 +852,8 @@ void helpMarker() {
   Serial.println(
       "  show                    which marker, and its beacons\n"
       "  press face|side         light its face, as a finger does\n"
+      "  face                    what its screen shows now\n"
+      "  power <dBm>             for tests: its radio capped at 2 to 20 dBm, as if further away (not kept)\n"
       "  marker bar|stage|back   another area (it restarts)\n"
       "  marker off              a wristband again (it restarts)");
 }
@@ -845,6 +886,8 @@ void run(const Command& c) {
     if (c.verb == "marker") setMarker(trim(c.arg));
     else if (c.verb == "show") reportMarker();
     else if (c.verb == "press" || c.verb == "hold") marker->press(millis());
+    else if (c.verb == "face") markerFace(millis());
+    else if (c.verb == "power") setMarkPower(trim(c.arg));
     else helpMarker();
     return;
   }

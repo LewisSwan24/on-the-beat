@@ -1216,6 +1216,20 @@ inline std::vector<int> markSweep() {
   return s;
 }
 
+constexpr int MARK_POWER_MIN = 2;   // dBm: the least a marker's `power` takes...
+constexpr int MARK_POWER_MAX = 20;  // ...and the most, the radio's own range in whole dB
+
+/**
+ * `power <dBm>` on a marker's console, for tests only: a marker turned down
+ * reads as one further away. A whole number of dBm from MARK_POWER_MIN to
+ * MARK_POWER_MAX, as the radio's quarter-dBm steps, or -1.
+ */
+inline int markPower(const std::string& dbm) {
+  if (dbm.empty() || dbm.size() > 2 || dbm.find_first_not_of("0123456789") != std::string::npos) return -1;
+  const int d = std::atoi(dbm.c_str());
+  return d >= MARK_POWER_MIN && d <= MARK_POWER_MAX ? d * 4 : -1;
+}
+
 /** Six address bytes as twelve lower-case hex digits, as the hello's air and a report write them. */
 inline std::string airHex(const uint8_t* mac) {
   static const char DIGITS[] = "0123456789abcdef";
