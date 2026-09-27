@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cardOf } from '../relay/cards.js';
 import { BAND_OFF, HOW, HUE, PROMISES, REPORT, matchName, someone, teamHere } from './copy.js';
+import { BEAT_HOW, BEAT_SAY, beatRow } from './lib/bandbeat.js';
 import { SOUND_SAY, soundRow } from './lib/bandsound.js';
 import { battery, buzz, toBase64 } from './lib/device.js';
 import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
@@ -173,6 +174,7 @@ export default function App() {
     const st = night.state || {};
     const seq = st.seq ?? 0;
     n.keep('sound', { t: 'sound', on: s.bandSound });
+    n.keep('beat', { t: 'beat', on: s.bandBeat });
     n.keep('profile', { t: 'profile', name: s.name, contact: s.contact });
     n.keep('invisible', { t: 'invisible', on: !!st.invisible, seq });
     n.keep('arm', { t: 'arm', intent: st.armed ?? null, seq });
@@ -522,6 +524,7 @@ export default function App() {
       { icon: 'touch_app', label: 'Press the side button to see your card, and again to change it. Your phone follows.', fg: '#fff', onTap: () => {} },
       { icon: 'waving_hand', label: WAVES_HOW, fg: '#fff', onTap: () => {} },
       { icon: 'watch', label: BAND_OFF.how, fg: '#fff', onTap: () => {} },
+      { icon: 'graphic_eq', label: BEAT_HOW, fg: '#fff', onTap: () => {} },
     ],
   });
 
@@ -542,6 +545,15 @@ export default function App() {
     say(on ? SOUND_SAY.on : SOUND_SAY.off);
   };
 
+  // Its beat, the same way: whether a lit card pulses on the beat, and so whether the band may listen.
+  const flipBeat = () => {
+    const on = !s.bandBeat;
+    update((prev) => ({ ...prev, bandBeat: on }));
+    net.current?.say('beat', { t: 'beat', on });
+    setSheet(null);
+    say(on ? BEAT_SAY.on : BEAT_SAY.off);
+  };
+
   const bandSheet = () => setSheet({
     title: 'Your wristband', sub: bandLine(bandShown), close: 'Done',
     rows: [
@@ -550,6 +562,7 @@ export default function App() {
       ...(bandShown?.off ? [] : [{ icon: 'flashlight_on', label: 'TEST THE LIGHT', sub: 'it flashes white for two seconds, and chirps unless its sound is off or it is in NOT NOW.', fg: '#fff',
         onTap: () => { net.current?.send({ t: 'testLight' }); setSheet(null); say('watch your wrist.'); } }]),
       { ...soundRow(s.bandSound), fg: '#fff', onTap: flipSound },
+      { ...beatRow(s.bandBeat), fg: '#fff', onTap: flipBeat },
       { icon: 'link_off', label: 'UNPAIR', sub: 'it forgets you, and shows new letters.', fg: 'var(--stop)', onTap: unpair },
     ],
   });
