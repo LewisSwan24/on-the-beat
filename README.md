@@ -303,6 +303,28 @@ that was taken.
   every reconnect, and the relay carries it on the shows to that person's
   band and to no other. A band nobody has claimed chirps as it is, and a
   claimed band has the switch in its first show.
+- **A lit card pulses on the beat.** While a card is lit at rest — `HI :)`,
+  `FIRST SONG?` or `LET'S DANCE!`, never a meeting number, the letters, the
+  check, the test light or NOT NOW — the band listens to the room, and once
+  it has the beat the card's light is full on each beat and falls in a
+  straight line to half over the first two thirds of it. The colour never
+  goes dark, and every reaction goes first. It finds the beat in whatever
+  part of the sound carries it, since laptop speakers and a venue's echo
+  both lose the kick: each block's five levels, how far each rose, a tempo
+  read every 128 ms by autocorrelation between 80 and 178 BPM, weighted
+  towards 120, and a grid that pulses once four of its last five beats were
+  heard. In doubt the card stays steady: a song that stops goes quiet within
+  two beats, another song takes over the grid, and a missed kick or a
+  reaction's gap does not stop it. The phone's wristband sheet has
+  `BEAT: ON` under `SOUND: ON`, the person's own in the same way; off, the
+  band never opens its microphone. It is on by default.
+- **It hears loudness only.** Each 8 ms of sound becomes five levels on the
+  band, one for each band of pitch, and it keeps only how far they rose, one
+  number a block, for six seconds. Nothing of the sound is recorded, and
+  nothing it hears is sent: the relay only carries the switch. The
+  microphone is open only while a lit card could pulse and the switch is on.
+  `/band`'s `LISTEN` does the same with the laptop's microphone, for a demo;
+  it is off until turned on, and only then asks the browser for it.
 - **Letters go dark after two minutes.** An unclaimed band's letters and QR,
   and the face of one waiting for its owner after a restart, light for two
   minutes and then only the backlight goes off; a press lights them again.
@@ -442,6 +464,22 @@ the relay reaches it.
   M5StickC has no speaker; it says so once on the console and only lights up.
   The Plus has no PSRAM, and the buffers take its static RAM from 51 KB to
   70 KB of 320 KB; `show` prints the free heap.
+- **The microphone and the speaker take turns.** `main.cpp` opens the
+  microphone only while the wrist says it is listening, and each full block
+  goes straight back to M5Unified from the microphone's own task, with a
+  copy for the loop, so the loop's pace never loses a sample. A sound
+  closes it for the sound's length, and it opens again after; the spike
+  measured the turn at about 25 ms besides the sound. Both bands hand their
+  blocks over two at a time, and their samples run 382 ppm fast of
+  `millis()`, which counting alone would carry into the pulses at 23 ms a
+  minute. So a block clock counts them, held to `millis()` (`BlockClock`,
+  in `beat_logic.h`): a block is never timed after it was handed over, the
+  count creeps later by at most 0.125 ms a block, blocks lost are counted
+  over, and the first 16 after it opens are not heard while its filters
+  settle. The levels, the tracker and the clock are twins of
+  `app/lib/beat.js`, held equal to the bit by `tests/firmware.test.js`.
+  `beat` on the console says whether the microphone is open, what it has
+  heard and whether it has the beat; `face` shows the light moving.
 - **A change of light alone only turns the backlight.** A flash's dark steps
   and the meeting's blink never repaint the face, so a call that blinks for
   fifteen minutes never holds up the loop or misses a tap.
@@ -549,6 +587,12 @@ the relay reaches it.
   S5's own limit of five. People without a band cannot be heard, which says
   nothing about where they are, so they are listed as before; the owner chose
   that on 26 Sep 2026.
+- **A lit card pulses on the beat.** Revision 6 §8 rules out light patterns
+  that pretend to carry a message, and says nothing about music. The owner
+  chose on 25 Sep 2026 that a lit card pulses with what everyone in the room
+  can hear, and on 27 Sep that it is on by default, with `BEAT: ON` on the
+  phone to keep it still. The pulse carries no message: it says nothing
+  about the wearer or anyone else, and is off whenever the card is.
 - **A marker names an area only when it is heard clearly.** Revision 6 takes
   the loudest marker. Far from every marker the loudest is still some marker,
   heard faintly across the room, so it names a band only at -56 dBm or
@@ -769,7 +813,8 @@ relay could drive what a wrist shows.
   USB in, the Plus held 100% for 50 minutes, most of them on the Wi-Fi,
   where the StickS3 in the same state ran down. How each sound lands on a
   wrist, and each colour, and the words whole on a real screen, still need
-  someone there. Flashing on the music's beat is a later spec.
+  someone there. A lit card pulsing on the music's beat has its own entry
+  below.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was
@@ -804,6 +849,23 @@ relay could drive what a wrist shows.
   need someone there. Saying it by bumping two wristbands together, with the
   motion sensor, is a later change, after a spike shows a fist bump can be
   told apart from two people dancing to the same beat.
+- **The beat has not been heard on the real bands.** The tests hold the
+  tracker and its block clock equal to the bit between the twins, and to
+  made-up music: kicks at 90, 120 and 160 BPM, a hi-hat, a held chord,
+  noise, made-up speech, random kicks, missed kicks and gaps. The stand-in's
+  `LISTEN` pulsed on a made-up 120 BPM kick in a browser, 500 ms apart, and
+  was steady within a beat of being turned off. On the bands it has only
+  been built, for both boards. Its gate is owed (the spec's §4.1): round 3 of
+  the spike on both bands beside the laptop at round 2's volume, and each
+  model's microphone delay, 0 until then, measured there from presses of
+  the face button. It reaches `main` only once that passes. What the made-up
+  music already shows: made-up speech and random kicks still pulse, in short
+  bursts, 4 to 24 pulses in each 800 s of them; a held chord flickers by
+  about ±3 dB a block, which can count as a rise; and a hi-hat over a quiet
+  room never locks. On the Plus the backlight has only eleven levels, set through its
+  power chip, so a pulse falls in a few visible steps; and each turn to the
+  microphone ends and begins the speaker, which may be heard as a click.
+  Both are for eyes and ears on the bands.
 - **The timings are guesses until worn** — six seconds awake, 1.5 s holds,
   three to send, ten to wait. They are named constants for that reason.
 - **Recording has run on Chrome's fake camera, not a phone's.** Headless
