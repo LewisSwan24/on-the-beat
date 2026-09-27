@@ -96,13 +96,15 @@ export const BEAT_OF = 3;                 // ...of the last this many were
 export const BEAT_HOLD = 4;               // or one was, with the fold on the grid peaking this far above its mean
 export const BEAT_OTHER_LOOKS = 8;        // looks before a heard grid gives way
 export const BEAT_LOSE_MS = 4000;         // nothing heard this long, and the grid is dropped
+export const BEAT_CREEP = 0.125;          // ms a block the microphone's count may creep later, following the band's clock
+export const BEAT_SETTLE = 16;            // blocks timed but not heard once the microphone opens, while its filters settle
 
 /** Every value above, by name. */
 export const BEAT_CONSTS = {
   BEAT_ONSET, BEAT_ONSET_MIN, BEAT_WINDOW_MS, BEAT_LOOK_MS, BEAT_SHORTEST_MS, BEAT_LONGEST_MS, BEAT_PRIOR_MS,
   BEAT_PRIOR_OCT, BEAT_LOCK_CONF, BEAT_LOCK_CONTRAST, BEAT_LOCK_LOOKS, BEAT_STEADY, BEAT_PHASE_MS, BEAT_NEAR,
   BEAT_RISE, BEAT_TIGHT_MS, BEAT_PULL_PHASE, BEAT_PULL_PERIOD, BEAT_CHANGE, BEAT_START, BEAT_START_OF, BEAT_CONFIRM, BEAT_OF,
-  BEAT_HOLD, BEAT_OTHER_LOOKS, BEAT_LOSE_MS,
+  BEAT_HOLD, BEAT_OTHER_LOOKS, BEAT_LOSE_MS, BEAT_CREEP, BEAT_SETTLE,
 };
 
 const BLOCK_MS = (BEAT_BLOCK * 1000) / BEAT_RATE;
@@ -362,5 +364,42 @@ export function createTracker() {
     },
     /** Locked on a grid, and its period in ms (0 when not). */
     state: () => ({ locked, period }),
+  };
+}
+
+/**
+ * When each of the microphone's blocks ended, by the band's clock (§2). The blocks are counted, a block apart, as
+ * the microphone hands them over two at a time. Its samples run 382 ppm fast of the band's clock on both bands
+ * (measured 27 Sep 2026), which counting alone would carry into the pulses at 23 ms a minute, so the count is held
+ * to the clock: a block is never timed after it was handed over, and the count creeps later by at most BEAT_CREEP
+ * a block while blocks come later than it says. Blocks the band could not keep are counted over. The first
+ * BEAT_SETTLE blocks after the microphone opens are timed but not heard: its filters are settling.
+ */
+export function createBlockClock() {
+  let base = null; // when the first block since the microphone opened was handed over
+  let off = 0; // when the last block ended, from base, in ms
+  let settle = BEAT_SETTLE;
+  return {
+    /** The microphone has opened: count afresh, and let it settle. */
+    reset() {
+      base = null;
+      settle = BEAT_SETTLE;
+    },
+    /** A block handed over at `arrival`, `lost` blocks after the last: when it ended, or null while it settles. */
+    at(arrival, lost = 0) {
+      if (base === null) {
+        base = arrival;
+        off = 0;
+      } else {
+        off += BLOCK_MS * (1 + lost);
+        const late = arrival - base - off;
+        off += late < 0 ? late : Math.min(late, BEAT_CREEP);
+      }
+      if (settle > 0) {
+        settle -= 1;
+        return null;
+      }
+      return base + Math.floor(off + 0.5);
+    },
   };
 }

@@ -1688,6 +1688,9 @@ class Wrist {
   /** The microphone's delay from a sound to the block that hears it, in ms: this model's. */
   void setMicLatency(double ms) { tracker_.setLatency(ms); }
 
+  /** The beat's period in ms once the band has it, and 0 before: for the console. */
+  double beatPeriod() const { return tracker_.locked() ? tracker_.period() : 0; }
+
  private:
   void heardFrame(const std::string& text, uint32_t now) {
     link_.heard(now);

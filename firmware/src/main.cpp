@@ -11,10 +11,11 @@
 //
 // Everything that decides anything is in band_logic.h, which the tests build
 // and run on a laptop. This file is only the hardware round it: the screen,
-// the speaker, the two buttons, the battery, Wi-Fi, the socket, the beacon
-// and the listen that tell the relay which bands are near, and a serial
-// console to say which Wi-Fi and which relay. The socket has a task of its
-// own, so nothing the network does can hold up the button or the screen.
+// the speaker, the microphone a lit card pulses on the beat from, the two
+// buttons, the battery, Wi-Fi, the socket, the beacon and the listen that
+// tell the relay which bands are near, and a serial console to say which
+// Wi-Fi and which relay. The socket has a task of its own, so nothing the
+// network does can hold up the button or the screen.
 //
 // Or, set so on the console, it is a marker the venue leaves at the bar or by
 // the stage, and does nothing else: it beacons its area on every channel.
@@ -104,6 +105,29 @@ uint8_t soundBuf[2][SOUND_SAMPLES];
 std::atomic<bool> soundHeld[2];         // a sound on this buffer the speaker has not let go of yet
 int soundNext = 0;                      // the buffer the next sound goes in
 std::string soundDue;                   // the newest sound not started yet
+bool speakerOn = false;                 // the speaker has the audio channel; the microphone takes it in turn
+
+// The microphone's blocks, each handed back to it from its own task the moment it is full, with a copy for the
+// loop: so the loop's pace never loses a sample, and blocks the copies could not hold are counted.
+struct Heard {
+  int16_t samples[BEAT_BLOCK];
+  uint32_t at;    // millis() when the microphone handed it over
+  uint32_t lost;  // blocks before it that the copies could not hold
+};
+constexpr size_t HEARD_KEPT = 16;         // 128 ms of blocks the loop may fall behind by
+// The microphone's delay from a sound to the block that hears it, in ms, by model (beat §2): measured at the
+// gate, from a press of the face button to the block that hears its click (§4.1). Not measured yet, so 0.
+constexpr double MIC_LATENCY_S3_MS = 0;   // the StickS3's, through its codec
+constexpr double MIC_LATENCY_PDM_MS = 0;  // the StickC Plus's and Plus2's PDM microphone
+int16_t micBuf[2][BEAT_BLOCK];
+QueueHandle_t heardBlocks = nullptr;
+volatile uint32_t micLost = 0;            // written by the microphone's task, and by the loop only while it is shut
+std::atomic<int16_t*> micStuck{nullptr};  // a buffer the microphone's task could not hand back
+bool micWorks = false;                    // this band has a microphone, and it opened whenever asked
+bool micOpen = false;
+Levels levels;                            // kept from one opening to the next: the offset it took out is still there
+BlockClock blockClock;
+uint32_t micBlocks = 0, micDropped = 0;   // since it last opened, for the console
 
 constexpr uint16_t BLACK = 0x0000;
 constexpr uint16_t WHITE = 0xFFFF;
@@ -904,6 +928,83 @@ void setTurn(const std::string& name) {
   turnTo(side == 1);
 }
 
+// ---------- the microphone ----------
+//
+// Open only while the wrist is listening (beat §2): a lit card that could
+// pulse, the beat switch on, not NOT NOW. It hears loudness only: each block
+// becomes five levels here, and nothing of the sound is kept or sent. The
+// microphone and the speaker take turns with the audio channel, as they share
+// one I2S on some bands: a sound closes the microphone for its length, and it
+// opens again once the sound is done, the beat carried across the gap. The
+// spike measured the turn at about 25 ms besides the sound.
+
+/** The speaker has the channel again, if this band has one. */
+void giveSpeaker() {
+  if (speaker && !speakerOn) speakerOn = M5.Speaker.begin();
+}
+
+/** A block is full. Runs on the microphone's own task: a copy for the loop, and the buffer straight back. */
+void micReleased(void*, void* data, size_t) {
+  static Heard h;  // not on the microphone task's own small stack
+  std::memcpy(h.samples, data, sizeof h.samples);
+  h.at = millis();
+  h.lost = micLost;
+  if (xQueueSend(heardBlocks, &h, 0) == pdTRUE) micLost = 0;
+  else micLost = micLost + 1;
+  if (!M5.Mic.record(static_cast<int16_t*>(data), BEAT_BLOCK)) micStuck = static_cast<int16_t*>(data);
+}
+
+/** Hands the channel to the microphone: the speaker off first, then two blocks' buffers queued, counted afresh. */
+void openMic() {
+  if (speakerOn) {
+    M5.Speaker.end();
+    speakerOn = false;
+  }
+  xQueueReset(heardBlocks);
+  micLost = 0;
+  micStuck = nullptr;
+  micBlocks = micDropped = 0;
+  blockClock.reset();
+  if (M5.Mic.begin() && M5.Mic.record(micBuf[0], BEAT_BLOCK, BEAT_RATE) && M5.Mic.record(micBuf[1], BEAT_BLOCK, BEAT_RATE)) {
+    micOpen = true;
+    return;
+  }
+  M5.Mic.end();
+  micWorks = false;
+  Serial.println("the microphone did not open: this band's card stays still");
+  giveSpeaker();
+}
+
+/** Takes the channel back from the microphone, for the speaker. */
+void closeMic() {
+  M5.Mic.end();
+  micOpen = false;
+  xQueueReset(heardBlocks);
+  giveSpeaker();
+}
+
+/**
+ * The microphone open while the wrist is listening and no sound has the
+ * channel, and shut otherwise; and each block it handed over, as five levels,
+ * to the wrist at the time the block ended.
+ */
+void micTick(uint32_t now) {
+  const bool want = micWorks && wrist->listening(now);
+  const bool sounding = speakerOn && (!soundDue.empty() || M5.Speaker.isPlaying(SOUND_CHANNEL));
+  if (micOpen && !want) closeMic();
+  else if (!micOpen && want && !sounding) openMic();
+  if (!micOpen) return;
+  if (int16_t* b = micStuck.exchange(nullptr)) M5.Mic.record(b, BEAT_BLOCK, BEAT_RATE);
+  static Heard h;
+  while (xQueueReceive(heardBlocks, &h, 0) == pdTRUE) {
+    const BandLevels lv = levels.block(h.samples);
+    ++micBlocks;
+    micDropped += h.lost;
+    uint32_t t = 0;
+    if (blockClock.at(h.at, h.lost, t)) wrist->hear(lv, t);
+  }
+}
+
 // ---------- sound ----------
 
 /** The speaker has finished reading a buffer, so it may be written again. Runs on the speaker's own task. */
@@ -922,7 +1023,8 @@ void playSounds() {
   if (wrist)
     for (std::string& name : wrist->sounds()) soundDue = std::move(name);
   if (soundDue.empty()) return;
-  if (!speaker) {
+  if (micOpen) closeMic();  // the channel to the speaker for the sound; the microphone opens again after it
+  if (!speakerOn) {
     soundDue.clear();
     return;
   }
@@ -964,7 +1066,8 @@ void help() {
       "  face                    what the screen shows now\n"
       "  snap                    the screen, as one line of base64 for a script\n"
       "  turn usb-left|usb-right  which side is up (kept); on a StickC Plus the power button turns it over too\n"
-      "  sound <name>        play one of the band's sounds, e.g. sound found\n"
+      "  sound <name>            play one of the band's sounds, e.g. sound found\n"
+      "  beat                    whether its microphone is open, what it has heard, and whether it has the beat\n"
       "  near                    what it last heard of other bands, and whether it beacons\n"
       "  near off|listen|on      stop both, stop only beaconing, or do both again\n"
       "  marker bar|stage|back   make it a marker at the bar, by the stage or out the back (it restarts)");
@@ -983,6 +1086,20 @@ void helpMarker() {
       "  marker off              a wristband again (it restarts)");
 }
 
+/** The microphone and the beat, as the console says them. */
+void reportBeat() {
+  if (!micWorks) {
+    Serial.println("beat    no microphone: the card stays still");
+    return;
+  }
+  const double period = wrist->beatPeriod();
+  if (!micOpen) Serial.printf("beat    microphone shut (%s)\n", wrist->listening(millis()) ? "a sound has the speaker" : "not listening");
+  else if (period > 0) Serial.printf("beat    microphone open, %u blocks, %u lost; the beat every %.1f ms (%.1f BPM)\n",
+                                     static_cast<unsigned>(micBlocks), static_cast<unsigned>(micDropped), period, 60000 / period);
+  else Serial.printf("beat    microphone open, %u blocks, %u lost; no beat yet\n", static_cast<unsigned>(micBlocks),
+                     static_cast<unsigned>(micDropped));
+}
+
 void report() {
   Serial.printf("wi-fi   %s%s  (%s)\n", ssid.empty() ? "(none)" : ssid.c_str(), pass.empty() ? "" : ", with a password",
                 WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString().c_str() : "not connected");
@@ -996,6 +1113,7 @@ void report() {
   Serial.printf("memory  %u bytes free, %u at the least; sound %s\n", static_cast<unsigned>(ESP.getFreeHeap()),
                 static_cast<unsigned>(ESP.getMinFreeHeap()),
                 !speaker ? "none: light only" : buzzer ? "on the buzzer, octaves up" : "on the speaker");
+  reportBeat();
   // Plugged in with the battery full, what it draws is what the band uses: near on against near off.
   if (axp) {
     Serial.printf("power   %.1f mA from USB, the mean of %u readings since the last show\n", usbCount ? usbSum / usbCount : 0.0f,
@@ -1101,6 +1219,8 @@ void run(const Command& c) {
     }
     if (!speaker) Serial.println("no speaker on this band");
     soundDue = name;
+  } else if (c.verb == "beat") {
+    reportBeat();
   } else if (c.verb == "near") {
     const std::string a = trim(c.arg);
     if (a == "off" || a == "listen" || a == "on") {
@@ -1358,8 +1478,10 @@ void setup() {
   // bands the two share one I2S), then full volume. The StickC Plus plays the
   // same sounds through its buzzer, powered as above, whole octaves higher.
   M5.Mic.end();
+  M5.Mic.setBufferReleaseCallback(nullptr, micReleased);  // set while it is shut, as M5Unified asks
   M5.Speaker.setBufferReleaseCallback(nullptr, soundReleased);
   speaker = M5.Speaker.begin();
+  speakerOn = speaker;
   M5.Speaker.setVolume(255);
   buzzer = speaker && M5.Speaker.config().buzzer;
 
@@ -1398,6 +1520,9 @@ void setup() {
   // A new wristband at every boot: the key lives in RAM only, and the id is its hash.
   wrist = new Wrist(makeKey([] { return static_cast<uint32_t>(esp_random()); }));
   if (airSet) wrist->setAir(airHex(air));
+  heardBlocks = xQueueCreate(HEARD_KEPT, sizeof(Heard));
+  micWorks = heardBlocks && M5.Mic.isEnabled();
+  wrist->setMicLatency(M5.getBoard() == m5::board_t::board_M5StickS3 ? MIC_LATENCY_S3_MS : MIC_LATENCY_PDM_MS);
   loadSettings();
   readBattery(millis());
   wrist->setBattery(battery, millis());
@@ -1506,6 +1631,7 @@ void loop() {
   wrist->setWifi(WiFi.status() == WL_CONNECTED);
   wrist->tick(now);
   playSounds();  // before the frames and the face: a press's tick is heard as soon as it can be
+  micTick(now);  // after the sounds, which take the channel, and before the face, which pulses on what it heard
   for (const std::string& f : wrist->take()) {
     if (f == "SETUP") askSetup();  // a SIDE hold on NO WI-FI: set its Wi-Fi from a phone
     else sendFrame(f);

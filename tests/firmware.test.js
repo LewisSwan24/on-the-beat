@@ -22,8 +22,8 @@ import { INTENTS } from '../relay/cards.js';
 import { HUE } from '../app/copy.js';
 import { codeFrom, pairUrl } from '../app/lib/pairing.js';
 import { CONSTS, FLASH_COLOURS, FLASHES, SOUNDS, cardAfter } from '../app/lib/wrist.js';
-import { BEAT_BLOCK, BEAT_CONSTS, BEAT_RATE, createLevels, createTracker, pulseLight } from '../app/lib/beat.js';
-import { music, twoStep } from './beat-music.js';
+import { BEAT_BLOCK, BEAT_CONSTS, BEAT_RATE, createBlockClock, createLevels, createTracker, pulseLight } from '../app/lib/beat.js';
+import { handed, music, twoStep } from './beat-music.js';
 import { TABLE, lines, check } from './wrist-table.js';
 
 const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).digest('hex').slice(0, 32);
@@ -210,6 +210,25 @@ test('the firmware follows the beat as the stand-in does: the same blocks give t
     const left = tracker.state();
     assert.ok(band.locked === left.locked && Math.abs(band.period - left.period) < 0.01, `${JSON.stringify(parts)}: left ${JSON.stringify(band)}`);
   }
+});
+
+test("the firmware times the microphone's blocks as the stand-in does", { skip }, () => {
+  // A fast microphone, ten blocks lost and counted, two lost uncounted, then opened again on a slow one.
+  const steps = [];
+  handed(6000, -382).forEach((b, k) => {
+    if ((k >= 3000 && k < 3010) || k === 4000 || k === 4001) return;
+    steps.push([b.arrival, k === 3010 ? 10 : 0]);
+  });
+  steps.push('reset');
+  for (const b of handed(3000, 382, 60000)) steps.push([b.arrival, 0]);
+  const clock = createBlockClock();
+  const want = [];
+  for (const s of steps) {
+    if (s === 'reset') clock.reset();
+    else want.push(clock.at(s[0], s[1]));
+  }
+  const band = JSON.parse(speak(['clock ' + steps.map((s) => (s === 'reset' ? s : s.join(','))).join(' ')])[0]);
+  assert.deepEqual(band, want);
 });
 
 test("the firmware hashes as node:crypto does, and its id is its key's hash", { skip }, () => {
