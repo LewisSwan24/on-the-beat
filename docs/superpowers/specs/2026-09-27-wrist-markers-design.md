@@ -5,7 +5,8 @@ after a model of three kinds of floor and a spike on both real bands. It is
 the second part of revision 6 §3 ("Nearness comes from the wristbands"); the
 first, who is near you, is `2026-09-26-wrist-near-design.md`, landed and run
 on both bands the night before. This builds on its beacons, its listen and
-its report.
+its report. The floor was first -60 dBm and is -56: the build measured the
+hold, and the owner chose again ("The hold moves the floor", below).
 
 Revision 6 says `near the bar` and `by the stage` come from a few wristbands
 the venue leaves at the bar and by the stage as markers, and that yours hears
@@ -47,10 +48,19 @@ Checked on 27 Sep 2026, in the code:
   in ten reach 16 m where markers are above heads. At -55 dBm nine in ten are
   within 9 m. The price is people left unnamed: in a packed room, of those
   truly within 8 m of a marker, about half go unnamed at -60 dBm and nearly
-  two thirds at -55. -60 is the floor, as the owner chose: better unnamed
+  two thirds at -55. -60 was the floor the owner first chose: better unnamed
   than named wrong.
-- **Holding an area 4 dB longer nearly halves the flips** (at -60 dBm, from
-  2-9% of listens to 1-5%) and changes the rest by a point or two.
+- **The hold moves the floor.** Those figures leave out the hold (§3), which
+  keeps a person in an area 4 dB under the floor. Run through the relay's own
+  code, hold and all, -60 dBm named the wrong marker for 1.26% of those named
+  where markers are above heads, and nine in ten of them were within 12.2 m.
+  At -56 dBm, held to -60, the wrong marker was 0, 0 and 0.21% of those named
+  in the three crowds (750 people, 1,500, markers above heads), nine in ten
+  were within 8.7, 6.1 and 9.8 m, and 23, 12 and 35% of people were named.
+  The owner chose -56 when the build first measured this, the same day.
+- **Holding an area 4 dB longer cuts the flips by a third to a half**: at
+  -56 dBm, through the relay, an area changed at 2.2, 0.9 and 3.6% of
+  listens in those crowds, against 4.5, 1.3 and 6.0% without the hold.
 - **A marker can hop channels.** Throwaway firmware on the Plus, joined to no
   Wi-Fi, beaconed on channels 1 to 13 in turn every 500 ms: every send
   succeeded, a sweep of 13 took 30 ms (42 at most), and the StickS3, on the
@@ -79,7 +89,7 @@ this room`, as now. Nothing else changes on a phone.
 
 - Revision 6 names the loudest marker. Far from every marker, the loudest is
   still some marker, heard faintly across the room, so it takes the loudest
-  only when it is heard at -60 dBm or more; otherwise the person stays `in
+  only when it is heard at -56 dBm or more; otherwise the person stays `in
   this room` (the owner's choice: better not to say than to say it wrong).
 - A third marker, `somewhere out the back`, which the prompt's list of bands
   already has, is allowed; revision 6 names only the bar and the stage.
@@ -129,8 +139,8 @@ All numbers are named constants in `firmware/src/band_logic.h`.
   their band's reports in the last `HEARD_MS` (30 s), in memory only.
 - **The area.** At every near tick (`NEAR_TICK_MS`, 5 s), for each person:
   the median of each area's readings; the loudest names the area if it is
-  `MARK_FLOOR` (-60 dBm) or more. A person already in an area stays in it
-  while that area's median is `MARK_FLOOR - MARK_HOLD` (-64) or more and no
+  `MARK_FLOOR` (-56 dBm) or more. A person already in an area stays in it
+  while that area's median is `MARK_FLOOR - MARK_HOLD` (-60) or more and no
   other area's is `MARK_HOLD` (4 dB) or more above it. Anyone else is `in
   this room`: no band, a band that has not reported in `HEARD_MS`, or no
   marker heard clearly enough. `nearTick()` says a view changed when anyone's
@@ -180,7 +190,8 @@ All numbers are named constants in `firmware/src/band_logic.h`.
   mutation-checked.
 - **The model through the real room**: a test like the near crowd test, with
   markers at each end of the floor: the wrong marker named for under 1% of
-  people, and nine in ten of those named within 11 m.
+  those named, nine in ten of them within 11 m, and an area changing at no
+  more than 4% of listens.
 - **The real bands**: the Plus as `marker bar`, the StickS3 paired to a
   stand-in on SAY HI, a stand-in with no band sees `Someone near the bar`;
   `marker off`, and within `HEARD_MS` and a tick it reads `in this room`. If
@@ -195,7 +206,7 @@ All numbers are named constants in `firmware/src/band_logic.h`.
 
 ## Risks
 
-- **The floor is modelled.** -60 dBm rests on the crowd model's loss and
+- **The floor is modelled.** -56 dBm rests on the crowd model's loss and
   body figures, calibrated to two bands on a desk. A walk away from a real
   marker is the check, and the floor is one constant in the relay.
 - **Channels 12 and 13** are allowed in Australia, where the owner is, and
