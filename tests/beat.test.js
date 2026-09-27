@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BEAT_BLOCK, BEAT_LOSE_MS, BEAT_RATE, createLevels, createTracker } from '../app/lib/beat.js';
+import { BEAT_BLOCK, BEAT_LOSE_MS, BEAT_RATE, createLevels, createTracker, pulseLight } from '../app/lib/beat.js';
 import { music, twoStep } from './beat-music.js';
 
 /** `blocks` blocks of a sine at `hz` and amplitude `a`, as whole 16-bit samples, from sample `from`. */
@@ -191,4 +191,16 @@ test('a grid with nothing heard for BEAT_LOSE_MS is dropped', () => {
     if (b.t === Math.ceil((last + BEAT_LOSE_MS) / 8) * 8 + 16) assert.equal(tracker.state().locked, false, `at ${b.t}`);
   }
   assert.deepEqual(tracker.state(), { locked: false, period: 0 });
+});
+
+test("a pulse is the card's full light on the beat, falling in a straight line to half over two thirds of it", () => {
+  assert.equal(pulseLight(255, 0, 500), 255);
+  assert.equal(pulseLight(255, 500 / 6, 500), 255 - Math.floor(127.5 / 4));
+  assert.equal(pulseLight(255, 500 / 3, 500), 255 - Math.floor(127.5 / 2));
+  assert.equal(pulseLight(255, 1000 / 3, 500), 128);
+  assert.equal(pulseLight(255, 499, 500), 128);
+  // Never lower, and from a dimmed card's half light, half of that.
+  assert.equal(pulseLight(255, 5000, 500), 128);
+  assert.equal(pulseLight(128, 0, 500), 128);
+  assert.equal(pulseLight(128, 400, 500), 64);
 });

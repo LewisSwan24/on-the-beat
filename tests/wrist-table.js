@@ -12,23 +12,31 @@
 //   <t> key1 down | <t> key1 up | <t> key2 down | <t> key2 up
 //   <t> frame <json>      a frame from the relay
 //   <t> battery <n> | <t> wifi <0|1>
+//   <t> latency <ms>      the microphone's delay, as the firmware sets it for its model
+//   <t> hear b0 .. b4     one block of the microphone's five levels, ending at t
 //
 // Every line after the first lets the time pass to t, does the one thing, and
-// answers one line: {"sent":[...frames, or "DROP"],"sounds":[...names],"face":{...}}.
+// answers one line: {"sent":[...frames, or "DROP"],"sounds":[...names],"face":{...},"listening":bool}.
 // `heard` lines are the keep-alive a case gets unless it says "keepAlive":
-// false; they let no time pass and their answers are not checked.
+// false; they let no time pass and their answers are not checked. Nor are
+// `hear` lines': what they send and sound is answered by the next line that is.
 //
 // A step's `sent` and `sounds` are exact, and empty unless the step says
 // otherwise, so a stray frame or sound anywhere fails. A `press` is a key down
 // and, PRESS ms later, its key up: the step's `sent`, `sounds` and `face` are
 // the key up's, and `downSounds` (["tick"] unless said) the key down's. A
 // `show` step sends one of the table's shows, with its `rev` and any fields in
-// `with` laid over it.
+// `with` laid over it. A step's `listening`, when it says one, is exact.
+//
+// A `music` step is made-up music (tests/beat-music.js) from its time on, heard
+// block by block, with a keep-alive every second; the steps in its `during`
+// happen between its blocks, at their own times.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { createWrist } from '../app/lib/wrist.js';
+import { music } from './beat-music.js';
 
 export const TABLE = JSON.parse(readFileSync(new URL('./fixtures/wrist-cases.json', import.meta.url), 'utf8'));
 const T0 = 1000;       // every case starts here, not at 0
@@ -53,14 +61,28 @@ export function lines(c, consts) {
   const out = [{ line: 'key ' + TABLE.key, expect: null }];
   const showOf = (s) => ({ t: 'show', show: { ...TABLE.shows[s.show], ...(s.rev !== undefined ? { rev: s.rev } : {}), ...s.with } });
   let last = -Infinity;
-  for (const s of c.steps) {
+  const when = (l) => Number(l.line.split(' ')[0]);
+  const step = (s, out) => {
     const t = at(s.at ?? '0', consts);
     if (t < last) throw new Error(c.name + ': step at ' + s.at + ' goes back in time');
     last = t;
-    const expect = { sent: s.sent ?? [], sounds: s.sounds ?? [], face: s.face ?? null };
+    const expect = { sent: s.sent ?? [], sounds: s.sounds ?? [], face: s.face ?? null, listening: s.listening };
     const keep = () => { if (c.keepAlive !== false) out.push({ line: t + ' heard', expect: null }); };
     keep();
-    if (s.press) {
+    if (s.music) {
+      // Its blocks, with the lines of the steps during it put in among them by time; a line at a block's time
+      // comes after the block.
+      const steps = [];
+      for (const d of s.during ?? []) step(d, steps);
+      let alive = t;
+      for (const b of music(s.music, { from: t, seed: s.seed ?? 1 }).blocks) {
+        while (steps.length && when(steps[0]) < b.t) out.push(steps.shift());
+        if (c.keepAlive !== false && b.t - alive >= 1000) { out.push({ line: b.t + ' heard', expect: null }); alive = b.t; }
+        out.push({ line: b.t + ' hear ' + b.levels.join(' '), expect: null });
+        last = Math.max(last, b.t);
+      }
+      out.push(...steps);
+    } else if (s.press) {
       out.push({ line: t + ' key' + s.press + ' down', expect: { sent: [], sounds: s.downSounds ?? ['tick'], face: null } });
       last = t + PRESS;
       if (c.keepAlive !== false) out.push({ line: last + ' heard', expect: null });
@@ -72,8 +94,10 @@ export function lines(c, consts) {
     else if (s.frame) out.push({ line: t + ' frame ' + JSON.stringify(s.frame), expect });
     else if (s.battery !== undefined) out.push({ line: t + ' battery ' + s.battery, expect });
     else if (s.wifi !== undefined) out.push({ line: t + ' wifi ' + (s.wifi ? 1 : 0), expect });
+    else if (s.latency !== undefined) out.push({ line: t + ' latency ' + s.latency, expect });
     else out.push({ line: t + ' tick', expect });
-  }
+  };
+  for (const s of c.steps) step(s, out);
   return out;
 }
 
@@ -87,13 +111,17 @@ export function runJs(protocol) {
     const t = Number(first);
     if (verb === 'heard') { wrist.heard(t); answers.push(null); continue; }
     wrist.tick(t);
+    if (verb === 'hear') { wrist.hear(rest.map(Number), t); answers.push(null); continue; }
     if (verb === 'up') wrist.linkUp(t);
     else if (verb === 'down') wrist.linkDown(t);
     else if (verb === 'key1' || verb === 'key2') (rest[0] === 'down' ? wrist.keyDown : wrist.keyUp)(verb === 'key1' ? 1 : 2, t);
     else if (verb === 'frame') wrist.frame(rest.join(' '), t);
     else if (verb === 'battery') wrist.setBattery(Number(rest[0]), t);
     else if (verb === 'wifi') wrist.setWifi(rest[0] === '1');
-    answers.push({ sent: wrist.take().map((o) => (o === 'DROP' ? o : JSON.parse(o))), sounds: wrist.sounds(), face: wrist.face(t) });
+    else if (verb === 'latency') wrist.setMicLatency(Number(rest[0]));
+    answers.push({
+      sent: wrist.take().map((o) => (o === 'DROP' ? o : JSON.parse(o))), sounds: wrist.sounds(), face: wrist.face(t), listening: wrist.listening(t),
+    });
   }
   return answers;
 }
@@ -112,6 +140,7 @@ export function check(c, protocol, answers, consts) {
     const where = c.name + ' / ' + line;
     assert.deepEqual(got.sent.filter((f) => !(f && f.t === 'ping')), deep(expect.sent), where + ': sent');
     assert.deepEqual(got.sounds, expect.sounds, where + ': sounds');
+    if (expect.listening !== undefined) assert.equal(got.listening, expect.listening, where + ': listening');
     if (!expect.face) return;
     for (const [k, v] of Object.entries(expect.face)) {
       const want = typeof v === 'string' && /^LIGHT_/.test(v) ? consts[v] : v;

@@ -36,6 +36,12 @@ constexpr float BEAT_EDGE_2 = 400;
 constexpr float BEAT_EDGE_3 = 1200;
 constexpr float BEAT_EDGE_4 = 3500;
 
+// A lit card's light on the beat (§1): its full light on the beat, falling in a straight line to half of that over
+// the first two thirds of the beat, and half until the next. `since` is the time from the pulse, in ms.
+inline int pulseLight(int full, double since, double period) {
+  return full - static_cast<int>(std::floor((full / 2.0) * std::min(1.0, since / ((2 * period) / 3))));
+}
+
 // One block's five levels: the root mean square of each band.
 struct BandLevels {
   float v[BEAT_BANDS];

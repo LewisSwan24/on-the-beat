@@ -27,7 +27,12 @@
 // it only once both have said it; until then the face says FOUND: WAITING.
 // Found by both, both bands play the found chirp and flash the meeting's card
 // three times, once for each number.
+//
+// A lit card at rest pulses on the beat (docs/superpowers/specs/2026-09-26-
+// wrist-beat-design.md): while listening() the band hears its microphone's
+// five levels a block, and its tracker says where each beat's pulse falls.
 
+import { createTracker, pulseLight } from './beat.js';
 import { bandIdOf } from './sha256.js';
 
 export const WAKE_MS = 6000;           // a KEY1 press shows the face this long
@@ -156,6 +161,11 @@ export function createWrist({ key }) {
   let due = [];               // sounds started since sounds() was last asked
   let soundOn = true;         // the person's switch, as the last show that said it had it (rule 3)
   let silent = false;         // NOT NOW, for the sake of silence (rule 1)
+  let beatOn = true;          // the person's beat switch, as the last show that said it had it (beat §1)
+  // The beat (beat §2): the tracker, whether it has been listening, and its last two pulses, the newer perhaps due.
+  const tracker = createTracker();
+  let tracking = false;
+  let pulses = [];
   // The meeting call (rule 4): the number last called for, whether it still calls, and since when.
   let called = '';
   let calling = false;
@@ -190,6 +200,18 @@ export function createWrist({ key }) {
   const meetingFace = (now) => show?.kind === 'meet' && /^[1-9][0-9]$/.test(show.big) && !stale(now) && !quiet.pending;
   const current = () => (quiet.pending || show?.quiet ? 'notnow' : show?.armed || 'off');
   const pct = () => (battery >= 0 ? battery + '%' : '');
+  /** The band listens for the beat: a lit card could pulse, the switch is on, and it is not NOT NOW (beat §2). */
+  const listening = (now) => beatOn && !!show && lit(show) && show.kind !== 'meet' && !stale(now) && current() !== 'notnow';
+
+  /** Not listening, the band forgets the beat it had: its microphone is closed. */
+  function listen(now) {
+    if (listening(now)) tracking = true;
+    else if (tracking) {
+      tracker.reset();
+      pulses = [];
+      tracking = false;
+    }
+  }
 
   /**
    * A reaction of this moment. cls: 0 a key or a result, 1 a call, 2 a warning. `card`: the colour a `set` or
@@ -410,7 +432,16 @@ export function createWrist({ key }) {
       result(now, 'NOT SENT');
       if (link.up) { out.push('DROP'); closed(now); }
     } else if (mode === 'result' && now >= resultUntil) rest();
+    listen(now);
     settle(now);
+  }
+
+  /** One block of the microphone's five levels, and the time it ends. Not listening, it is not heard (beat §2). */
+  function hear(levels, now) {
+    listen(now);
+    if (!tracking) return;
+    tracker.hear(levels, now);
+    for (const p of tracker.take()) pulses = [...pulses, p].slice(-2);
   }
 
   function keyDown(k, now) {
@@ -533,6 +564,7 @@ export function createWrist({ key }) {
     const same = !!was && JSON.stringify(was) === JSON.stringify(show);
     // A show's own switch counts for what it causes. One that is not true or false is not said.
     if (typeof m.show.sound === 'boolean') soundOn = m.show.sound;
+    if (typeof m.show.beat === 'boolean') beatOn = m.show.beat;
     if (show.kind === 'pairing') {
       // The band is nobody's: NOT NOW is over, and no meeting is anyone's.
       const wasPaired = !!secret;
@@ -545,6 +577,7 @@ export function createWrist({ key }) {
       if (was?.kind === 'check') react('fall', null, 1);  // the check ended without YES
       if (wasPaired) playWarn();                          // unpaired; the letters end any choice, so at once
       soundOn = true;                                     // after the letters' own reactions
+      beatOn = true;
       // New letters light for PAIR_AWAKE_MS; the same letters again (a reconnect) do not.
       if (show.code !== pairCode) { pairCode = show.code; litUntil = now + PAIR_AWAKE_MS; }
     } else pairCode = '';
@@ -658,6 +691,7 @@ export function createWrist({ key }) {
     } else {
       f = restFace(now, wakeUntil > now || mode === 'result');
       if (mode === 'result') f = { ...f, small: word };
+      else if (listening(now)) f = pulsed(f, now);
     }
     if (k1.down && !k1.fired && now - k1.since >= BAR_MS) {
       f = { ...f, small: 'KEEP HOLDING', bar: Math.min(99, Math.floor(((now - k1.since) * 100) / HOLD_MS)), light: Math.max(f.light, LIGHT_AWAKE) };
@@ -665,6 +699,12 @@ export function createWrist({ key }) {
     // A call blinks: the meeting face as it is, then off. A flash, while it lasts, is drawn over it.
     if (blinking(now) && (now - callAt) % (2 * BLINK_MS) >= BLINK_MS) f = { ...f, light: LIGHT_OFF };
     return flashOver(f, now);
+  }
+
+  /** A lit card at rest, on the beat: its light falls from full to half over each pulse, for a beat (beat §1). */
+  function pulsed(f, now) {
+    const p = pulses.filter((q) => q.at <= now).at(-1);
+    return p && now - p.at < p.period ? { ...f, light: pulseLight(f.light, now - p.at, p.period) } : f;
   }
 
   /** A flash, step by step: on is its colour at full light and nothing else; off is the backlight off. */
@@ -696,5 +736,10 @@ export function createWrist({ key }) {
     /** The names of the sounds due to start since the last ask: the player plays the newest. */
     sounds: () => { const d = due; due = []; return d; },
     face,
+    hear,
+    /** Whether to have the microphone open: the band listens for the beat (beat §2). */
+    listening,
+    /** The microphone's delay from a sound to the block that hears it, in ms: the firmware's, for its model. */
+    setMicLatency: (ms) => tracker.setLatency(ms),
   };
 }
