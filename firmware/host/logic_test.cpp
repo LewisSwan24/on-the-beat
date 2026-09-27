@@ -871,7 +871,8 @@ std::string answer(const Command& c) {
         {"BEAT_TIGHT_MS", BEAT_TIGHT_MS}, {"BEAT_PULL_PHASE", BEAT_PULL_PHASE}, {"BEAT_PULL_PERIOD", BEAT_PULL_PERIOD},
         {"BEAT_CHANGE", BEAT_CHANGE}, {"BEAT_START", BEAT_START}, {"BEAT_START_OF", BEAT_START_OF},
         {"BEAT_CONFIRM", BEAT_CONFIRM}, {"BEAT_OF", BEAT_OF}, {"BEAT_HOLD", BEAT_HOLD},
-        {"BEAT_OTHER_LOOKS", BEAT_OTHER_LOOKS}, {"BEAT_LOSE_MS", BEAT_LOSE_MS}};
+        {"BEAT_OTHER_LOOKS", BEAT_OTHER_LOOKS}, {"BEAT_LOSE_MS", BEAT_LOSE_MS}, {"BEAT_CREEP", BEAT_CREEP},
+        {"BEAT_SETTLE", BEAT_SETTLE}};
     std::string out = "{";
     for (const auto& kv : all) {
       char n[64];
@@ -909,6 +910,25 @@ std::string answer(const Command& c) {
     char end[64];
     std::snprintf(end, sizeof end, "],\"locked\":%s,\"period\":%.3f}", tracker.locked() ? "true" : "false", tracker.period());
     return out + end;
+  }
+  if (c.verb == "clock") {
+    // clock <arrival,lost | reset> ...: the blocks through one BlockClock, when each ended or null while it settled.
+    std::istringstream in(c.arg);
+    BlockClock clock;
+    std::string step, out = "[";
+    while (in >> step) {
+      if (step == "reset") {
+        clock.reset();
+        continue;
+      }
+      const size_t comma = step.find(',');
+      const uint32_t arrival = static_cast<uint32_t>(std::strtoul(step.substr(0, comma).c_str(), nullptr, 10));
+      const uint32_t lost = static_cast<uint32_t>(std::strtoul(step.substr(comma + 1).c_str(), nullptr, 10));
+      uint32_t t = 0;
+      if (out.size() > 1) out += ',';
+      out += clock.at(arrival, lost, t) ? std::to_string(t) : "null";
+    }
+    return out + "]";
   }
   if (c.verb == "battery") return batteryFrame(std::atoi(c.arg.c_str()));
   if (c.verb == "hold") return HOLD_FRAME;

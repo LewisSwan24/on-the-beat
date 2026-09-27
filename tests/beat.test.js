@@ -3,8 +3,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BEAT_BLOCK, BEAT_LOSE_MS, BEAT_RATE, createLevels, createTracker, pulseLight } from '../app/lib/beat.js';
-import { music, twoStep } from './beat-music.js';
+import { BEAT_BLOCK, BEAT_LOSE_MS, BEAT_RATE, BEAT_SETTLE, createBlockClock, createLevels, createTracker, pulseLight } from '../app/lib/beat.js';
+import { handed, music, twoStep } from './beat-music.js';
 
 /** `blocks` blocks of a sine at `hz` and amplitude `a`, as whole 16-bit samples, from sample `from`. */
 export function tone(hz, blocks, a = 8000, from = 0) {
@@ -203,4 +203,52 @@ test("a pulse is the card's full light on the beat, falling in a straight line t
   assert.equal(pulseLight(255, 5000, 500), 128);
   assert.equal(pulseLight(128, 0, 500), 128);
   assert.equal(pulseLight(128, 400, 500), 64);
+});
+
+test('blocks handed over two at a time are timed a block apart, and held to the band clock however the microphone runs', () => {
+  for (const ppm of [-382, 0, 382]) {
+    const clock = createBlockClock();
+    const got = handed(75000, ppm).map((b) => ({ ...b, t: clock.at(b.arrival) })); // ten minutes
+    assert.ok(got.slice(0, BEAT_SETTLE).every((b) => b.t === null), `${ppm} ppm: the first blocks settle`);
+    const heard = got.slice(BEAT_SETTLE);
+    heard.forEach((b, i) => {
+      assert.ok(Math.abs(b.t - b.end) <= 1.5, `${ppm} ppm, block ${i}: ${b.t} against ${b.end}`);
+      assert.ok(b.t <= b.arrival, `${ppm} ppm, block ${i}: timed after it was handed over`);
+      if (i) assert.ok(Math.abs(b.t - heard[i - 1].t - 8) <= 1, `${ppm} ppm, block ${i}: ${heard[i - 1].t} then ${b.t}`);
+    });
+  }
+});
+
+test('blocks the band could not keep are counted over: the time steps across them', () => {
+  const clock = createBlockClock();
+  const got = [];
+  handed(300, -382).forEach((b, k) => {
+    if (k >= 100 && k < 110) return;
+    got.push({ k, ...b, t: clock.at(b.arrival, k === 110 ? 10 : 0) });
+  });
+  const at = (k) => got.find((b) => b.k === k).t;
+  assert.ok(Math.abs(at(110) - at(99) - 88) <= 1, `${at(99)} then ${at(110)}`);
+  for (const b of got.slice(BEAT_SETTLE)) assert.ok(Math.abs(b.t - b.end) <= 1.5, `block ${b.k}: ${b.t} against ${b.end}`);
+});
+
+test('samples lost uncounted are caught up within about a second, and no block is timed after it was handed over', () => {
+  const clock = createBlockClock();
+  const got = [];
+  handed(500, 0).forEach((b, k) => {
+    if (k === 100 || k === 101) return; // 16 ms the microphone lost, and nobody counted
+    got.push({ k, ...b, t: clock.at(b.arrival) });
+  });
+  for (const b of got.slice(BEAT_SETTLE)) assert.ok(b.t <= b.arrival, `block ${b.k}: ${b.t} after ${b.arrival}`);
+  for (const b of got.filter((b) => b.k >= 102 + 136)) assert.ok(Math.abs(b.t - b.end) <= 1.5, `block ${b.k}: ${b.t} against ${b.end}`);
+});
+
+test('the first BEAT_SETTLE blocks after the microphone opens are not heard, and reset opens it afresh', () => {
+  const clock = createBlockClock();
+  const first = handed(40, 0, 5000).map((b) => clock.at(b.arrival));
+  assert.equal(first.findIndex((t) => t !== null), BEAT_SETTLE);
+  clock.reset();
+  const later = handed(40, 0, 9000); // opened again four seconds on
+  const again = later.map((b) => clock.at(b.arrival));
+  assert.equal(again.findIndex((t) => t !== null), BEAT_SETTLE);
+  assert.ok(Math.abs(again[BEAT_SETTLE] - later[BEAT_SETTLE].end) <= 1.5, `timed from the new count: ${again[BEAT_SETTLE]}`);
 });

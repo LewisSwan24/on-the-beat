@@ -130,6 +130,8 @@ constexpr size_t BEAT_OF = 3;                 // ...of the last this many were
 constexpr double BEAT_HOLD = 4;               // or one was, with the fold on the grid peaking this far above its mean
 constexpr int BEAT_OTHER_LOOKS = 8;           // looks before a heard grid gives way
 constexpr uint32_t BEAT_LOSE_MS = 4000;       // nothing heard this long, and the grid is dropped
+constexpr double BEAT_CREEP = 0.125;          // ms a block the microphone's count may creep later, following millis()
+constexpr uint32_t BEAT_SETTLE = 16;          // blocks timed but not heard once the microphone opens, while its filters settle
 
 constexpr double BEAT_BLOCK_MS = BEAT_BLOCK * 1000.0 / BEAT_RATE;  // one block, in ms
 
@@ -487,6 +489,46 @@ class BeatTracker {
   bool started_ = false;
   double held_ = 0;
   std::vector<BeatPulse> pulses_;
+};
+
+// When each of the microphone's blocks ended, by millis() (app/lib/beat.js createBlockClock). The blocks are
+// counted, a block apart, as the microphone hands them over two at a time. Its samples run 382 ppm fast of
+// millis() on both bands (measured 27 Sep 2026), which counting alone would carry into the pulses at 23 ms a
+// minute, so the count is held to millis(): a block is never timed after it was handed over, and the count creeps
+// later by at most BEAT_CREEP a block while blocks come later than it says. Blocks the band could not keep are
+// counted over. The first BEAT_SETTLE blocks after the microphone opens are timed but not heard.
+class BlockClock {
+ public:
+  // The microphone has opened: count afresh, and let it settle.
+  void reset() {
+    started_ = false;
+    settle_ = BEAT_SETTLE;
+  }
+
+  // A block handed over at `arrival`, `lost` blocks after the last. False while it settles; else `t` is when it ended.
+  bool at(uint32_t arrival, uint32_t lost, uint32_t& t) {
+    if (!started_) {
+      started_ = true;
+      base_ = arrival;
+      off_ = 0;
+    } else {
+      off_ += BEAT_BLOCK_MS * (1 + static_cast<double>(lost));
+      const double late = static_cast<double>(arrival - base_) - off_;
+      off_ += late < 0 ? late : std::min(late, BEAT_CREEP);
+    }
+    if (settle_ > 0) {
+      --settle_;
+      return false;
+    }
+    t = base_ + static_cast<uint32_t>(std::floor(off_ + 0.5));
+    return true;
+  }
+
+ private:
+  bool started_ = false;
+  uint32_t base_ = 0;  // when the first block since the microphone opened was handed over
+  double off_ = 0;     // when the last block ended, from base_, in ms
+  uint32_t settle_ = BEAT_SETTLE;
 };
 
 }  // namespace otb

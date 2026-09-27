@@ -140,3 +140,13 @@ export function music(parts, { from = 0, seed = 1 } = {}) {
   }
   return { blocks, beats, missed };
 }
+
+/**
+ * A microphone handing its blocks over two at a time, as both bands' do, its samples running `ppm` from the band's
+ * clock (-382 on both, measured 27 Sep 2026): when each block truly ended, and the whole millisecond it was handed
+ * over, which is when the second of its pair ended.
+ */
+export function handed(blocks, ppm, from = 5000) {
+  const end = (k) => from + (k + 1) * BLOCK_MS * (1 + ppm / 1e6);
+  return Array.from({ length: blocks }, (_, k) => ({ end: end(k), arrival: Math.floor(end(k | 1)) }));
+}
