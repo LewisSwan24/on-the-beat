@@ -6,6 +6,7 @@ import { qrMatrix, qrPath } from '../lib/qr.js';
 import { toHex } from '../lib/sha256.js';
 import { createSpeaker } from '../lib/speaker.js';
 import { FLASH_COLOURS, HOLD_MS, WAKE_MS, createWrist } from '../lib/wrist.js';
+import { createEars, openMicrophone } from '../lib/listen.js';
 import { Back, Ghost, Icon } from '../ui.jsx';
 
 /**
@@ -155,11 +156,21 @@ export const bandLine = (band) => (band
   ? (band.offline ? 'OFFLINE — away for a while' : [band.battery != null ? band.battery + '% battery' : null, band.live ? null : 'not connected right now'].filter(Boolean).join(' · '))
   : '');
 
+/** What the stand-in says beside LISTEN, by where it stands. */
+export const LISTEN_SAY = {
+  off: "For a demo: this computer's microphone as the band's, so a lit card pulses on the beat. Off, it pulses nothing.",
+  asking: 'Asking this browser for the microphone…',
+  on: 'Listening: a lit card pulses on the beat. It hears loudness only, and keeps and sends nothing.',
+  failed: "The microphone did not open: this browser refused it, or cannot listen at the band's 16 kHz.",
+};
+
 /**
  * /band — a stand-in for the wristband, until one is in hand. The machine is
  * app/lib/wrist.js, the same one band_logic.h runs on the real band and held
  * to the same table; this page only feeds it the socket, the two buttons and
  * the time, draws its face at 2x, and plays its sounds (app/lib/speaker.js).
+ * LISTEN, off until turned on, feeds it this computer's microphone as the
+ * band's own (app/lib/listen.js), so a lit card pulses on the beat.
  */
 export function BandStandIn() {
   // A new wristband every load, as the firmware is every boot: the key stays in this page, and the id is its hash.
@@ -173,8 +184,11 @@ export function BandStandIn() {
   const [live, setLive] = useState(false);
   const [heard, setHeard] = useState(false);
   const [down, setDown] = useState({ 1: false, 2: false });
+  const [listen, setListen] = useState('off'); // off, asking, on, or failed
   const ws = useRef(null);
   const flushRef = useRef(() => {});
+  const mic = useRef(null); // shuts the microphone
+  const asking = useRef(null); // the ask in flight: a newer tap makes it stale
 
   // A browser lets a page sound only after a tap: the first one anywhere on it lets the band chirp.
   useEffect(() => {
@@ -226,6 +240,42 @@ export function BandStandIn() {
     if (ws.current?.readyState === 1) ws.current.send(JSON.stringify({ t: 'battery', level: battery }));
   }, [wrist, battery]);
 
+  // LISTEN: the browser is asked for the microphone only on the tap that turns it on, and a second tap shuts it,
+  // or forgets an ask still in flight.
+  const flipListen = async () => {
+    if (mic.current || asking.current) {
+      mic.current?.();
+      mic.current = null;
+      asking.current = null;
+      setListen('off');
+      return;
+    }
+    const ask = {};
+    asking.current = ask;
+    setListen('asking');
+    const ears = createEars((levels, t) => wrist.hear(levels, t));
+    try {
+      const shut = await openMicrophone((floats, at) => ears.take(floats, at));
+      if (asking.current !== ask) { shut(); return; }
+      mic.current = shut;
+      setListen('on');
+    } catch {
+      if (asking.current === ask) setListen('failed');
+    } finally {
+      if (asking.current === ask) asking.current = null;
+    }
+  };
+  useEffect(() => () => { mic.current?.(); mic.current = null; asking.current = null; }, []);
+  // Listening, the face is drawn every frame, so a pulse falls smoothly rather than in the beat's 50 ms steps.
+  useEffect(() => {
+    if (listen !== 'on') return undefined;
+    let frame = requestAnimationFrame(function draw() {
+      setScreen(wrist.face(Date.now()));
+      frame = requestAnimationFrame(draw);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [listen, wrist]);
+
   const key = (k, isDown) => {
     (isDown ? wrist.keyDown : wrist.keyUp)(k, Date.now());
     setDown((d) => ({ ...d, [k]: isDown }));
@@ -268,6 +318,12 @@ export function BandStandIn() {
         <span className="small" role="status">
           {heard ? 'It chirps as the band does, unless its sound is off or it is in NOT NOW.'
             : 'Silent until this page is tapped: a browser lets a page make sound only after a tap.'}
+        </span>
+        <span className="small" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button type="button" className="btn-s" onClick={flipListen} aria-pressed={listen === 'on'}>
+            {listen === 'on' ? 'LISTEN: ON' : listen === 'asking' ? 'LISTEN: ASKING…' : 'LISTEN: OFF'}
+          </button>
+          <span role="status">{LISTEN_SAY[listen]}</span>
         </span>
         <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           battery <input type="range" min="1" max="100" value={battery} onChange={(e) => setBattery(Number(e.target.value))} aria-label="Stand-in battery" />
