@@ -44,7 +44,8 @@ makes none at all.
 
 ## Not in this spec
 
-- **C, the beat.** A second phase, with its own spec.
+- **C, the beat.** A second phase, with its own spec:
+  `2026-09-26-wrist-beat-design.md`.
 - **A wave on the band.** The owner wants a wave sent from a phone to reach
   the other person's band, and to be answered there. That is the next spec,
   designed right after this one and built on its call. Here the meeting

@@ -170,6 +170,28 @@ that was taken.
   every reconnect, and the relay carries it on the shows to that person's
   band and to no other. A band nobody has claimed chirps as it is, and a
   claimed band has the switch in its first show.
+- **A lit card pulses on the beat.** While a card is lit at rest — `HI :)`,
+  `FIRST SONG?` or `LET'S DANCE!`, never a meeting number, the letters, the
+  check, the test light or NOT NOW — the band listens to the room, and once
+  it has the beat the card's light is full on each beat and falls in a
+  straight line to half over the first two thirds of it. The colour never
+  goes dark, and every reaction goes first. It finds the beat in whatever
+  part of the sound carries it, since laptop speakers and a venue's echo
+  both lose the kick: each block's five levels, how far each rose, a tempo
+  read every 128 ms by autocorrelation between 80 and 178 BPM, weighted
+  towards 120, and a grid that pulses once four of its last five beats were
+  heard. In doubt the card stays steady: a song that stops goes quiet within
+  two beats, another song takes over the grid, and a missed kick or a
+  reaction's gap does not stop it. The phone's wristband sheet has
+  `BEAT: ON` under `SOUND: ON`, the person's own in the same way; off, the
+  band never opens its microphone. It is on by default.
+- **It hears loudness only.** Each 8 ms of sound becomes five levels on the
+  band, one for each band of pitch, and it keeps only how far they rose, one
+  number a block, for six seconds. Nothing of the sound is recorded, and
+  nothing it hears is sent: the relay only carries the switch. The
+  microphone is open only while a lit card could pulse and the switch is on.
+  `/band`'s `LISTEN` does the same with the laptop's microphone, for a demo;
+  it is off until turned on, and only then asks the browser for it.
 - **Letters go dark after two minutes.** An unclaimed band's letters and QR,
   and the face of one waiting for its owner after a restart, light for two
   minutes and then only the backlight goes off; a press lights them again.
@@ -393,6 +415,22 @@ read back from the picture with jsQR, the scanner the app uses.
   relay. The socket runs on a task of its own, so a connection that hangs — a
   captive portal can hold a TLS handshake open for two minutes — never holds
   up the button or the screen.
+- **The microphone and the speaker take turns.** `main.cpp` opens the
+  microphone only while the wrist says it is listening, and each full block
+  goes straight back to M5Unified from the microphone's own task, with a
+  copy for the loop, so the loop's pace never loses a sample. A sound
+  closes it for the sound's length, and it opens again after; the spike
+  measured the turn at about 25 ms besides the sound. Both bands hand their
+  blocks over two at a time, and their samples run 382 ppm fast of
+  `millis()`, which counting alone would carry into the pulses at 23 ms a
+  minute. So a block clock counts them, held to `millis()` (`BlockClock`,
+  in `beat_logic.h`): a block is never timed after it was handed over, the
+  count creeps later by at most 0.125 ms a block, blocks lost are counted
+  over, and the first 16 after it opens are not heard while its filters
+  settle. The levels, the tracker and the clock are twins of
+  `app/lib/beat.js`, held equal to the bit by `tests/firmware.test.js`.
+  `beat` on the console says whether the microphone is open, what it has
+  heard and whether it has the beat; `face` shows the light moving.
 - **A sound plays from a buffer of its own.** When the wrist names a sound,
   `main.cpp` renders all its notes as one 8-bit triangle wave at 16 kHz
   (`render()`, in `band_logic.h`, so the host tests hold it) and hands that
