@@ -79,6 +79,25 @@ test('a show made from the view names what is armed and its rev; the others name
   }
 });
 
+test("the beat switch rides beside the sound switch, on the same shows and on no others", () => {
+  const m = { id: 'm1', intent: 'song', number: 27, at: T };
+  for (const beat of [true, false]) {
+    for (const s of [bandShow({ view: view({ armed: 'hi' }), beat, now: T }), bandShow({ view: view(), beat, now: T }),
+      bandShow({ view: view({ invisible: true }), beat, now: T }), bandShow({ view: view({ armed: 'hi' }, [m]), beat, now: T }),
+      bandShow({ view: view(), testUntil: T + 1, beat, now: T }), bandShow({ view: null, beat, now: T })]) {
+      assert.equal(s.beat, beat, JSON.stringify(s));
+      assert.equal('sound' in s, false, 'each switch only once its phone has said it');
+    }
+    for (const s of [bandShow({ view: view(), code: 'KXRT', beat, now: T }), bandShow({ view: view(), check: 12, beat, now: T }),
+      bandShow({ view: null, waiting: true, beat, now: T })]) {
+      assert.equal('beat' in s, false, JSON.stringify(s));
+    }
+  }
+  assert.deepEqual(bandShow({ view: view({ armed: 'song' }), sound: false, beat: false, now: T }),
+    { ...bandShow({ view: view({ armed: 'song' }), now: T }), sound: false, beat: false });
+  for (const v of [view({ armed: 'hi' }), null]) assert.equal('beat' in bandShow({ view: v, beat: null, now: T }), false);
+});
+
 test("the sound switch rides on every show to its person's band, and on none that is nobody's yet", () => {
   const m = { id: 'm1', intent: 'song', number: 27, at: T };
   for (const sound of [true, false]) {

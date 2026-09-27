@@ -36,6 +36,7 @@ const short = (s, n) => {
  * @param {boolean} p.waiting     after a relay restart, until its owner's phone claims it
  * @param {number} p.testUntil    TEST THE LIGHT runs until this time
  * @param {boolean|null} p.sound  the person's sound switch, once their phone has said it; null before
+ * @param {boolean|null} p.beat   the person's beat switch, the same way
  * @param {Array} p.waves         room.wavesAt(): who waved at the person and waits, newest first, as { handle, n }
  * @param {number} p.now
  *
@@ -49,7 +50,9 @@ const short = (s, n) => {
  * carries it: their own, the test light (the white face that ends a pairing,
  * and TEST THE LIGHT) and not in a room. Letters, the check and waiting carry
  * none: those bands are nobody's yet, or not known to be whose. A show made
- * without a known switch is exactly the show made before there was one.
+ * without a known switch is exactly the show made before there was one. The
+ * beat switch rides beside it, on the same shows, the same way
+ * (docs/superpowers/specs/2026-09-26-wrist-beat-design.md §3).
  *
  * A show about a person on SAY HI, a meeting's included, carries the waves
  * waiting for them as one small object: the newest one's handle (as the
@@ -67,11 +70,11 @@ const short = (s, n) => {
  * pick it was, but NOT NOW, says so (`calledIt`, with when it was named), so their band plays it once. A person who did
  * not call it is shown nothing: the band never says what anyone else picked, nor that they missed.
  */
-export function bandShow({ view = null, battery = null, code = null, check = null, waiting = false, testUntil = 0, sound = null, waves = [], now = Date.now() }) {
+export function bandShow({ view = null, battery = null, code = null, check = null, waiting = false, testUntil = 0, sound = null, beat = null, waves = [], now = Date.now() }) {
   if (check) return { kind: 'check', big: String(check) };
   if (code) return { kind: 'pairing', code };
   if (waiting) return { kind: 'waiting' };
-  const said = sound === null ? {} : { sound };
+  const said = { ...(sound === null ? {} : { sound }), ...(beat === null ? {} : { beat }) };
   if (testUntil > now) return { kind: 'test', ...said };
   const dim = battery !== null && battery <= DIM_AT;
   if (!view) return { kind: 'off', battery, away: true, ...said };

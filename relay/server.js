@@ -348,9 +348,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         for (const r of [...rooms.values()]) gcRoom(r);   // reclaim venues nobody is in
         if (rooms.size >= maxRooms) return null;          // every venue is genuinely in use
       }
-      // sound: each person's sound switch, as their phone last said it. Leaving forgets it; the grace does not.
+      // sound, beat: each person's switches, as their phone last said them. Leaving forgets them; the grace does not.
       // The room reads the relay's clock: a wave's number is the time it was made, so it only goes up.
-      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), now, ledger: handles }), sockets: new Set(), clips: new Clips(), left: new Map(), heard: new Map(), sound: new Map(), staff: new Set() });
+      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), now, ledger: handles }), sockets: new Set(), clips: new Clips(), left: new Map(), heard: new Map(), sound: new Map(), beat: new Map(), staff: new Set() });
     }
     return rooms.get(key);
   }
@@ -486,8 +486,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const r = b.key ? rooms.get(b.key) : null;
     const view = r?.room.viewFor(b.person) ?? null;
     const sound = r?.sound.get(b.person) ?? null;
+    const beat = r?.beat.get(b.person) ?? null;
     const waves = view ? r.room.wavesAt(b.person) : [];
-    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, waiting: b.waiting, testUntil: b.testUntil, sound, waves, now }) });
+    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, waiting: b.waiting, testUntil: b.testUntil, sound, beat, waves, now }) });
     if (text !== b.lastShow) { b.lastShow = text; b.ws.send(text); }
   }
 
@@ -1109,6 +1110,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         if (typeof m.on !== 'boolean') return;
         r.sound.set(me, m.on);
         break;
+      case 'beat':
+        // The same, for whether their band's card pulses on the beat.
+        if (typeof m.on !== 'boolean') return;
+        r.beat.set(me, m.on);
+        break;
       case 'pick': room.pick(me, m.track); break;
       case 'wave': room.wave(me, m.handle); break;
       case 'like': room.like(me, m.handle); break;
@@ -1150,6 +1156,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         if (b) unpairBand(b);
         stopGrace(r, me);
         r.sound.delete(me);
+        r.beat.delete(me);
         room.leave(me);
         r.sockets.delete(ws);
         ws.r = null;
@@ -1441,7 +1448,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       if (!forgotten.length) continue;
       for (const me of forgotten) {
         for (const [ref, c] of r.clips) if (c.by === me) r.clips.delete(ref);
-        for (const kept of [r.heard, r.sound]) kept.delete(me);
+        for (const kept of [r.heard, r.sound, r.beat]) kept.delete(me);
         // Worn or away: a wristband away now comes back to its owner's phone or to letters, never to last night's person.
         const theirs = bandOf(r.key, me);
         if (theirs) unpairBand(theirs);
@@ -1500,7 +1507,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     return {
       staffKey: staffKey.toString('hex'),
       rooms: [...rooms.values()].map((r) => ({
-        key: r.key, room: r.room.dump(), heard: [...r.heard], sound: [...r.sound],
+        key: r.key, room: r.room.dump(), heard: [...r.heard], sound: [...r.sound], beat: [...r.beat],
         // The video is in its own file; what the night needs to serve it again is here.
         clips: [...r.clips].map(([ref, c]) => [ref, { mime: c.mime, by: c.by, slot: c.slot, at: c.at }]),
       })),
@@ -1598,7 +1605,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       built = {
         rooms: saved.rooms.map((e, i) => ({
           key: String(e.key), room: createRoom({ spots: spotsFor(e.key), now, restore: e.room, ledger: handles, clipKept: (ref) => back[i].has(ref) }),
-          sockets: new Set(), clips: back[i], left: new Map(), heard: new Map(e.heard), sound: new Map(e.sound), staff: new Set(),
+          sockets: new Set(), clips: back[i], left: new Map(), heard: new Map(e.heard), sound: new Map(e.sound), beat: new Map(e.beat), staff: new Set(),
         })),
         bands: saved.bands.map((e) => Object.assign(makeBand(String(e.id), null), {
           old: !!e.old, key: e.key, person: e.person, secretHash: e.secretHash, everWs: !!e.everWs,

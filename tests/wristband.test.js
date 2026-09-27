@@ -513,6 +513,86 @@ test('leave forgets the switch; the grace does not, and away carries it', async 
   close(again, ben, band, next);
 });
 
+// ---------- the beat switch (docs/superpowers/specs/2026-09-26-wrist-beat-design.md §3) ----------
+
+test("a phone's beat switch rides on its band's shows as the sound switch does: one show a flip, none when unchanged", async () => {
+  const { band, ana } = await wearing('beat-flip');
+  assert.equal('beat' in band.show, false, 'before the phone says it, the show is as it was');
+  let shows = 0;
+  band.ws.on('message', (d) => { if (JSON.parse(String(d)).t === 'show') shows++; });
+  ana.send({ t: 'beat', on: false });
+  await band.until((s) => s.beat === false);
+  ana.send({ t: 'beat', on: false });
+  ana.send({ t: 'profile', name: 'Ana' });
+  await pause(150);
+  assert.equal(shows, 1, 'the same again sends nothing');
+  ana.send({ t: 'sound', on: false });
+  await band.until((s) => s.sound === false && s.beat === false);
+  ana.send({ t: 'beat', on: true });
+  await band.until((s) => s.beat === true && s.sound === false);
+  close(ana, band);
+});
+
+test('a malformed beat is dropped', async () => {
+  const { band, ana } = await wearing('beat-bad');
+  for (const m of [{ t: 'beat' }, { t: 'beat', on: 'no' }, { t: 'beat', on: 0 }, { t: 'beat', on: 1 }, { t: 'beat', on: null }]) {
+    ana.send(m);
+    await pause(80);
+    assert.equal('beat' in band.show, false, JSON.stringify(m));
+  }
+  ana.send({ t: 'beat', on: false });
+  await band.until((s) => s.beat === false);
+  close(ana, band);
+});
+
+test("one person's beat switch never reaches another's band", async () => {
+  const { band, ana } = await wearing('beat-two');
+  const other = await wristband();
+  const ben = await phone('beat-two');
+  await pairBand(ben, other);
+  await other.until((s) => s.kind === 'off');
+  ana.send({ t: 'beat', on: false });
+  await band.until((s) => s.beat === false);
+  await pause(100);
+  assert.equal('beat' in other.show, false);
+  close(ana, ben, band, other);
+});
+
+test('a band paired with the beat off gets it in its pairing flash; letters and the check carry none', async () => {
+  const band = await wristband();
+  const ana = await phone('beat-pair');
+  ana.send({ t: 'beat', on: false });
+  await pause(50);
+  assert.equal('beat' in band.show, false, 'letters are nobody\'s');
+  ana.send({ t: 'pair', code: band.show.code });
+  await ana.until((v) => v.me.check);
+  assert.equal('beat' in (await band.until((s) => s.kind === 'check')), false);
+  ana.send({ t: 'confirm', yes: true });
+  assert.deepEqual(await band.until((s) => s.kind === 'test'), { kind: 'test', beat: false });
+  close(ana, band);
+});
+
+test('leave forgets the beat switch; the grace does not, and away carries it', async () => {
+  const { band, ana } = await wearing('beat-away');
+  const ben = await phone('beat-away');   // someone stays, so the room itself is never let go
+  ana.send({ t: 'beat', on: false });
+  await band.until((s) => s.beat === false);
+  ana.ws.close();
+  await pause(100);
+  relay.expire(Date.now() + BAND_ALONE_MS + 1_000);
+  assert.equal((await band.until((s) => s.away)).beat, false);
+  const back = await phone('beat-away', { me: ana.me });
+  back.send({ t: 'leave' });
+  await reply(back, 'left');
+  const again = await phone('beat-away', { me: ana.me });
+  const next = await wristband();
+  again.send({ t: 'pair', code: next.show.code });
+  await again.until((v) => v.me.check);
+  again.send({ t: 'confirm', yes: true });
+  assert.deepEqual(await next.until((s) => s.kind === 'test'), { kind: 'test' });
+  close(again, ben, band, next);
+});
+
 // ---------- waves (docs/superpowers/specs/2026-09-25-wrist-waves-design.md §3) ----------
 
 /**
