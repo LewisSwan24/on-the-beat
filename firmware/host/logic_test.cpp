@@ -852,6 +852,56 @@ std::string answer(const Command& c) {
     }
     return out + "]";
   }
+  if (c.verb == "beatconsts") {
+    // Every named value of the tracker, as app/lib/beat.js BEAT_CONSTS has them.
+    const std::pair<const char*, double> all[] = {
+        {"BEAT_ONSET", BEAT_ONSET}, {"BEAT_ONSET_MIN", BEAT_ONSET_MIN}, {"BEAT_WINDOW_MS", BEAT_WINDOW_MS},
+        {"BEAT_LOOK_MS", BEAT_LOOK_MS}, {"BEAT_SHORTEST_MS", BEAT_SHORTEST_MS}, {"BEAT_LONGEST_MS", BEAT_LONGEST_MS},
+        {"BEAT_PRIOR_MS", BEAT_PRIOR_MS}, {"BEAT_PRIOR_OCT", BEAT_PRIOR_OCT}, {"BEAT_LOCK_CONF", BEAT_LOCK_CONF},
+        {"BEAT_LOCK_CONTRAST", BEAT_LOCK_CONTRAST}, {"BEAT_LOCK_LOOKS", BEAT_LOCK_LOOKS}, {"BEAT_STEADY", BEAT_STEADY},
+        {"BEAT_PHASE_MS", BEAT_PHASE_MS}, {"BEAT_NEAR", BEAT_NEAR}, {"BEAT_RISE", BEAT_RISE},
+        {"BEAT_TIGHT_MS", BEAT_TIGHT_MS}, {"BEAT_PULL_PHASE", BEAT_PULL_PHASE}, {"BEAT_PULL_PERIOD", BEAT_PULL_PERIOD},
+        {"BEAT_CHANGE", BEAT_CHANGE}, {"BEAT_START", BEAT_START}, {"BEAT_START_OF", BEAT_START_OF},
+        {"BEAT_CONFIRM", BEAT_CONFIRM}, {"BEAT_OF", BEAT_OF}, {"BEAT_HOLD", BEAT_HOLD},
+        {"BEAT_OTHER_LOOKS", BEAT_OTHER_LOOKS}, {"BEAT_LOSE_MS", BEAT_LOSE_MS}};
+    std::string out = "{";
+    for (const auto& kv : all) {
+      char n[64];
+      std::snprintf(n, sizeof n, "%s\"%s\":%.10g", out.size() > 1 ? "," : "", kv.first, kv.second);
+      out += n;
+    }
+    return out + "}";
+  }
+  if (c.verb == "track") {
+    // track <latency> <t,b0,b1,b2,b3,b4> ...: the blocks through one BeatTracker, every pulse it decided, and
+    // where it was left: {"pulses":[[at,period],...],"locked":..,"period":..}
+    std::istringstream in(c.arg);
+    double latency = 0;
+    in >> latency;
+    BeatTracker tracker;
+    tracker.setLatency(latency);
+    std::string block, out = "{\"pulses\":[";
+    while (in >> block) {
+      std::istringstream fields(block);
+      std::string one;
+      std::getline(fields, one, ',');
+      const uint32_t t = static_cast<uint32_t>(std::strtoul(one.c_str(), nullptr, 10));
+      BandLevels levels;
+      for (size_t k = 0; k < BEAT_BANDS; ++k) {
+        std::getline(fields, one, ',');
+        levels.v[k] = static_cast<float>(std::strtod(one.c_str(), nullptr));
+      }
+      tracker.hear(levels, t);
+      for (const BeatPulse& p : tracker.take()) {
+        char n[64];
+        std::snprintf(n, sizeof n, "%s[%.3f,%.3f]", out.back() == '[' ? "" : ",", p.at, p.period);
+        out += n;
+      }
+    }
+    char end[64];
+    std::snprintf(end, sizeof end, "],\"locked\":%s,\"period\":%.3f}", tracker.locked() ? "true" : "false", tracker.period());
+    return out + end;
+  }
   if (c.verb == "battery") return batteryFrame(std::atoi(c.arg.c_str()));
   if (c.verb == "hold") return HOLD_FRAME;
   if (c.verb == "ping") return PING_FRAME;
