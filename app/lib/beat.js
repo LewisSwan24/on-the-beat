@@ -11,6 +11,14 @@ export const BEAT_BLOCK = 128;
 /** Where the five bands meet: below 150 Hz, up to 400, 1200, 3500, and above. */
 export const BEAT_BANDS_HZ = [150, 400, 1200, 3500];
 
+/**
+ * A lit card's light on the beat (§1): its full light on the beat, falling in a straight line to half of that over
+ * the first two thirds of the beat, and half until the next. `since` is the time from the pulse, in ms.
+ */
+export function pulseLight(full, since, period) {
+  return full - Math.floor((full / 2) * Math.min(1, since / ((2 * period) / 3)));
+}
+
 /** A second-order low or high pass at `fc`, Q 0.7071 (the RBJ cookbook), carried from call to call. */
 function biquad(kind, fc) {
   const w = (2 * Math.PI * fc) / BEAT_RATE;

@@ -563,6 +563,7 @@ struct Frame {
   bool hasShow = false;
   Show show;
   int sound = -1;          // the show's sound switch: 1 on, 0 off, -1 not said (so not part of the Show)
+  int beat = -1;           // the show's beat switch, the same way
   Waves waves;             // the show's waves, nobody unless said (so not part of the Show either)
   Found found;             // the show's found, none unless said (nor this)
   int64_t calledIt = 0;    // the show's calledIt: when the opener its person called was named, 0 unless said
@@ -638,6 +639,13 @@ inline bool readFrame(const std::string& text, Frame& f) {
         bool on = false;
         if (!r.boolean(on)) return false;
         f.sound = on ? 1 : 0;
+        return true;
+      }
+      if (k == "beat") {
+        if (!r.peek('t') && !r.peek('f')) return r.skip();
+        bool on = false;
+        if (!r.boolean(on)) return false;
+        f.beat = on ? 1 : 0;
         return true;
       }
       if (k == "waves") {
@@ -1654,8 +1662,31 @@ class Wrist {
   void tick(uint32_t now) {
     advance(now);
     ticked(now);
+    listen(now);
     settle(now);
   }
+
+  /** Whether to have the microphone open: a lit card could pulse, the switch is on, and it is not NOT NOW (beat §2). */
+  bool listening(uint32_t now) const {
+    return beatOn_ && haveShow_ && lit(show_) && show_.kind != "meet" && !link_.stale(now) && current() != "notnow";
+  }
+
+  /** One block of the microphone's five levels, and the time it ends. Not listening, it is not heard (beat §2). */
+  void hear(const BandLevels& levels, uint32_t now) {
+    listen(now);
+    if (!tracking_) return;
+    tracker_.hear(levels, now);
+    for (const BeatPulse& p : tracker_.take()) {
+      if (pulsesN_ == 2) {
+        pulses_[0] = pulses_[1];
+        pulsesN_ = 1;
+      }
+      pulses_[pulsesN_++] = p;
+    }
+  }
+
+  /** The microphone's delay from a sound to the block that hears it, in ms: this model's. */
+  void setMicLatency(double ms) { tracker_.setLatency(ms); }
 
  private:
   void heardFrame(const std::string& text, uint32_t now) {
@@ -1702,6 +1733,7 @@ class Wrist {
     }
     // A show's own switch counts for what it causes.
     if (f.sound >= 0) soundOn_ = f.sound == 1;
+    if (f.beat >= 0) beatOn_ = f.beat == 1;
     if (show_.kind == "pairing") {
       // Unpaired, or nobody came for it: the band is nobody's, so NOT NOW is over and no meeting is anyone's.
       const bool wasPaired = !secret_.empty();
@@ -1714,6 +1746,7 @@ class Wrist {
       if (wasCheck) react("fall", nullptr, 1);    // the check ended without YES
       if (wasPaired) playWarn();                  // unpaired; the letters end any choice, so at once
       soundOn_ = true;                            // after the letters' own reactions
+      beatOn_ = true;
       // New letters light for PAIR_AWAKE_MS; the same letters again (a reconnect) do not.
       if (show_.code != pairCode_) {
         pairCode_ = show_.code;
@@ -1885,6 +1918,7 @@ class Wrist {
     } else {
       f = restFace(now, static_cast<int32_t>(wakeUntil_ - now) > 0 || mode_ == RESULT);
       if (mode_ == RESULT) f.small = word_;
+      else if (listening(now)) f = pulsed(f, now);
     }
     if (k1_.down && !k1_.fired && now - k1_.since >= BAR_MS) {
       f.small = "KEEP HOLDING";
@@ -1897,6 +1931,27 @@ class Wrist {
   }
 
  private:
+  /** Not listening, the band forgets the beat it had: its microphone is closed. */
+  void listen(uint32_t now) {
+    if (listening(now)) {
+      tracking_ = true;
+    } else if (tracking_) {
+      tracker_.reset();
+      pulsesN_ = 0;
+      tracking_ = false;
+    }
+  }
+
+  /** A lit card at rest, on the beat: its light falls from full to half over each pulse, for a beat (beat §1). */
+  Screen pulsed(Screen f, uint32_t now) const {
+    const BeatPulse* p = nullptr;
+    for (size_t i = 0; i < pulsesN_; ++i) {
+      if (pulses_[i].at <= now) p = &pulses_[i];
+    }
+    if (p && now - p->at < p->period) f.light = static_cast<uint8_t>(pulseLight(f.light, now - p->at, p->period));
+    return f;
+  }
+
   /** A flash, step by step: on is its colour at full light and nothing else; off is the backlight off. */
   Screen flashOver(Screen f, uint32_t now) const {
     if (!playingOn_ || !playing_.flash) return f;
@@ -2254,6 +2309,12 @@ class Wrist {
   std::vector<std::string> due_;
   bool soundOn_ = true;  // the person's switch, as the last show that said it had it (rule 3)
   bool silent_ = false;  // NOT NOW, for the sake of silence (rule 1)
+  bool beatOn_ = true;   // the person's beat switch, as the last show that said it had it (beat §1)
+  // The beat (beat §2): the tracker, whether it has been listening, and its last two pulses, the newer perhaps due.
+  BeatTracker tracker_;
+  bool tracking_ = false;
+  BeatPulse pulses_[2] = {};
+  size_t pulsesN_ = 0;
   // The meeting call (rule 4): the number last called for, whether it still calls, and since when.
   std::string called_;
   bool calling_ = false;

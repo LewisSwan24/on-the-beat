@@ -1526,6 +1526,142 @@
         { "at": "21000+HOLD_MS" },
         { "at": "21000+HOLD_MS", "key2": "up" }
       ]
+    },
+    {
+      "name": "a lit card pulses on the beat once it has locked: half from two thirds of the way on, full again once the music stops",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 1, "listening": true },
+        { "at": "0", "music": [{ "ms": 12000, "bpm": 120, "noise": 200 }, { "ms": 3000, "noise": 200 }], "during": [
+          { "at": "500", "face": { "light": "LIGHT_FULL" }, "listening": true },
+          { "at": "9400", "face": { "big": "HI :)", "field": "hi", "light": 128 } },
+          { "at": "9495", "face": { "light": 128 } },
+          { "at": "9504", "face": { "light": 128 } },
+          { "at": "12900", "face": { "light": 128 } },
+          { "at": "13010", "face": { "light": "LIGHT_FULL" } },
+          { "at": "14500", "face": { "light": "LIGHT_FULL" } }
+        ] }
+      ]
+    },
+    {
+      "name": "on a low battery the card pulses from its half light to a quarter",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 1, "with": { "dim": true } },
+        { "at": "0", "music": [{ "ms": 10000, "bpm": 120, "noise": 200 }], "during": [
+          { "at": "500", "face": { "light": "LIGHT_DIM" } },
+          { "at": "9400", "face": { "light": 64 } }
+        ] }
+      ]
+    },
+    {
+      "name": "BEAT: OFF, the band does not listen and the card stays lit; on again, it finds the beat afresh",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 1, "with": { "beat": false }, "listening": false },
+        { "at": "0", "music": [{ "ms": 16000, "bpm": 120, "noise": 200 }], "during": [
+          { "at": "9400", "face": { "light": "LIGHT_FULL" }, "listening": false },
+          { "at": "10000", "show": "HI", "rev": 1, "with": { "beat": true }, "listening": true },
+          { "at": "11400", "face": { "light": "LIGHT_FULL" } },
+          { "at": "15400", "face": { "light": 128 } }
+        ] }
+      ]
+    },
+    {
+      "name": "NOT NOW: the band does not listen, and forgets the beat it had",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 1 },
+        { "at": "0", "music": [{ "ms": 16000, "bpm": 120, "noise": 200 }], "during": [
+          { "at": "9400", "face": { "light": 128 }, "listening": true },
+          { "at": "9600", "key1": "down", "sounds": ["tick"] },
+          { "at": "9600+HOLD_MS", "key1": "up", "sent": [{ "t": "hold" }], "sounds": ["down"], "face": { "light": "LIGHT_OFF" }, "listening": false },
+          { "at": "11200", "show": "QUIET", "rev": 2, "listening": false },
+          { "at": "12000", "show": "HI", "rev": 3, "listening": true },
+          { "at": "13400", "face": { "light": "LIGHT_FULL" } }
+        ] }
+      ]
+    },
+    {
+      "name": "only a lit card listens: not the meeting face, a dark face, away, the test light, waiting, the check or the letters",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 1, "listening": true },
+        { "at": "1000", "show": "MEET", "rev": 2, "sounds": ["jingle"], "listening": false },
+        { "at": "2000", "show": "OFF", "rev": 3, "listening": false },
+        { "at": "3000", "show": "SONG", "rev": 4, "listening": true },
+        { "at": "4000", "show": "AWAY", "rev": 5, "sounds": ["warn"], "listening": false },
+        { "at": "5000", "show": "TEST", "sounds": ["up"], "listening": false },
+        { "at": "6000", "show": "WAITING", "listening": false },
+        { "at": "7000", "show": "CHECK", "sounds": ["ask"], "listening": false },
+        { "at": "8000", "show": "PAIRING", "sounds": ["fall"], "listening": false }
+      ]
+    },
+    {
+      "name": "a card no longer believed does not listen: STALE_MS after the relay was lost",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 1, "listening": true },
+        { "at": "1000", "link": "down", "listening": true },
+        { "at": "1000+STALE_MS-1", "listening": true },
+        { "at": "1000+STALE_MS", "listening": false }
+      ]
+    },
+    {
+      "name": "a flash is drawn over the pulse, and the pulse comes back after it",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 1 },
+        { "at": "0", "music": [{ "ms": 16000, "bpm": 120, "noise": 200 }], "during": [
+          { "at": "9400", "face": { "light": 128 } },
+          { "at": "10000", "show": "HI", "rev": 1, "with": { "waves": { "ref": "0123456789", "n": 1, "seq": 1 } }, "sounds": ["hello"] },
+          { "at": "10400", "face": { "field": "hi", "big": "", "light": "LIGHT_FULL" }, "listening": true },
+          { "at": "10900", "face": { "light": "LIGHT_OFF" } },
+          { "at": "14400", "face": { "big": "HI :)", "light": 128 } }
+        ] }
+      ]
+    },
+    {
+      "name": "a card shown by SIDE is not at rest and does not pulse; back at rest, it does",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 1 },
+        { "at": "0", "music": [{ "ms": 18000, "bpm": 120, "noise": 200 }], "during": [
+          { "at": "9100", "press": 2, "face": { "small": "SIDE TO CHANGE" } },
+          { "at": "9400", "face": { "small": "SIDE TO CHANGE", "light": "LIGHT_FULL" }, "listening": true },
+          { "at": "15400", "face": { "small": "BLUE MEANS HELLO", "light": 128 } }
+        ] }
+      ]
+    },
+    {
+      "name": "the microphone's delay puts each pulse that far ahead of the beat it heard",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 1 },
+        { "at": "0", "latency": 100 },
+        { "at": "0", "music": [{ "ms": 10000, "bpm": 120, "noise": 200 }], "during": [
+          { "at": "9300", "face": { "light": 128 } }
+        ] }
+      ]
+    },
+    {
+      "name": "the letters turn the beat back on: the next person's card listens until their phone says otherwise",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "HI", "rev": 1, "with": { "beat": false }, "listening": false },
+        { "at": "1000", "show": "PAIRING", "listening": false },
+        { "at": "2000", "show": "HI", "rev": 1, "listening": true }
+      ]
     }
   ]
 }

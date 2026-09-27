@@ -871,6 +871,14 @@ std::string answer(const Command& c) {
     }
     return out + "]";
   }
+  if (c.verb == "pulselight") {
+    // pulselight <full> <since> <period>: a lit card's light that far into a pulse.
+    std::istringstream in(c.arg);
+    int full = 0;
+    double since = 0, period = 0;
+    in >> full >> since >> period;
+    return std::to_string(pulseLight(full, since, period));
+  }
   if (c.verb == "beatconsts") {
     // Every named value of the tracker, as app/lib/beat.js BEAT_CONSTS has them.
     const std::pair<const char*, double> all[] = {
@@ -1037,6 +1045,18 @@ int runWrist() {
       continue;
     }
     w->tick(t);
+    if (verb == "hear") {
+      std::istringstream levels(arg);
+      BandLevels l;
+      for (size_t k = 0; k < BEAT_BANDS; ++k) {
+        std::string one;
+        levels >> one;
+        l.v[k] = static_cast<float>(std::strtod(one.c_str(), nullptr));
+      }
+      w->hear(l, t);
+      std::cout << "{}\n";
+      continue;
+    }
     if (verb == "up") w->linkUp(t);
     else if (verb == "down") w->linkDown(t);
     else if (verb == "key1" || verb == "key2") {
@@ -1047,13 +1067,15 @@ int runWrist() {
     else if (verb == "frame") w->frame(arg, t);
     else if (verb == "battery") w->setBattery(std::atoi(arg.c_str()), t);
     else if (verb == "wifi") w->setWifi(arg == "1");
+    else if (verb == "latency") w->setMicLatency(std::strtod(arg.c_str(), nullptr));
     std::string sent, sounds;
     for (const std::string& f : w->take()) sent += (sent.empty() ? "" : ",") + (f == "DROP" || f == "SETUP" ? quote(f) : f);
     for (const std::string& n : w->sounds()) sounds += (sounds.empty() ? "" : ",") + quote(n);
     const Screen s = w->face(t);
     std::cout << "{\"sent\":[" << sent << "],\"sounds\":[" << sounds << "],\"face\":{\"big\":" << quote(s.big) << ",\"small\":" << quote(s.small)
               << ",\"field\":" << quote(s.field) << ",\"ink\":" << quote(s.ink) << ",\"light\":" << int(s.light)
-              << ",\"bar\":" << s.bar << ",\"code\":" << quote(s.code) << ",\"corner\":" << quote(s.corner) << "}}\n";
+              << ",\"bar\":" << s.bar << ",\"code\":" << quote(s.code) << ",\"corner\":" << quote(s.corner)
+              << "},\"listening\":" << (w->listening(t) ? "true" : "false") << "}\n";
   }
   return 0;
 }

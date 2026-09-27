@@ -22,7 +22,7 @@ import { INTENTS } from '../relay/cards.js';
 import { HUE } from '../app/copy.js';
 import { codeFrom, pairUrl } from '../app/lib/pairing.js';
 import { CONSTS, FLASH_COLOURS, FLASHES, SOUNDS, cardAfter } from '../app/lib/wrist.js';
-import { BEAT_BLOCK, BEAT_CONSTS, BEAT_RATE, createLevels, createTracker } from '../app/lib/beat.js';
+import { BEAT_BLOCK, BEAT_CONSTS, BEAT_RATE, createLevels, createTracker, pulseLight } from '../app/lib/beat.js';
 import { music, twoStep } from './beat-music.js';
 import { TABLE, lines, check } from './wrist-table.js';
 
@@ -161,6 +161,13 @@ test('the firmware hears as the stand-in does: the same samples give the same fi
   // The band works in float and the stand-in in double: 0.003% apart at worst when measured, held to 0.05%.
   band.forEach((row, b) => row.forEach((v, k) =>
     assert.ok(Math.abs(v - want[b][k]) <= 0.0005 * want[b][k] + 0.002, `block ${b} band ${k}: ${v} against ${want[b][k]}`)));
+});
+
+test("the firmware draws a pulse's light as the stand-in does", { skip }, () => {
+  const asked = [];
+  for (const full of [255, 128]) for (const period of [336, 500, 752.4]) for (let since = 0; since <= period; since += period / 16) asked.push([full, since, period]);
+  const band = speak(asked.map(([full, since, period]) => `pulselight ${full} ${since} ${period}`)).map(Number);
+  assert.deepEqual(band, asked.map(([full, since, period]) => pulseLight(full, since, period)));
 });
 
 test('the firmware follows the beat by the same named values as the stand-in', { skip }, () => {
