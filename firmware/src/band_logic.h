@@ -1168,8 +1168,53 @@ constexpr uint32_t BEACON_MS = 500;        // a beacon this often
 constexpr uint32_t LISTEN_MS = 1000;       // a listen lasts this long...
 constexpr uint32_t HEAR_EVERY_MS = 10000;  // ...once in this long, and is reported as soon as it ends
 constexpr size_t HEARD_MAX = 12;           // a report names the strongest this many bands
-constexpr size_t FRAME_MAX = 320;          // the longest frame a band sends, its ending 0 counted: a full report is 294
+constexpr size_t FRAME_MAX = 384;          // the longest frame a band sends, its ending 0 counted: a full report is 346
 constexpr uint8_t BEACON[4] = {'O', 'T', 'B', '1'};  // all a beacon says; the address it comes from says whose
+
+// ---------- markers: a band the venue leaves at the bar or by the stage ----------
+//
+// A marker joins no Wi-Fi and reaches no relay: it beacons MARK_BEACON and
+// its area's letter on every channel in turn, so a band hears it whatever
+// channel the venue's Wi-Fi is on. A band's listen keeps the markers it heard
+// beside the bands, and the relay names each person's area from them
+// (docs/superpowers/specs/2026-09-27-wrist-markers-design.md).
+
+constexpr uint8_t MARK_BEACON[4] = {'O', 'T', 'B', 'M'};  // a marker's beacon, then its area's letter
+constexpr int MARK_CHANNELS = 13;                         // a marker beacons on channels 1 to this, in turn
+
+/** An area a marker can name: its word on the console and in a report, as relay/room.js MARKS has it; its letter on the air; its face. */
+struct MarkArea {
+  const char* area;
+  char letter;
+  const char* words;
+};
+constexpr MarkArea MARK_AREA[] = {
+    {"bar", 'b', "NEAR THE BAR"},
+    {"stage", 's', "BY THE STAGE"},
+    {"back", 'o', "OUT THE BACK"},
+};
+constexpr size_t MARK_AREAS = sizeof MARK_AREA / sizeof MARK_AREA[0];
+
+/** The area a word names, as `marker bar` on the console says it, or -1. */
+inline int markNamed(const std::string& area) {
+  for (size_t i = 0; i < MARK_AREAS; ++i)
+    if (area == MARK_AREA[i].area) return static_cast<int>(i);
+  return -1;
+}
+
+/** The area a beacon's letter names, or -1: a letter no marker has is nothing. */
+inline int markLettered(uint8_t letter) {
+  for (size_t i = 0; i < MARK_AREAS; ++i)
+    if (letter == static_cast<uint8_t>(MARK_AREA[i].letter)) return static_cast<int>(i);
+  return -1;
+}
+
+/** One sweep of a marker's beacon, every BEACON_MS: channel 1 to MARK_CHANNELS, in turn. */
+inline std::vector<int> markSweep() {
+  std::vector<int> s;
+  for (int ch = 1; ch <= MARK_CHANNELS; ++ch) s.push_back(ch);
+  return s;
+}
 
 /** Six address bytes as twelve lower-case hex digits, as the hello's air and a report write them. */
 inline std::string airHex(const uint8_t* mac) {
@@ -1193,11 +1238,15 @@ inline void makeAir(uint8_t* out, const std::function<uint32_t()>& random32) {
   out[5] = static_cast<uint8_t>(b >> 8);
 }
 
-/** One listen: each band heard, at the strongest of its beacons, and only the strongest HEARD_MAX bands. */
+/** One listen: each band heard, at the strongest of its beacons, and only the strongest HEARD_MAX bands; and each marker area heard. */
 class Hearing {
  public:
   struct Heard {
     uint8_t mac[6];
+    int rssi;
+  };
+  struct Marked {
+    const char* area;
     int rssi;
   };
 
@@ -1222,8 +1271,21 @@ class Hearing {
     if (rssi > weakest->rssi) *weakest = h;
   }
 
+  /** A marker's beacon with `letter` at `rssi` dBm: each area once, at its strongest, brought into -100..0 as a band's is. */
+  void heardMark(uint8_t letter, int rssi) {
+    const int i = markLettered(letter);
+    if (i < 0) return;
+    rssi = rssi < -100 ? -100 : rssi > 0 ? 0 : rssi;
+    if (!marked_[i] || rssi > marks_[i]) marks_[i] = rssi;
+    marked_[i] = true;
+  }
+
+  /** How many bands were heard; markers are never among them. */
   size_t size() const { return heard_.size(); }
-  void clear() { heard_.clear(); }
+  void clear() {
+    heard_.clear();
+    for (bool& m : marked_) m = false;
+  }
 
   /** Everyone heard, the strongest first. */
   std::vector<Heard> strongest() const {
@@ -1232,7 +1294,19 @@ class Hearing {
     return s;
   }
 
-  /** The report the relay reads: {"t":"heard","ch":6,"near":[["02abcdef0123",-48],...]}. Heard nobody, near is []. */
+  /** Each marker area heard, the strongest first. */
+  std::vector<Marked> marks() const {
+    std::vector<Marked> s;
+    for (size_t i = 0; i < MARK_AREAS; ++i)
+      if (marked_[i]) s.push_back({MARK_AREA[i].area, marks_[i]});
+    std::stable_sort(s.begin(), s.end(), [](const Marked& x, const Marked& y) { return x.rssi > y.rssi; });
+    return s;
+  }
+
+  /**
+   * The report the relay reads: {"t":"heard","ch":6,"near":[["02abcdef0123",-48],...]}. Heard nobody, near is [].
+   * Heard a marker, it ends ,"marks":[["bar",-52],...]; heard none, it says nothing of markers.
+   */
   std::string frame(int ch) const {
     std::string f = "{\"t\":\"heard\",\"ch\":" + std::to_string(ch) + ",\"near\":[";
     bool first = true;
@@ -1240,11 +1314,44 @@ class Hearing {
       f += std::string(first ? "" : ",") + "[\"" + airHex(h.mac) + "\"," + std::to_string(h.rssi) + "]";
       first = false;
     }
-    return f + "]}";
+    f += "]";
+    const std::vector<Marked> m = marks();
+    if (!m.empty()) {
+      f += ",\"marks\":[";
+      for (size_t i = 0; i < m.size(); ++i) f += std::string(i ? "," : "") + "[\"" + m[i].area + "\"," + std::to_string(m[i].rssi) + "]";
+      f += "]";
+    }
+    return f + "}";
   }
 
  private:
   std::vector<Heard> heard_;
+  bool marked_[MARK_AREAS] = {};
+  int marks_[MARK_AREAS] = {};
+};
+
+/** A marker: the area it names, the beacon it sends, and its face, dark until a key lights it for WAKE_MS. */
+class Marker {
+ public:
+  explicit Marker(int area) : area_(area) {}
+
+  const char* area() const { return MARK_AREA[area_].area; }
+  std::vector<uint8_t> beacon() const {
+    return {MARK_BEACON[0], MARK_BEACON[1], MARK_BEACON[2], MARK_BEACON[3], static_cast<uint8_t>(MARK_AREA[area_].letter)};
+  }
+
+  /** Either key, pressed or held: there is nothing else for a key to do on a marker. */
+  void press(uint32_t now) {
+    pressed_ = true;
+    pressedAt_ = now;
+  }
+  bool lit(uint32_t now) const { return pressed_ && now - pressedAt_ < WAKE_MS; }
+  Words words() const { return {"MARKER", MARK_AREA[area_].words}; }
+
+ private:
+  int area_;
+  bool pressed_ = false;
+  uint32_t pressedAt_ = 0;
 };
 
 /**

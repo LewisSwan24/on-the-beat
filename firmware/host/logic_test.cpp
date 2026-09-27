@@ -711,6 +711,67 @@ void hearing() {
   CHECK(!w.nearOn());  // unpaired
 }
 
+void markers() {
+  // Three areas, each a word on the console and in a report (relay/room.js MARKS has the same), and a letter on the air.
+  CHECK(MARK_AREAS == 3);
+  CHECK(markNamed("bar") == 0 && markNamed("stage") == 1 && markNamed("back") == 2);
+  CHECK(markNamed("off") == -1 && markNamed("") == -1 && markNamed("BAR") == -1 && markNamed("bar ") == -1);
+  CHECK(markLettered('b') == 0 && markLettered('s') == 1 && markLettered('o') == 2);
+  CHECK(markLettered('x') == -1 && markLettered('B') == -1 && markLettered(0) == -1 && markLettered('1') == -1);
+
+  // A marker beacons OTBM and its letter, never a band's OTB1, on every channel from 1 to 13 in turn.
+  CHECK(Marker(0).beacon() == std::vector<uint8_t>({'O', 'T', 'B', 'M', 'b'}));
+  CHECK(Marker(1).beacon() == std::vector<uint8_t>({'O', 'T', 'B', 'M', 's'}));
+  CHECK(Marker(2).beacon() == std::vector<uint8_t>({'O', 'T', 'B', 'M', 'o'}));
+  CHECK(!std::equal(BEACON, BEACON + 4, MARK_BEACON));
+  CHECK(markSweep() == std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}));
+  CHECK(std::string(Marker(1).area()) == "stage");
+
+  // Its face is dark; a key lights it for WAKE_MS with what it is, in the screen's alphabet.
+  Marker m(1);
+  CHECK(!m.lit(0) && !m.lit(WAKE_MS));
+  m.press(1000);
+  CHECK(m.lit(1000) && m.lit(1000 + WAKE_MS - 1) && !m.lit(1000 + WAKE_MS));
+  m.press(1000 + WAKE_MS + 5);
+  CHECK(m.lit(1000 + 2 * WAKE_MS));
+  CHECK(m.words().big == "MARKER" && m.words().small == "BY THE STAGE");
+  CHECK(Marker(0).words().small == "NEAR THE BAR" && Marker(2).words().small == "OUT THE BACK");
+  for (int i = 0; i < 3; ++i) CHECK(fold(Marker(i).words().small) == Marker(i).words().small);
+
+  // A listen keeps each marker area once, at the strongest of its beacons, and a letter no marker has is nothing.
+  Hearing h;
+  h.heardMark('s', -80);
+  h.heardMark('b', -60);
+  h.heardMark('b', -52);
+  h.heardMark('b', -70);
+  h.heardMark('x', -10);
+  h.heardMark('B', -10);
+  CHECK(h.size() == 0);  // a marker is never a band
+  CHECK(h.frame(6) == "{\"t\":\"heard\",\"ch\":6,\"near\":[],\"marks\":[[\"bar\",-52],[\"stage\",-80]]}");
+  // Brought into -100..0, the range the relay takes, as a band's reading is; the strongest first.
+  h.heardMark('o', -130);
+  h.heardMark('s', 4);
+  CHECK(h.frame(6) == "{\"t\":\"heard\",\"ch\":6,\"near\":[],\"marks\":[[\"stage\",0],[\"bar\",-52],[\"back\",-100]]}");
+  CHECK(h.marks().size() == 3 && std::string(h.marks()[0].area) == "stage" && h.marks()[0].rssi == 0);
+  // Heard no marker, a report says nothing of markers; cleared, a listen has heard none.
+  h.clear();
+  CHECK(h.marks().empty());
+  hear(h, 1, -40);
+  CHECK(h.frame(6) == "{\"t\":\"heard\",\"ch\":6,\"near\":[[\"020000000001\",-40]]}");
+  hear(h, 2, -45);
+  h.heardMark('b', -50);
+  CHECK(h.frame(6) == "{\"t\":\"heard\",\"ch\":6,\"near\":[[\"020000000001\",-40],[\"020000000002\",-45]],\"marks\":[[\"bar\",-50]]}");
+
+  // The longest report fits the outbox: HEARD_MAX bands and all three markers, on channel 14.
+  Hearing full;
+  for (int i = 0; i < 16; ++i) {
+    const uint8_t weak[6] = {0xfe, 0xff, 0xff, 0xff, 0xff, static_cast<uint8_t>(i)};
+    full.heard(weak, -100);
+  }
+  for (const char c : {'s', 'o', 'b'}) full.heardMark(c, -100);
+  CHECK(full.frame(14).size() == 346 && full.frame(14).size() < FRAME_MAX);
+}
+
 // ---------- speak: this code, in front of the real relay ----------
 
 std::string quote(const std::string& s) {
@@ -749,13 +810,17 @@ std::string answer(const Command& c) {
     return helloFrame(idFor(key), key, battery, secret == "-" ? "" : secret, quiet == "quiet", air);
   }
   if (c.verb == "heard") {
-    // heard <ch> [<air>:<rssi> ...]: one listen, reported as the band reports it
+    // heard <ch> [<air>:<rssi> ...] [<letter>=<rssi> ...]: one listen, bands and markers, reported as the band reports it
     std::istringstream in(c.arg);
     int ch = 0;
     in >> ch;
     Hearing h;
     std::string one;
     while (in >> one) {
+      if (one.size() > 2 && one[1] == '=') {
+        h.heardMark(static_cast<uint8_t>(one[0]), std::atoi(one.c_str() + 2));
+        continue;
+      }
       const size_t colon = one.find(':');
       const std::vector<uint8_t> mac = hexBytes(one.substr(0, colon));
       if (colon == std::string::npos || mac.size() != 6) return "bad " + one;
@@ -909,6 +974,7 @@ int main(int argc, char** argv) {
   console();
   said();
   hearing();
+  markers();
   std::printf("ok: %d checks\n", checks);
   return 0;
 }

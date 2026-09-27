@@ -256,32 +256,46 @@ test('what the firmware says, the relay takes; what the relay says, the firmware
   }
 });
 
+/** Bands saying their address on the air, 02abcdef0001 on, each paired to a phone on SAY HI in one room that picked its name. */
+async function pairedBands(port, venue, names, socks) {
+  const all = [];
+  for (const [i, name] of names.entries()) {
+    const air = '02abcdef000' + (i + 1);
+    const [key] = speak(['key']);
+    const [hello] = speak([`hello ${key} 80 - - ${air}`]);
+    assert.deepEqual(JSON.parse(hello), { t: 'wristband', id: idOf(key), key, v: 2, battery: 80, air });
+    const band = await open(port, 'arduino');
+    socks.push(band);
+    band.send(hello);
+    const { show: { code } } = await band.until('show', (m) => m.show.kind === 'pairing');
+    const person = await phone(port, venue);
+    socks.push(person);
+    person.send({ t: 'pair', code });
+    await person.until('view', (m) => m.view.me.check);
+    person.send({ t: 'confirm', yes: true });
+    await person.until('paired');
+    person.send({ t: 'pick', track: name });
+    person.send({ t: 'arm', intent: 'hi' });
+    all.push({ band, person, air });
+  }
+  return all;
+}
+
+/** Each band's report, and then a ping, so that each report was taken once its pong is back. */
+async function report(all, reports) {
+  for (const [i, p] of all.entries()) {
+    p.band.send(reports[i]);
+    p.band.send(speak(['ping'])[0]);
+    await p.band.until('pong');
+  }
+}
+
 test('what the firmware reports it heard, the relay takes: each phone lists the bands its band heard', { skip }, async () => {
   const relay = await createRelay({ port: 0, host: '127.0.0.1', root: dir });
   const socks = [];
   try {
-    // Three bands, each saying its address on the air, each paired to a phone in one room.
-    const names = ['vi', 'x', 'y'];
-    const airs = ['02abcdef0001', '02abcdef0002', '02abcdef0003'];
-    const all = [];
-    for (const [i, air] of airs.entries()) {
-      const [key] = speak(['key']);
-      const [hello] = speak([`hello ${key} 80 - - ${air}`]);
-      assert.deepEqual(JSON.parse(hello), { t: 'wristband', id: idOf(key), key, v: 2, battery: 80, air });
-      const band = await open(relay.port, 'arduino');
-      socks.push(band);
-      band.send(hello);
-      const { show: { code } } = await band.until('show', (m) => m.show.kind === 'pairing');
-      const person = await phone(relay.port, 'near-room');
-      socks.push(person);
-      person.send({ t: 'pair', code });
-      await person.until('view', (m) => m.view.me.check);
-      person.send({ t: 'confirm', yes: true });
-      await person.until('paired');
-      person.send({ t: 'pick', track: names[i] });
-      person.send({ t: 'arm', intent: 'hi' });
-      all.push({ band, person });
-    }
+    const all = await pairedBands(relay.port, 'near-room', ['vi', 'x', 'y'], socks);
+    const airs = all.map((p) => p.air);
     const listed = async (p, n) => (await p.person.until('view', (m) => m.view.near.length === n)).view.near.map((q) => q.pick).sort();
     const [vi, x, y] = all;
     assert.deepEqual(await listed(vi, 2), ['x', 'y'], 'before any band has reported, the whole room');
@@ -290,15 +304,34 @@ test('what the firmware reports it heard, the relay takes: each phone lists the 
     const reports = speak([`heard 6 ${airs[1]}:-48`, `heard 6 ${airs[0]}:-52`, 'heard 6']);
     assert.deepEqual(JSON.parse(reports[0]), { t: 'heard', ch: 6, near: [[airs[1], -48]] });
     assert.deepEqual(JSON.parse(reports[2]), { t: 'heard', ch: 6, near: [] });
-    for (const [i, p] of all.entries()) {
-      p.band.send(reports[i]);
-      p.band.send(speak(['ping'])[0]);
-      await p.band.until('pong');  // the report before it was taken
-    }
+    await report(all, reports);
     relay.tickNear();
     assert.deepEqual(await listed(vi, 1), ['x']);
     assert.deepEqual(await listed(x, 1), ['vi']);
     assert.deepEqual(await listed(y, 0), [], 'a band that heard nobody, and nobody heard, lists no band');
+  } finally {
+    for (const s of socks) s.ws.terminate();
+    await relay.close();
+  }
+});
+
+test("what the firmware reports of the markers, the relay takes: others see each band's person in its area", { skip }, async () => {
+  const relay = await createRelay({ port: 0, host: '127.0.0.1', root: dir });
+  const socks = [];
+  try {
+    const all = await pairedBands(relay.port, 'mark-room', ['vi', 'x', 'y'], socks);
+    const [vi, x, y] = all;
+    // vi heard the bar's marker, x the stage's and y the back's, each clearly, and y a letter no marker has.
+    const reports = speak([`heard 6 ${x.air}:-48 ${y.air}:-50 b=-45`, `heard 6 ${vi.air}:-49 s=-50`, `heard 6 ${vi.air}:-51 o=-52 x=-10`]);
+    assert.deepEqual(JSON.parse(reports[0]), { t: 'heard', ch: 6, near: [[x.air, -48], [y.air, -50]], marks: [['bar', -45]] });
+    assert.deepEqual(JSON.parse(reports[2]), { t: 'heard', ch: 6, near: [[vi.air, -51]], marks: [['back', -52]] });
+    await report(all, reports);
+    relay.tickNear();
+    // The firmware's areas are the relay's: each report was taken, and each person shows in its area.
+    const shows = (p, who, band) => p.person.until('view', (m) => m.view.near.some((r) => r.pick === who && r.band === band));
+    await shows(vi, 'x', 'by the stage');
+    await shows(vi, 'y', 'somewhere out the back');
+    await shows(x, 'vi', 'near the bar');
   } finally {
     for (const s of socks) s.ws.terminate();
     await relay.close();
