@@ -6,6 +6,11 @@ reaction the owner chose on 25 Sep 2026 (A and B are the reactions spec,
 `2026-09-25-wrist-reactions-design.md`), and it builds on that spec's
 reactions, sound switch and NOT NOW silence, and on the waves spec's call.
 
+The owner reviewed this spec on 27 Sep 2026 and approved §1 and §2 as
+written, `BEAT: ON` by default included. He chose to have it planned and
+built now, on a branch of its own, and merged only once round 3 (§4.1) has
+passed on the real bands; and to give the stand-in its `LISTEN` (§3).
+
 ## Goal
 
 **A lit card is easier to find in a dark, crowded room when it pulses on the
@@ -223,12 +228,14 @@ table.
   light `face(now)` gives on every loop. The console's `face` shows the light
   moving, so a real band can be checked without eyes on it.
 - **The stand-in (`/band`):** an optional `LISTEN` that feeds the laptop's
-  microphone through the same energy function, for a demo; off, it pulses
-  nothing.
+  microphone through the same energy function, for a demo; off by default,
+  it asks the browser for the microphone only when turned on, and off, it
+  pulses nothing.
 
 ## §4. Tests and proof
 
-1. **The gate, before anything is built.** Round 3 of the spike on both real
+1. **The gate, before anything is merged.** It may be built first, on a
+   branch; it reaches `main` only once this passes. Round 3 of the spike on both real
    bands, streaming the five bands, with the laptop at round 2's volume and
    the bands beside it: the pop mix, the medley, the breakdown, the crowd and
    the drift of the offline tests, then a song of the owner's choosing played
