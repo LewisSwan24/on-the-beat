@@ -22,7 +22,8 @@ import { INTENTS } from '../relay/cards.js';
 import { HUE } from '../app/copy.js';
 import { codeFrom, pairUrl } from '../app/lib/pairing.js';
 import { CONSTS, FLASH_COLOURS, FLASHES, SOUNDS, cardAfter } from '../app/lib/wrist.js';
-import { BEAT_BLOCK, BEAT_RATE, createLevels } from '../app/lib/beat.js';
+import { BEAT_BLOCK, BEAT_CONSTS, BEAT_RATE, createLevels, createTracker } from '../app/lib/beat.js';
+import { music, twoStep } from './beat-music.js';
 import { TABLE, lines, check } from './wrist-table.js';
 
 const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).digest('hex').slice(0, 32);
@@ -160,6 +161,48 @@ test('the firmware hears as the stand-in does: the same samples give the same fi
   // The band works in float and the stand-in in double: 0.003% apart at worst when measured, held to 0.05%.
   band.forEach((row, b) => row.forEach((v, k) =>
     assert.ok(Math.abs(v - want[b][k]) <= 0.0005 * want[b][k] + 0.002, `block ${b} band ${k}: ${v} against ${want[b][k]}`)));
+});
+
+test('the firmware follows the beat by the same named values as the stand-in', { skip }, () => {
+  const [consts] = speak(['beatconsts']);
+  assert.deepEqual(JSON.parse(consts), BEAT_CONSTS);
+});
+
+test('the firmware follows the beat as the stand-in does: the same blocks give the same pulses', { skip }, () => {
+  // Locks at two tempos, a hi-hat, another song, gaps of two and three beats, a late drum, a stop, and a chance
+  // lock on random kicks: every decision.
+  const cases = [
+    [[{ ms: 12000, bpm: 90, noise: 200 }], 0, 1],
+    [[{ ms: 12000, bpm: 160, noise: 200 }], 25, 1],
+    [[{ ms: 8000, bpm: 120, pad: 3000, noise: 800 }, { ms: 8000, bpm: 120, hat: true, pad: 3000, noise: 800 }], 0, 1],
+    [[{ ms: 10000, bpm: 120, noise: 200 }, { ms: 10000, bpm: 150, noise: 200 }], 0, 1],
+    [[{ ms: 10000, bpm: 120, noise: 200 }, { ms: 600, bpm: 120, gap: true }, { ms: 6000, bpm: 120, first: 400, noise: 200 }], 0, 1],
+    [[{ ms: 10000, bpm: 120, noise: 200 }, { ms: 1104, bpm: 120, gap: true }, { ms: 6000, bpm: 120, first: 396, noise: 200 }], 0, 1],
+    [[{ ms: 12000, bpm: 120, miss: [16], extra: [8045], noise: 200 }], 0, 1],
+    [[{ ms: 10000, bpm: 120, noise: 200 }, { ms: 6000, noise: 200 }], 0, 1],
+    [[{ ms: 20000, clicks: 4, noise: 200 }], 0, 12],
+    ['twoStep', 0, 0],
+  ];
+  for (const [parts, latency, seed] of cases) {
+    const { blocks } = parts === 'twoStep' ? twoStep({ bpm: 125, ms: 12000 }) : music(parts, { seed });
+    const tracker = createTracker();
+    tracker.setLatency(latency);
+    const want = [];
+    for (const b of blocks) {
+      tracker.hear(b.levels, b.t);
+      want.push(...tracker.take());
+    }
+    assert.ok(want.length > 0, JSON.stringify(parts));
+    const line = `track ${latency} ` + blocks.map((b) => [b.t, ...b.levels].join(',')).join(' ');
+    const band = JSON.parse(speak([line])[0]);
+    assert.equal(band.pulses.length, want.length, `${JSON.stringify(parts)}: ${band.pulses.map((p) => p[0]).join(' ')}`);
+    band.pulses.forEach(([at, period], i) => {
+      assert.ok(Math.abs(at - want[i].at) < 0.01 && Math.abs(period - want[i].period) < 0.01,
+        `${JSON.stringify(parts)} pulse ${i}: ${at} ${period} against ${want[i].at} ${want[i].period}`);
+    });
+    const left = tracker.state();
+    assert.ok(band.locked === left.locked && Math.abs(band.period - left.period) < 0.01, `${JSON.stringify(parts)}: left ${JSON.stringify(band)}`);
+  }
 });
 
 test("the firmware hashes as node:crypto does, and its id is its key's hash", { skip }, () => {
