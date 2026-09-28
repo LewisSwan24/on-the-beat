@@ -21,12 +21,15 @@ test('anything else is not a wristband code, and is not trimmed until it looks l
 });
 
 test('every answer the relay gives a pairing phone has words, and the check asks about the number', () => {
-  for (const k of ['no', 'timeout', 'busy', 'old firmware', 'no such wristband', 'too many tries', 'gone', 'paired']) {
+  for (const k of ['no', 'timeout', 'refused', 'busy', 'old firmware', 'no such wristband', 'too many tries', 'gone', 'paired']) {
     assert.equal(typeof PAIR_SAY[k], 'string', k);
   }
   assert.equal(PAIR_SAY.check(27), 'Does your wristband show 27?');
   assert.equal(PAIR_SAY.timeout, 'No answer in time. Try again.');
-  assert.equal(PAIR_SAY.busy, 'Someone is pairing that wristband right now. Try again in a minute.');
+  // Turned away on the wrist: said to the phone that typed the letters.
+  assert.equal(PAIR_SAY.refused, 'That wristband said no. Pair the one on your own wrist.');
+  // Its owner, finding someone else holding the check, learns how to end it.
+  assert.equal(PAIR_SAY.busy, 'Someone else is pairing that wristband. If it’s yours, hold its face button to turn them away, then pair it again.');
   assert.equal(PAIR_SAY.gone, 'Your wristband restarted or went away. Pair it again.');
   assert.equal(PAIR_SAY['old firmware'], 'Update this wristband’s firmware.');
   assert.equal(PAIR_SAY.no, 'That’s not this wristband.');

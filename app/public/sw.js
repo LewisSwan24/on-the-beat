@@ -3,7 +3,8 @@
 // does not. The socket, the shows and the clips are never kept: what the room
 // says is only ever the room's to say, live.
 
-const SHELL = 'otb-shell-v1';
+// v2: v1 could have kept the staff page as the shell ('/'), since it keeps every page it fetched there.
+const SHELL = 'otb-shell-v2';
 const FONTS = 'otb-fonts-v1';
 
 self.addEventListener('install', (e) => {
@@ -20,6 +21,8 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   if (url.origin === location.origin && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/clip/'))) return;
+  // The staff page is live or nothing, and never the app's shell.
+  if (url.origin === location.origin && ['/staff', '/staff/', '/staff.html'].includes(url.pathname)) return;
 
   if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
     e.respondWith(caches.open(FONTS).then(async (c) => {

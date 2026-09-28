@@ -138,7 +138,7 @@ test('a match keeps the area it was made in, and a report the area it was sent f
   room.nearTick();
   assert.equal(room.viewFor('ana').me.band, 'by the stage');
   assert.equal(room.viewFor('ben').matches[0].band, 'near the bar');
-  assert.equal(room.reports()[0].band, 'near the bar');
+  assert.equal(room.reports()[0].aboutBand, 'near the bar');
 });
 
 test('only a marker names an area: a phone saying one when it joins is not taken, and nothing else sets it', () => {

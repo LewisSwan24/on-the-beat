@@ -51,14 +51,26 @@ test('with bands reporting, the list is the five heard most strongly, and nothin
   assert.equal(room.nearTick(), false);
 });
 
-test('a pair is heard either way: what the other band heard counts as much as your own', () => {
+test("a person's five is what their own band heard: another band hearing them loudly moves only that band's list", () => {
   const { room, listed } = floor(['vi', ...others(7)]);
-  // vi's band heard nobody. p6's heard vi loudly; the rest heard vi faintly.
-  report(room, 'vi', {});
+  // vi's band heard p0. p6's heard vi loudly; the rest heard vi faintly.
+  report(room, 'vi', { p0: -60 });
   for (const a of others(7)) report(room, a, { vi: a === 'p6' ? -40 : -85 });
   room.nearTick();
-  assert.equal(listed('vi').includes('p6'), true);
-  assert.equal(listed('vi').length, NEAR_FIVE);
+  assert.deepEqual(listed('vi'), ['p0']);
+  assert.deepEqual(listed('p6'), ['vi'], "p6's band heard vi, so vi is on p6's list");
+});
+
+test('made-up neighbours crowd nobody out: bands that say they heard someone loudly change only their own lists', () => {
+  const liars = ['s0', 's1', 's2', 's3', 's4'];
+  const { room, listed } = floor(['vi', 'p0', 'p1', 'p2', ...liars]);
+  // vi's band heard three people. Five people on SAY HI, whose bands vi's never heard, say they heard vi loudly.
+  report(room, 'vi', { p0: -60, p1: -62, p2: -65 });
+  for (const p of ['p0', 'p1', 'p2']) report(room, p, { vi: -61 });
+  for (const s of liars) report(room, s, { vi: -20 });
+  room.nearTick();
+  assert.deepEqual(listed('vi'), ['p0', 'p1', 'p2'], 'the people vi is near stay on its list; the liars do not push in');
+  for (const s of liars) assert.deepEqual(listed(s), ['vi'], 'each liar changed its own list');
 });
 
 test('people without a band are listed as they were, and take no place in the five', () => {

@@ -1386,6 +1386,9 @@ inline std::string helloFrame(const std::string& id, const std::string& key, int
 
 inline std::string batteryFrame(int level) { return "{\"t\":\"battery\",\"level\":" + std::to_string(level) + "}"; }
 
+/** The check on the face turned away: the two digits as the face shows them. */
+inline std::string refuseFrame(const std::string& number) { return "{\"t\":\"refuse\",\"number\":\"" + number + "\"}"; }
+
 constexpr const char* HOLD_FRAME = "{\"t\":\"hold\"}";
 constexpr const char* PING_FRAME = "{\"t\":\"ping\"}";
 
@@ -1475,6 +1478,7 @@ class Wrist {
     s.fired = false;
     // Any KEY1 press-down freezes a choice at once: no commit can fire.
     if (k == 1 && (mode_ == LOOK || mode_ == CHOOSING)) frozen_ = true;
+    if (k == 1) awayKey_ = false;
     // During a wave's flashes a key only ticks: a meeting calling underneath is answered after them.
     const bool whole = waveFlashing(now);
     // The key that answers a call only answers: letting it go, or holding it, does nothing more.
@@ -1482,8 +1486,10 @@ class Wrist {
       calling_ = false;
       s.fired = true;
     } else if (pairingFace(now)) {
-      // On the letters or the check a key says where to go, and lights the letters again; nothing more.
-      s.fired = true;
+      // On the letters or the check a key says where to go, and lights the letters again; nothing more —
+      // except FACE on the check, which may yet be held to turn it away.
+      s.fired = !(k == 1 && show_.kind == "check");
+      if (!s.fired) awayKey_ = true;  // SIDE going down meanwhile leaves a FACE hold as it is
       hintUntil_ = now + HINT_MS;
       if (show_.kind == "pairing") litUntil_ = now + PAIR_AWAKE_MS;
     }
@@ -1500,7 +1506,10 @@ class Wrist {
     Key& s = k == 1 ? k1_ : k2_;
     if (!s.down) return;
     s.down = false;
-    if (!s.fired && !waveFlashing(now)) {
+    // FACE let go on the check before HOLD_MS: it said where to go as it went down, and does nothing more.
+    if (k == 1 && awayKey_) {
+      awayKey_ = false;
+    } else if (!s.fired && !waveFlashing(now)) {
       if (mode_ == WAVES) {
         rest();  // in the wave face a press of either key closes it; SIDE never starts the chooser there
       } else if (k == 2) {
@@ -1579,10 +1588,16 @@ class Wrist {
     // Reactions come from changes; a show that differs only in its sound switch is no change.
     const bool same = haveShow_ && show_ == f.show;
     const bool wasCheck = haveShow_ && show_.kind == "check";
+    const std::string wasBig = haveShow_ ? show_.big : std::string();
     const bool wasSilent = silent_;
     show_ = f.show;
     haveShow_ = true;
     waves_ = f.waves;
+    // A FACE hold on the check ends with that check: letting go, or holding on, does nothing more.
+    if (awayKey_ && (show_.kind != "check" || show_.big != wasBig)) {
+      awayKey_ = false;
+      k1_.fired = true;
+    }
     // A show's own switch counts for what it causes.
     if (f.sound >= 0) soundOn_ = f.sound == 1;
     if (show_.kind == "pairing") {
@@ -1696,7 +1711,8 @@ class Wrist {
     }
     if (k1_.down && !k1_.fired && now - k1_.since >= HOLD_MS) {
       k1_.fired = true;
-      hold(now);
+      if (awayKey_) turnAway();
+      else hold(now);
     }
     // A SIDE hold that comes due during a wave's flashes does nothing else.
     if (k2_.down && !k2_.fired && now - k2_.since >= HOLD_MS) {
@@ -1996,6 +2012,15 @@ class Wrist {
   /** A FACE press on the resting HI or meeting face, with someone waiting and the link up, opens the wave face. */
   bool opensWaves() const { return mode_ == REST && link_.up() && !quiet_.dark() && waiting(); }
 
+  /**
+   * FACE held on the check: its person did not ask for this number — someone who read the letters off the
+   * wrist may be holding it open. The relay drops it only if it is still this number, and answers with letters.
+   */
+  void turnAway() {
+    awayKey_ = false;
+    if (haveShow_ && show_.kind == "check") out_.push_back(refuseFrame(show_.big));
+  }
+
   void hold(uint32_t now) {
     quiet_.held();
     rest();
@@ -2138,6 +2163,8 @@ class Wrist {
   bool waiting_ = false;
   uint32_t waitAt_ = 0;
   uint32_t hintUntil_ = 0;
+  // FACE went down on the check: held to HOLD_MS it turns the check away, and it ends with that check.
+  bool awayKey_ = false;
   // Rule 7: each warning plays once per change. Which have played (true while their condition holds), which
   // battery thresholds are armed, and which came up in NOT NOW or during a choice and are owed, by bit.
   enum Warning : uint8_t { REACH = 1, WAIT = 2, AWAY = 4, BATTERY = 8 };
@@ -2145,6 +2172,39 @@ class Wrist {
   bool armedLow_ = true, armedEmpty_ = true;
   uint8_t owed_ = 0;
 };
+
+// ---------- which way up (docs/superpowers/specs/2026-09-28-wrist-landscape-design.md §2) ----------
+
+// A band's face reads from one of its two landscape sides: the USB-C socket to
+// the left of the words, or to their right. The side is held, and the power
+// button turns it over. It is not worked out from the accelerometer: a watch
+// face is seen from above, and gravity cannot say which edge is nearer the
+// eyes (measured on the owner's wrist, 28 Sep 2026; the spec has the numbers).
+
+/** `turn` on the console: 0 for usb-left, 1 for usb-right, -1 for anything else. (Not `word`: Arduino.h defines that.) */
+inline int turnNamed(const std::string& name) {
+  if (name == "usb-left") return 0;
+  if (name == "usb-right") return 1;
+  return -1;
+}
+
+inline const char* turnName(bool usbRight) { return usbRight ? "usb-right" : "usb-left"; }
+
+/** Standard base64, padded: how `snap` sends a frame over the console. */
+inline std::string toBase64(const uint8_t* bytes, size_t n) {
+  static const char ALPHABET[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  out.reserve((n + 2) / 3 * 4);
+  for (size_t i = 0; i < n; i += 3) {
+    const uint32_t v = (static_cast<uint32_t>(bytes[i]) << 16) | (i + 1 < n ? static_cast<uint32_t>(bytes[i + 1]) << 8 : 0) |
+                       (i + 2 < n ? static_cast<uint32_t>(bytes[i + 2]) : 0);
+    out += ALPHABET[(v >> 18) & 63];
+    out += ALPHABET[(v >> 12) & 63];
+    out += i + 1 < n ? ALPHABET[(v >> 6) & 63] : '=';
+    out += i + 2 < n ? ALPHABET[v & 63] : '=';
+  }
+  return out;
+}
 
 // ---------- the serial console ----------
 
@@ -2210,6 +2270,7 @@ inline std::string saidLine(const std::string& frame) {
   if (frame == HOLD_FRAME) return "NOT NOW, from the wrist";
   if (frame.rfind("{\"t\":\"wave\"", 0) == 0) return "a wave back from the wrist";
   if (frame.rfind("{\"t\":\"found\"", 0) == 0) return "found, from the wrist";
+  if (frame.rfind("{\"t\":\"refuse\"", 0) == 0) return "the check turned away, from the wrist";
   if (frame.rfind("{\"t\":\"wristband\"", 0) == 0)
     return frame.find("\"secret\":") == std::string::npos ? "hello to the relay, as a new wristband"
                                                           : "hello to the relay, with its secret";

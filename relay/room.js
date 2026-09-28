@@ -32,6 +32,10 @@
 // None of them is ever reported as declined. A yes that is not returned just
 // never becomes a match.
 //
+// A report goes to the venue's own team and to nobody in the room. staffReports() is all the team is shown: the
+// person reported only as a tag the relay makes, their band then and now, and the reporter's own words — never
+// a name, a contact, a handle, or who reported.
+//
 // It holds nothing past the night: a room is a Map in memory, and when the
 // relay stops it is gone. Pure and synchronous — no sockets, no clock of its
 // own — so the promises can be tested without a network.
@@ -45,7 +49,8 @@ export const SPOTS = ["by the merch stand — it's the quietest corner", 'at the
 const NAME_MAX = 24;
 const CONTACT_MAX = 60;
 const TRACK_MAX = 60;
-const REPORTS_MAX = 1000;      // the newest kept; a real venue forwards these to its own dashboard
+const REPORTS_MAX = 1000;      // the newest kept a venue, for its staff page (relay/server.js reportsTo())
+const WHY_MAX = 200;           // a reporter's few words for the venue team
 
 // Near (docs/superpowers/specs/2026-09-26-wrist-near-design.md §2).
 export const HEARD_MS = 30_000;   // what a band heard, and that it listened at all, counts this long
@@ -91,10 +96,12 @@ export function createRoom({
   // person made again never reuses one, and whether they were NOT NOW, so they
   // come back as they left. Outlives leave(), as blocks do.
   const tombs = new Map();
-  const reports = [];
+  const reports = [];         // oldest first: { id, at, from, about, aboutBand, fromBand, why, handledAt }
+  let nextReport = 1;
   let nextMatch = 1;
-  // Near: what each person's wristband heard, never shown to anyone. pairKey -> [{ at, rssi }], from
-  // either band hearing the other; id -> { at, ch }, when their band last reported and on which Wi-Fi
+  // Near: what each person's wristband heard, never shown to anyone. 'a>b' -> [{ at, rssi }], a's band
+  // hearing b's — each person's own band only, so a band that lies moves no list but its own person's;
+  // id -> { at, ch }, when their band last reported and on which Wi-Fi
   // channel; id -> the five nearTick() last worked out for them; id -> area -> [{ at, rssi }], the
   // markers their band heard.
   const samples = new Map();
@@ -312,17 +319,59 @@ export function createRoom({
     return true;
   }
 
-  /** To the venue team, with the time and the band. About someone, or about something. */
+  /**
+   * To the venue team: about someone, or about something. It keeps when, each side's band then, and the
+   * reporter's own words — a string, or none.
+   */
   function report(viewer, h, why = '') {
     if (!people.has(viewer)) return false;
     const t = h ? (resolve(viewer, h) ?? matchOther(viewer, h)) : null;
     if (h && !t) return false;
     reports.push({
-      at: now(), from: viewer, about: t,
-      band: t ? (people.get(t)?.band ?? null) : people.get(viewer).band, why: clip(why, 200),
+      id: 'r' + nextReport++, at: now(), from: viewer, about: t,
+      aboutBand: t ? (people.get(t)?.band ?? null) : null, fromBand: people.get(viewer).band,
+      why: typeof why === 'string' ? clip(why, WHY_MAX) : '', handledAt: 0,
     });
     if (reports.length > REPORTS_MAX) reports.splice(0, reports.length - REPORTS_MAX);
     return true;
+  }
+
+  /**
+   * What the venue's staff may see, newest first: when; the person as `tagOf(id)`, with how many reports
+   * tonight are about them and from how many people; their band then and now, or `left`; the reporter's band
+   * then; the words; and when it was handled, or 0. Nothing names who reported.
+   */
+  function staffReports(tagOf) {
+    const about = new Map();   // id -> { times, from: Set of reporters }
+    for (const r of reports) {
+      if (!r.about) continue;
+      if (!about.has(r.about)) about.set(r.about, { times: 0, from: new Set() });
+      about.get(r.about).times += 1;
+      about.get(r.about).from.add(r.from);
+    }
+    return reports.map((r) => ({
+      id: r.id, at: r.at, about: r.about ? tagOf(r.about) : null,
+      times: r.about ? about.get(r.about).times : 0,
+      people: r.about ? about.get(r.about).from.size : 0,
+      bandNow: r.about ? (people.get(r.about)?.band ?? 'left') : null,
+      bandThen: r.aboutBand, fromThen: r.fromBand, why: r.why, handledAt: r.handledAt,
+    })).reverse();
+  }
+
+  /** Staff mark a report handled, or open it again. Marking it twice keeps the first time. False if it is not here. */
+  function markHandled(reportId, on) {
+    const r = reports.find((x) => x.id === reportId);
+    if (!r) return false;
+    r.handledAt = on ? (r.handledAt || now()) : 0;
+    return true;
+  }
+
+  /** At 06:00: the reports `old(at)` says are a night that is over. Kept in order, so the oldest go until one is not. */
+  function forgetReports(old) {
+    let n = 0;
+    while (n < reports.length && old(reports[n].at)) n += 1;
+    reports.splice(0, n);
+    return n > 0;
   }
 
   /** A match is addressed by its id once it exists; this finds the other side of one. */
@@ -395,7 +444,7 @@ export function createRoom({
     listening.set(id, { at, ch });
     for (const { id: other, rssi } of near) {
       if (other === id || !people.has(other)) continue;
-      const k = pairKey(id, other);
+      const k = id + '>' + other;
       if (!samples.has(k)) samples.set(k, []);
       samples.get(k).push({ at, rssi });
     }
@@ -408,8 +457,8 @@ export function createRoom({
     }
   }
 
-  /** A pair's score: the median of what either band heard of the other, or null. nearTick() drops the old first. */
-  const score = (a, b) => median(samples.get(pairKey(a, b)) ?? []);
+  /** How near b is to a: the median of what a's own band heard of b's, or null. nearTick() drops the old first. */
+  const score = (a, b) => median(samples.get(a + '>' + b) ?? []);
 
   /**
    * A person's band, from the markers their band heard in HEARD_MS: the one
@@ -543,6 +592,9 @@ export function createRoom({
     /** What a wristband's wave back needs its person to show: SAY HI. */
     armedOf: (id) => people.get(id)?.armed ?? null,
     reports: () => reports.slice(),
+    staffReports, markHandled, forgetReports,
+    /** For the relay: does this venue hold any reports tonight? */
+    hasReports: () => reports.length > 0,
     size: () => people.size,
   };
 }

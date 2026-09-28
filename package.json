@@ -11,7 +11,8 @@
     "relay": "node relay/server.js",
     "test": "npm run build && node --test",
     "tunnel": "cloudflared tunnel --url http://localhost:8790",
-    "icons": "node scripts/icons.mjs"
+    "icons": "node scripts/icons.mjs",
+    "staff-code": "node scripts/staff-code.mjs"
   },
   "dependencies": {
     "jsqr": "file:vendor/jsqr-1.4.0.tgz",

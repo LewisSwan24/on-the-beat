@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import WebSocket from 'ws';
 import { createRelay, WS_PATH, BAND_ALONE_MS, bandIdOf, venueKey } from '../relay/server.js';
-import { helpers, newKey } from './relay-harness.js';
+import { helpers, newKey, pause } from './relay-harness.js';
 
 let relay;
 let base;
@@ -114,6 +114,72 @@ test('a clip on the floor is served to the room, and a dance back reaches only i
   close(ana, ben, cai);
 });
 
+test("a clip loads only for someone whose own view shows it: a blocked viewer's address stops at once, either way", async () => {
+  const venue = 'the-grove-clip-block';
+  const ana = await phone(venue);
+  const ben = await phone(venue);
+  const cai = await phone(venue);
+  const get = (ref) => fetch(url('/clip/' + venue + '/' + ref)).then((r) => r.status);
+  ana.send({ t: 'clip', mime: 'video/webm', data: randomBytes(1024).toString('base64') });
+  const [forBen] = (await ben.until((v) => v.floor.length === 1)).floor;
+  const [forCai] = (await cai.until((v) => v.floor.length === 1)).floor;
+  assert.notEqual(forBen.ref, forCai.ref, 'each viewer has an address of their own');
+  assert.equal(await get(forBen.ref), 200);
+  assert.equal(await get(forCai.ref), 200);
+  const own = (await ana.until((v) => v.me.clip)).me.clip;
+  assert.equal(await get(own), 200, 'its owner can watch it too');
+
+  // An address with no ticket, a wrong one, or a ticket for another clip loads nothing.
+  const [raw, ticket] = forBen.ref.split('.');
+  assert.equal(await get(raw), 404);
+  assert.equal(await get(raw + '.' + '0'.repeat(ticket.length)), 404);
+  cai.send({ t: 'clip', mime: 'video/webm', data: randomBytes(512).toString('base64') });
+  const other = (await ben.until((v) => v.floor.length === 2)).floor.find((c) => c.ref !== forBen.ref);
+  assert.equal(await get(other.ref.split('.')[0] + '.' + ticket), 404, "ben's ticket for ana's clip does not open cai's");
+
+  // Ben blocks ana: his address for her clip stops; cai's does not.
+  ben.send({ t: 'block', handle: forBen.handle });
+  await ben.until((v) => !v.floor.some((c) => c.handle === forBen.handle));
+  assert.equal(await get(forBen.ref), 404);
+  assert.equal(await get(forCai.ref), 200);
+  // Ana blocks cai: the other way, and the same.
+  const caiToAna = (await ana.until((v) => v.floor.length === 1)).floor[0].handle;
+  ana.send({ t: 'block', handle: caiToAna });
+  await cai.until((v) => !v.floor.some((c) => c.handle === forCai.handle));
+  assert.equal(await get(forCai.ref), 404);
+  assert.equal(await get(own), 200);
+  close(ana, ben, cai);
+});
+
+test("a clip's address follows its viewer's view: not while its owner is NOT NOW or once its viewer has left, and a browser must ask each time", async () => {
+  const venue = 'the-grove-clip-view';
+  const ana = await phone(venue);
+  const ben = await phone(venue);
+  ana.send({ t: 'clip', mime: 'video/webm', data: randomBytes(1024).toString('base64') });
+  const [tile] = (await ben.until((v) => v.floor.length === 1)).floor;
+  const at = url('/clip/' + venue + '/' + tile.ref);
+  const first = await fetch(at);
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get('cache-control'), 'private, no-cache', 'a browser asks again before it plays it again');
+  const etag = first.headers.get('etag');
+  assert.ok(etag);
+  assert.equal((await fetch(at, { headers: { 'if-none-match': etag } })).status, 304, 'still allowed: nothing to send again');
+
+  ana.send({ t: 'invisible', on: true });
+  await ben.until((v) => v.floor.length === 0);
+  assert.equal((await fetch(at)).status, 404, 'its owner is NOT NOW');
+  assert.equal((await fetch(at, { headers: { 'if-none-match': etag } })).status, 404, 'and asking again is refused too');
+  ana.send({ t: 'invisible', on: false });
+  await ben.until((v) => v.floor.length === 1);
+  assert.equal((await fetch(at)).status, 200, 'back on the floor, the same address loads again');
+
+  const left = new Promise((resolve) => ben.ws.on('message', (d) => { if (JSON.parse(String(d)).t === 'left') resolve(); }));
+  ben.send({ t: 'leave' });
+  await left;
+  assert.equal((await fetch(at)).status, 404, 'its viewer has left the room');
+  close(ana, ben);
+});
+
 test('an hour on the floor, then the clip is gone — from the floor and from the server', async () => {
   const ana = await phone('electric-ballroom-the-long-weekend');
   const ben = await phone('electric-ballroom-the-long-weekend');
@@ -188,6 +254,65 @@ test('a wristband pairs by its four letters, then shows what its person is doing
   assert.equal((await used).why, 'no such wristband', 'letters that were typed once are gone');
   close(ana, cai);
   band.ws.close();
+});
+
+test('a wristband turns away a check it did not expect: new letters at once, the phone that typed is told, and its owner pairs', async () => {
+  const band = await wristband();
+  const { code } = band.show;
+  const eve = await phone('band-room-away');
+  const ana = await phone('band-room-away');
+  // Someone who read the letters off the wrist types them first, and holds the check.
+  eve.send({ t: 'pair', code });
+  const { me: { check } } = await eve.until((v) => v.me.check);
+  await band.until((s) => s.kind === 'check' && s.big === String(check));
+  const busy = reply(ana, 'error');
+  ana.send({ t: 'pair', code });
+  assert.equal((await busy).why, 'busy');
+  // Its owner holds the face button on the number they did not ask for.
+  const told = reply(eve, 'check');
+  band.send({ t: 'refuse', number: String(check) });
+  assert.deepEqual(await told, { t: 'check', ok: false, why: 'refused' });
+  const fresh = await band.until((s) => s.kind === 'pairing' && s.code !== code);
+  await eve.until((v) => !v.me.check);
+  const gone = reply(eve, 'error');
+  eve.send({ t: 'pair', code });
+  assert.equal((await gone).why, 'no such wristband', 'the letters that were read are gone');
+  await pairBand(ana, band);
+  assert.notEqual(fresh.code, code);
+  close(ana, eve);
+  band.ws.close();
+});
+
+test('a turn-away lands only on the check its wrist shows: not another number, not malformed, not another band, not after YES', async () => {
+  const band = await wristband();
+  const other = await wristband();
+  const ana = await phone('band-room-away-2');
+  ana.send({ t: 'pair', code: band.show.code });
+  const { me: { check } } = await ana.until((v) => v.me.check);
+  await band.until((s) => s.kind === 'check' && s.big === String(check));
+  for (const m of [
+    { t: 'refuse', number: String(check === 99 ? 98 : check + 1) },   // a check it no longer shows
+    { t: 'refuse', number: check },                                    // not the two digits as said
+    { t: 'refuse', number: '0' + String(check).slice(1) },
+    { t: 'refuse' },
+  ]) band.send(m);
+  other.send({ t: 'refuse', number: String(check) });   // a band can turn away only its own
+  ana.send({ t: 'refuse', number: String(check) });     // and a phone none at all
+  await pause(300);
+  assert.equal(band.show.kind, 'check');
+  assert.equal(ana.view.me.check, check);
+  // YES lands first; the hold that arrives after it unpairs nothing.
+  const paired = reply(ana, 'paired');
+  ana.send({ t: 'confirm', yes: true });
+  await paired;
+  await band.until((s, bb) => s.kind === 'off' && bb.secret);
+  band.send({ t: 'refuse', number: String(check) });
+  await pause(300);
+  assert.equal(band.show.kind, 'off');
+  await ana.until((v) => v.me.wristband?.live);
+  close(ana);
+  band.ws.close();
+  other.ws.close();
 });
 
 test("holding the wristband's button is NOT NOW, and a phone coming back does not undo it", async () => {
@@ -511,13 +636,46 @@ test('a venue with someone still in it is not reclaimed when another leaves', as
   close(ana, ben);
 });
 
-test('the venue report log has a ceiling', async () => {
-  const key = venueKey('report-flood');
-  const ana = await phone('report-flood');
-  for (let i = 0; i < 1500; i += 1) ana.send({ t: 'report', why: 'x' });
-  await new Promise((r) => setTimeout(r, 500));
-  const n = relay.rooms.get(key).room.reports().length;
-  assert.equal(n, 1000, 'the log is capped at exactly its ceiling, saw ' + n);
+test('a burst of changes in a room goes out as a view or two, not one each, and the last change always arrives', async () => {
+  const ana = await phone('burst-room');
+  const ben = await phone('burst-room');
+  let views = 0;
+  ben.ws.on('message', (d) => { if (JSON.parse(String(d)).t === 'view') views += 1; });
+  for (let i = 0; i < 30; i += 1) ana.send({ t: 'pick', track: 'track ' + i });
+  await ben.until((v) => v.wall.some((p) => p.pick === 'track 29'));
+  await pause(250);
+  assert.ok(views <= 3, 'thirty picks reached ben as ' + views + ' views');
+  // Spread out, one every 20 ms for 400 ms: the room still pushes at most every PUSH_GAP_MS.
+  views = 0;
+  for (let i = 0; i < 20; i += 1) { ana.send({ t: 'pick', track: 'spread ' + i }); await pause(20); }
+  await ben.until((v) => v.wall.some((p) => p.pick === 'spread 19'));
+  await pause(250);
+  assert.ok(views <= 8, 'twenty picks over 400 ms reached ben as ' + views + ' views');
+  close(ana, ben);
+});
+
+test('a socket sending far faster than any phone or wristband is closed as too fast, and the room goes on', async () => {
+  const ana = await phone('fast-room');
+  const eve = await phone('fast-room');
+  const closed = new Promise((resolve) => eve.ws.once('close', (code) => resolve(code)));
+  for (let i = 0; i < 100; i += 1) eve.ws.send('{"t":"ping"}');
+  assert.equal(await Promise.race([closed, pause(3000).then(() => 'still open')]), 4003);
+  ana.send({ t: 'arm', intent: 'hi' });
+  const ben = await phone('fast-room');
+  await ben.until((v) => v.near.length === 1);
+  close(ana, ben);
+});
+
+test("a phone's own pace is nowhere near too fast: a reconnect's burst, then ten a second", async () => {
+  const ana = await phone('pace-room');
+  let pongs = 0;
+  ana.ws.on('message', (d) => { if (JSON.parse(String(d)).t === 'pong') pongs += 1; });
+  // More than a phone ever says at once after a reconnect: the join, every fact again, and what was queued.
+  for (let i = 0; i < 30; i += 1) ana.ws.send('{"t":"ping"}');
+  for (let i = 0; i < 20; i += 1) { await pause(100); ana.ws.send('{"t":"ping"}'); }
+  await pause(200);
+  assert.equal(ana.ws.readyState, WebSocket.OPEN);
+  assert.equal(pongs, 50);
   close(ana);
 });
 
@@ -544,6 +702,52 @@ test('a full venue table refuses a new venue, but never evicts one in use', asyn
     for (const ws of opened) { try { ws.close(); } catch { /* gone */ } }
     await small.close();
   }
+});
+
+test("a socket that joins again as someone else leaves as who it was: its old self is on nobody's SAY HI", async () => {
+  const ana = await phone('orphan-same');
+  const ben = await phone('orphan-same');
+  ben.send({ t: 'arm', intent: 'hi' });
+  await ana.until((v) => v.near.length === 1);
+  // The same socket, a new person. Whoever it stood for had no other phone and no wristband: gone, not left
+  // standing with no socket and no grace, on SAY HI for as long as the venue is busy.
+  ben.send({ t: 'join', venue: 'orphan-same', me: randomBytes(16).toString('hex') });
+  await ana.until((v) => v.near.length === 0);
+  assert.equal(relay.rooms.get(venueKey('orphan-same')).room.size(), 2, 'ana and whoever the socket is now');
+  close(ana, ben);
+});
+
+test('a socket that moves to another venue leaves the first as it goes, though others are still there', async () => {
+  const ana = await phone('orphan-from');
+  const ben = await phone('orphan-from');
+  ben.send({ t: 'arm', intent: 'hi' });
+  await ana.until((v) => v.near.length === 1);
+  ben.send({ t: 'join', venue: 'orphan-to', me: ben.me });
+  await ana.until((v) => v.near.length === 0);
+  assert.ok(!relay.rooms.get(venueKey('orphan-from')).room.has(ben.me));
+  assert.ok(relay.rooms.get(venueKey('orphan-to')).room.has(ben.me), 'and is in the second');
+  close(ana, ben);
+});
+
+test('a socket that moves on leaves its person in the room while another phone or a live wristband of theirs is there', async () => {
+  const ana = await phone('orphan-held');
+  const ben = await phone('orphan-held');
+  const benToo = await phone('orphan-held', { me: ben.me });
+  ben.send({ t: 'arm', intent: 'hi' });
+  await ana.until((v) => v.near.length === 1);
+  ben.send({ t: 'join', venue: 'orphan-elsewhere', me: ben.me });
+  await pause(300);
+  assert.equal(ana.view.near.length, 1, 'their other phone holds them');
+  const cai = await phone('orphan-held');
+  const band = await wristband();
+  await pairBand(cai, band);
+  cai.send({ t: 'arm', intent: 'hi' });
+  await ana.until((v) => v.near.length === 2);
+  cai.send({ t: 'join', venue: 'orphan-elsewhere', me: cai.me });
+  await pause(300);
+  assert.equal(ana.view.near.length, 2, 'a live wristband holds them, as it does a phone that closed');
+  close(ana, ben, benToo, cai);
+  band.ws.close();
 });
 
 test('one socket switching venues is reclaimed, so it never trips the ceiling', async () => {
@@ -613,15 +817,15 @@ test('malformed and hostile messages never take the relay down', async () => {
   junk.ws.send('{"t":');
   junk.ws.send('9'.repeat(5000));
   await new Promise((r) => setTimeout(r, 150));
-  // The relay is still alive and forming rooms: this socket rejoins and meets a
-  // fresh one — if the barrage had crashed the process, neither view would come.
-  junk.send({ t: 'join', venue: 'fuzz-alive', me: randomBytes(16).toString('hex') });
-  junk.send({ t: 'arm', intent: 'hi' });
+  // The relay is still alive and forming rooms: two fresh phones meet — if the barrage had crashed the process,
+  // neither view would come. (Fifty frames at once is also too fast, so the barrage's own socket may be closed.)
+  const one = await phone('fuzz-alive');
+  one.send({ t: 'arm', intent: 'hi' });
   const mate = await phone('fuzz-alive');
   mate.send({ t: 'arm', intent: 'hi' });
   await mate.until((v) => v.near.length >= 1);
-  await junk.until((v) => v.near.length >= 1);
-  close(junk, mate);
+  await one.until((v) => v.near.length >= 1);
+  close(junk, one, mate);
 });
 
 test('one oversized frame ends its own socket and nothing else', async () => {

@@ -167,8 +167,16 @@ test('what the firmware says, the relay takes; what the relay says, the firmware
 
     const ana = await phone(relay.port, 'firmware-room');
     const ben = await phone(relay.port, 'firmware-room');
-    socks.push(ana, ben);
-    ana.send({ t: 'pair', code });
+    const eve = await phone(relay.port, 'firmware-room');
+    socks.push(ana, ben, eve);
+    // Someone who read the letters types them first; the wrist turns that check away.
+    eve.send({ t: 'pair', code });
+    const { show: { big: theirs } } = await band.until('show', (m) => m.show.kind === 'check');
+    const [refuse] = speak(['refuse ' + theirs]);
+    band.send(refuse);
+    assert.deepEqual(await eve.until('check'), { t: 'check', ok: false, why: 'refused' }, 'the phone that typed is told');
+    const { show: { code: fresh } } = await band.until('show', (m) => m.show.kind === 'pairing' && m.show.code !== code);
+    ana.send({ t: 'pair', code: fresh });
     const { show: { big } } = await band.until('show', (m) => m.show.kind === 'check');
     assert.equal(Number(big), (await ana.until('view', (m) => m.view.me.check)).view.me.check, 'the number on the wrist is the one the phone asks about');
     ana.send({ t: 'confirm', yes: true });

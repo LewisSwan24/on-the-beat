@@ -7,7 +7,8 @@
 // stand-in and the real wristband cannot drift apart.
 //
 // KEY1 is the face button: a press wakes the face for WAKE_MS, a hold of
-// HOLD_MS is NOT NOW. KEY2 is the side button: the first press shows what is
+// HOLD_MS is NOT NOW — or, on a check number, turns that check away. KEY2 is
+// the side button: the first press shows what is
 // armed, each press after moves a preview, and the choice is sent COMMIT_MS
 // after the last press, or at once on a KEY2 hold. Leaving NOT NOW takes a
 // KEY2 hold. The relay decides; the wrist only says what was chosen, and from
@@ -173,6 +174,8 @@ export function createWrist({ key }) {
   let pairCode = '';
   let waitAt = null;
   let hintUntil = 0;
+  // FACE went down on the check: held to HOLD_MS it turns the check away, and it ends with that check.
+  let awayKey = false;
   // Rule 7: each warning plays once per change. Which have played (true while their condition holds), which
   // battery thresholds are armed, and which came up in NOT NOW or during a choice and are owed.
   const warned = { reach: false, wait: false, away: false };
@@ -296,6 +299,15 @@ export function createWrist({ key }) {
     return mode === 'rest' && link.up && !quiet.pending && waiting();
   }
 
+  /**
+   * FACE held on the check: its person did not ask for this number — someone who read the letters off the
+   * wrist may be holding it open. The relay drops it only if it is still this number, and answers with letters.
+   */
+  function turnAway() {
+    awayKey = false;
+    if (show?.kind === 'check') send({ t: 'refuse', number: show.big });
+  }
+
   function hold(now) {
     quiet.pending = true;
     quiet.sent = false;
@@ -392,7 +404,11 @@ export function createWrist({ key }) {
       if (now - link.heard > DEAF_MS) { out.push('DROP'); closed(now); }
       else if (now - link.asked >= PING_EVERY_MS) { link.asked = now; send({ t: 'ping' }); }
     }
-    if (k1.down && !k1.fired && now - k1.since >= HOLD_MS) { k1.fired = true; hold(now); }
+    if (k1.down && !k1.fired && now - k1.since >= HOLD_MS) {
+      k1.fired = true;
+      if (awayKey) turnAway();
+      else hold(now);
+    }
     // A SIDE hold that comes due during a wave's flashes does nothing else.
     if (k2.down && !k2.fired && now - k2.since >= HOLD_MS) { k2.fired = true; if (!waveFlashing(now)) sideHeld(now); }
     if (quiet.pending && !quiet.sent && link.up) { send({ t: 'hold' }); quiet.sent = true; quiet.at = now; }
@@ -421,13 +437,16 @@ export function createWrist({ key }) {
     s.since = now;
     s.fired = false;
     if (k === 1 && (mode === 'look' || mode === 'choosing')) frozen = true;
+    if (k === 1) awayKey = false;
     // During a wave's flashes a key only ticks: a meeting calling underneath is answered after them.
     const whole = waveFlashing(now);
     // The key that answers a call only answers: letting it go, or holding it, does nothing more.
     if (blinking(now) && !whole) { calling = false; s.fired = true; }
-    // On the letters or the check a key says where to go, and lights the letters again; nothing more.
+    // On the letters or the check a key says where to go, and lights the letters again; nothing more — except
+    // FACE on the check, which may yet be held to turn it away.
     else if (pairingFace(now)) {
-      s.fired = true;
+      s.fired = !(k === 1 && show.kind === 'check');
+      if (!s.fired) awayKey = true;   // SIDE going down meanwhile leaves a FACE hold as it is
       hintUntil = now + HINT_MS;
       if (show.kind === 'pairing') litUntil = now + PAIR_AWAKE_MS;
     }
@@ -444,7 +463,9 @@ export function createWrist({ key }) {
     const s = k === 1 ? k1 : k2;
     if (!s.down) return;
     s.down = false;
-    if (!s.fired && !waveFlashing(now)) {
+    // FACE let go on the check before HOLD_MS: it said where to go as it went down, and does nothing more.
+    if (k === 1 && awayKey) awayKey = false;
+    else if (!s.fired && !waveFlashing(now)) {
       // In the wave face a press of either key closes it; SIDE never starts the chooser there.
       if (mode === 'waves') rest();
       else if (k === 2) step(now);
@@ -529,6 +550,8 @@ export function createWrist({ key }) {
     show = readShow(m.show);
     waves = readWaves(m.show);
     const found = readFound(m.show);
+    // A FACE hold on the check ends with that check: letting go, or holding on, does nothing more.
+    if (awayKey && (show.kind !== 'check' || show.big !== was?.big)) { awayKey = false; k1.fired = true; }
     // Reactions come from changes; a show that differs only in `sound` is no change.
     const same = !!was && JSON.stringify(was) === JSON.stringify(show);
     // A show's own switch counts for what it causes. One that is not true or false is not said.

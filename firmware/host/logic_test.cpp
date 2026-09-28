@@ -509,6 +509,7 @@ void console() {
   CHECK(saidLine("{\"t\":\"set\",\"intent\":null,\"basis\":7}") == "a choice from the wrist: OFF");
   CHECK(saidLine("{\"t\":\"wave\",\"ref\":\"a1b2c3d4e5\",\"basis\":7}") == "a wave back from the wrist");
   CHECK(saidLine("{\"t\":\"found\",\"number\":\"27\"}") == "found, from the wrist");
+  CHECK(saidLine("{\"t\":\"refuse\",\"number\":\"27\"}") == "the check turned away, from the wrist");
 
   std::string shown;
   const auto heard = [&shown](const std::string& text) {
@@ -598,6 +599,7 @@ void said() {
   CHECK(helloFrame(id, key, -1, "5ec2", true) ==
         "{\"t\":\"wristband\",\"id\":\"" + id + "\",\"key\":\"" + key + "\",\"v\":2,\"secret\":\"5ec2\",\"quiet\":true}");
   CHECK(batteryFrame(12) == "{\"t\":\"battery\",\"level\":12}");
+  CHECK(refuseFrame("27") == "{\"t\":\"refuse\",\"number\":\"27\"}");
 
   Command c = readCommand("  RELAY https://x.example\r\n");
   CHECK(c.verb == "relay" && c.arg == "https://x.example");
@@ -834,6 +836,7 @@ std::string answer(const Command& c) {
   }
   if (c.verb == "battery") return batteryFrame(std::atoi(c.arg.c_str()));
   if (c.verb == "hold") return HOLD_FRAME;
+  if (c.verb == "refuse") return refuseFrame(c.arg);
   if (c.verb == "ping") return PING_FRAME;
   if (c.verb == "consts") {
     // Every constant the table's times are written in, by name, as app/lib/wrist.js CONSTS has them.
@@ -954,6 +957,19 @@ int runWrist() {
   return 0;
 }
 
+void turning() {
+  // The two sides, as the console takes them and says them: USB left is 0, USB right is 1.
+  CHECK(turnNamed("usb-left") == 0 && turnNamed("usb-right") == 1);
+  // Anything else is refused, and so is the auto a build before 28 Sep 2026 kept: it is read as USB left.
+  CHECK(turnNamed("auto") == -1 && turnNamed("") == -1 && turnNamed("left") == -1 && turnNamed("USB-LEFT") == -1);
+  CHECK(std::string(turnName(false)) == "usb-left" && std::string(turnName(true)) == "usb-right");
+  // A frame goes over the console in base64, padded as the standard says.
+  const uint8_t man[] = {'M', 'a', 'n'};
+  CHECK(toBase64(man, 3) == "TWFu" && toBase64(man, 2) == "TWE=" && toBase64(man, 1) == "TQ==" && toBase64(man, 0).empty());
+  const uint8_t edge[] = {0xff, 0x00, 0x10, 0xfb, 0xef};
+  CHECK(toBase64(edge, 5) == "/wAQ++8=");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -979,6 +995,7 @@ int main(int argc, char** argv) {
   said();
   hearing();
   markers();
+  turning();
   std::printf("ok: %d checks\n", checks);
   return 0;
 }

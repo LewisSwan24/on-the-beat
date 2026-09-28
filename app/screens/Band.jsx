@@ -262,7 +262,8 @@ export function BandStandIn() {
         <span className="label" style={{ color: live ? 'var(--ok)' : 'var(--warn)' }}>{live ? 'on the relay' : 'looking for the relay…'}</span>
         <span className="small">
           A stand-in for the wristband — the real one is an M5StickC Plus or a StickS3 on a strap. The face button wakes
-          it for {wake}; hold it {hold} for NOT NOW. SIDE shows your card, and more presses change it.
+          it for {wake}; hold it {hold} for NOT NOW, or, on a check number you did not ask for, to turn that
+          check away. SIDE shows your card, and more presses change it.
           Letters: {CODE_LETTERS.length} of them, none that look alike.
         </span>
         <span className="small" role="status">

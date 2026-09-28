@@ -34,6 +34,7 @@ body { overscroll-behavior: none; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; -webkit-tap-highlight-color: transparent; }
 button:disabled { cursor: default; }
 input { font: inherit; color: inherit; }
+textarea { font: inherit; color: inherit; }
 a { color: var(--hi); text-decoration: none; }
 h1 { margin: 0; font-weight: 400; }
 
@@ -112,6 +113,9 @@ h1 { margin: 0; font-weight: 400; }
 .field input { flex: 1; background: none; border: 0; outline: none; border-radius: 8px; font: var(--body); color: #fff; min-width: 0; }
 .field input::placeholder { color: var(--text-3); }
 .field input:focus-visible { outline: 2px solid var(--c, var(--hi)); outline-offset: 4px; }
+.words { display: block; width: 100%; min-height: 96px; resize: none; border-radius: 16px; background: var(--ink-2); border: 1px solid var(--line); padding: 14px 16px; font: var(--body); color: #fff; outline: none; }
+.words::placeholder { color: var(--text-3); }
+.words:focus-visible { border-color: var(--stop); }
 
 .card { border: 1px solid var(--line); border-radius: 24px; background: var(--ink-2); padding: 22px; }
 .row { border: 1px solid var(--line-2); border-radius: 20px; background: var(--ink-2); padding: 14px 10px 14px 16px; display: flex; flex-direction: column; gap: 10px; transition: border-color var(--base) var(--ease); }

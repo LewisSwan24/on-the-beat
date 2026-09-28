@@ -3,7 +3,8 @@
 // A light first and words second, with a chirp unless its person has switched
 // that off. It joins the relay exactly as /band does, shows whatever the relay
 // tells it to, and has two buttons. The face button (KEY1): a press wakes it,
-// a hold is NOT NOW. The side button (KEY2): a press shows the card that is
+// a hold is NOT NOW, or on a check number turns that check away. The side
+// button (KEY2): a press shows the card that is
 // armed, more presses choose another, and the relay decides. What it shows is
 // decided by the relay (relay/band.js), from the same view its person's phone
 // is sent, so it can never show more than the phone could.
@@ -23,6 +24,7 @@
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_task_wdt.h>
 #include <esp_wifi.h>
 
 #include <algorithm>
@@ -33,6 +35,7 @@
 #include <vector>
 
 #include "band_logic.h"
+#include "relay_roots.h"
 
 // Wi-Fi and the relay can be built in (copy secrets.example.h to secrets.h),
 // or typed at the serial console, which keeps them across restarts.
@@ -47,6 +50,10 @@
 #endif
 #ifndef OTB_RELAY
 #define OTB_RELAY ""
+#endif
+// A https relay's certificate is checked against these roots (relay_roots.h), unless secrets.h names others.
+#ifndef OTB_RELAY_CA
+#define OTB_RELAY_CA RELAY_ROOTS
 #endif
 
 using namespace otb;
@@ -91,6 +98,12 @@ std::string soundDue;                   // the newest sound not started yet
 
 constexpr uint16_t BLACK = 0x0000;
 constexpr uint16_t WHITE = 0xFFFF;
+
+// The display's two landscape rotations: the USB-C socket to the left of the words, and to their right.
+// The same on both boards, measured on 28 Sep 2026: at rotation 1 the socket is to the right.
+constexpr uint8_t ROTATION[2] = {3, 1};
+
+bool usbRight = false;  // which way up the face reads: held, and turned over by the power button (landscape spec §2)
 
 const lgfx::IFont* const BIG[] = {&lgfx::fonts::FreeSansBold18pt7b, &lgfx::fonts::FreeSansBold12pt7b,
                                   &lgfx::fonts::FreeSansBold9pt7b};
@@ -217,12 +230,7 @@ void socketTask(void*) {
       }
       if (mine.ok) {
         if (mine.secure) {
-#ifdef OTB_RELAY_CA
           socket_.beginSslWithCA(mine.host.c_str(), mine.port, WS_PATH, OTB_RELAY_CA);
-#else
-          // Encrypted, but the relay's certificate is not checked: set OTB_RELAY_CA in secrets.h for that.
-          socket_.beginSSL(mine.host.c_str(), mine.port, WS_PATH);
-#endif
         } else {
           socket_.begin(mine.host.c_str(), mine.port, WS_PATH);
         }
@@ -586,6 +594,9 @@ void setMarker(const std::string& a) {
 
 int px(float v, float k) { return static_cast<int>(v * k + 0.5f); }
 
+/** How the canvas's band, 135 x 240 drawn portrait, scales to this face: turned, 240 x 135. */
+float scaleOf(int W, int H) { return std::min(W / 240.0f, H / 135.0f); }
+
 int widthIn(const lgfx::IFont* font, const std::string& s, float size = 1) {
   face.setFont(font);
   face.setTextSize(size);
@@ -602,11 +613,12 @@ int heightOf(const lgfx::IFont* font, float size = 1) {
 int bigStep(int i) { return heightOf(BIG[i]) * 3 / 4; }
 int smallStep(int i) { return heightOf(SMALL[i]); }
 
-void drawLines(const std::vector<std::string>& lines, const lgfx::IFont* font, int step, int& y) {
+/** Lines one under another from `y`, each centred on `x` (the middle of the face if -1). */
+void drawLines(const std::vector<std::string>& lines, const lgfx::IFont* font, int step, int& y, int x = -1) {
   face.setFont(font);
   face.setTextSize(1);
   for (const std::string& l : lines) {
-    face.drawString(l.c_str(), face.width() / 2, y);
+    face.drawString(l.c_str(), x < 0 ? face.width() / 2 : x, y);
     y += step;
   }
 }
@@ -642,8 +654,10 @@ void drawWords(const Words& w, uint16_t ink, float k) {
 void drawMeet(const Words& w, uint16_t ink, float k) {
   const int W = face.width(), H = face.height();
   const int maxW = W - 2 * px(10, k);
-  const float size = std::min(2.0f * k, static_cast<float>(maxW) / std::max(1, widthIn(NUMBER, w.big)));
   const Fit small = fitSmall(w.small, maxW, H / 4);
+  // As wide as the face allows, and as tall as what is left under the word: at 240 x 135 the portrait size.
+  const float tall = static_cast<float>(H - linesHeight(small) - px(6, k) - 2 * px(4, k)) / std::max(1, heightOf(NUMBER) * 3 / 4);
+  const float size = std::min({2.0f * k, static_cast<float>(maxW) / std::max(1, widthIn(NUMBER, w.big)), tall});
   const int numH = heightOf(NUMBER, size) * 3 / 4;
   const int gap = px(6, k);
   int y = (H - (linesHeight(small) + gap + numH)) / 2;
@@ -658,46 +672,49 @@ void drawMeet(const Words& w, uint16_t ink, float k) {
 }
 
 /**
- * Pairing: a code to scan over the four letters to type. The code is as wide
- * as the screen allows, with four light modules round it — a tunnel address
- * is a version 4 code, and the canvas's 115 pixels would make each module two
- * pixels, too small for a phone to read off a screen this size. A press puts
- * the hint, PAIR ON YOUR PHONE, under the letters, in what height is left.
+ * Pairing: a code to scan beside the four letters to type. The code is as
+ * tall as the face allows, with four light modules round it — a tunnel
+ * address is a version 4 code, and the canvas's 115 pixels would make each
+ * module two pixels, too small for a phone to read off a screen this size. The
+ * letters stand in the middle of the width left beside it, and a press puts
+ * the hint, PAIR ON YOUR PHONE, under them.
  */
 void drawPairing(const std::string& code, const std::string& hint, float k) {
   const int W = face.width(), H = face.height();
   const std::string url = relay.ok ? pairUrl(relay.origin, code) : "";
   const int version = url.empty() ? 0 : qrVersion(url.size());
-  const int module = qrModule(version, W - px(8, k));
+  const int module = qrModule(version, H - px(8, k));
   const int box = module * (qrSize(version) + 8);
+  const int edge = box ? (H - box) / 2 : 0;          // the code's margin, above, below and to its left
+  // The letters' column: beside the code, or with no code the whole face less its margins.
+  const int left = box ? edge + box + px(4, k) : px(10, k);
+  const int colW = box ? W - left - px(6, k) : W - 2 * px(10, k);
+  if (box) {
+    face.fillRect(edge, edge, box, box, WHITE);
+    face.qrcode(url.c_str(), edge + 4 * module, edge + 4 * module, module * qrSize(version), version);
+  }
   int font = 0;
-  while (font < 2 && 4 * widthIn(CODE[font], "W") * 112 / 100 > W - px(10, k)) ++font;
+  while (font < 2 && 4 * widthIn(CODE[font], "W") * 112 / 100 > colW) ++font;
   const int advance = widthIn(CODE[font], "W");
   const int track = advance * 12 / 100;  // the canvas spaces the letters .12em apart
   const int codeH = heightOf(CODE[font]);
-  const int gap = box ? px(16, k) : 0;
   const int hintGap = hint.empty() ? 0 : px(6, k);
-  const Fit words = fitSmall(hint, W - 2 * px(10, k), H - (box + gap + codeH + hintGap) - 2 * px(4, k));
-  int y = (H - (box + gap + codeH + hintGap + linesHeight(words))) / 2;
-  if (box) {
-    const int x = (W - box) / 2;
-    face.fillRect(x, y, box, box, WHITE);
-    face.qrcode(url.c_str(), x + 4 * module, y + 4 * module, module * qrSize(version), version);
-    y += box + gap;
-  }
+  const Fit words = fitSmall(hint, colW, H - (codeH + hintGap) - 2 * px(4, k));
+  const int middle = left + colW / 2;
+  int y = (H - (codeH + hintGap + linesHeight(words))) / 2;
   face.setTextColor(WHITE);
   face.setTextDatum(lgfx::textdatum_t::top_center);
   face.setFont(CODE[font]);
   face.setTextSize(1);
   const int n = static_cast<int>(code.size());
-  int x = (W - (n * advance + (n - 1) * track)) / 2 + advance / 2;
+  int x = middle - (n * advance + (n - 1) * track) / 2 + advance / 2;
   for (char c : code) {
     const char one[2] = {c, 0};
     face.drawString(one, x, y);
     x += advance + track;
   }
   y += codeH + hintGap;
-  drawLines(words.lines, SMALL[words.font], smallStep(words.font), y);
+  drawLines(words.lines, SMALL[words.font], smallStep(words.font), y, middle);
 }
 
 uint16_t inkOf(const std::string& ink) {
@@ -709,7 +726,7 @@ uint16_t inkOf(const std::string& ink) {
 
 void paint(const Screen& s) {
   const int W = face.width(), H = face.height();
-  const float k = std::min(W / 135.0f, H / 240.0f);  // the canvas draws the wristband 135 x 240
+  const float k = scaleOf(W, H);
   if (s.field == "white") {
     face.fillScreen(WHITE);
   } else if (const Rgb* c = plainField(s.field)) {  // a flash's on step: one flat colour
@@ -776,12 +793,33 @@ void markerFace(uint32_t now) {
                 face.width() * face.height());
 }
 
+/**
+ * `snap`: the frame last pushed, as one line, `snap <W> <H> <base64>`, its
+ * pixels RGB565, little-endian, row by row, for a script to make an image
+ * (landscape spec §3). A row of 240 is 480 bytes, a whole number of base64's
+ * three-byte groups, so the rows' base64 run on as one. It changes nothing.
+ */
+void snap() {
+  const int W = face.width(), H = face.height();
+  Serial.printf("snap %d %d ", W, H);
+  std::vector<uint8_t> row(static_cast<size_t>(W) * 2);
+  for (int y = 0; y < H; ++y) {
+    for (int x = 0; x < W; ++x) {
+      const uint16_t c = face.readPixel(x, y);
+      row[2 * x] = static_cast<uint8_t>(c & 0xff);
+      row[2 * x + 1] = static_cast<uint8_t>(c >> 8);
+    }
+    Serial.print(toBase64(row.data(), row.size()).c_str());
+  }
+  Serial.println();
+}
+
 /** A marker's face: dark, and what it is while a key has lit it. */
 void drawMarker(uint32_t now) {
   const bool on = marker->lit(now);
   if (on && drawn != "marker") {
     drawn = "marker";
-    const float k = std::min(face.width() / 135.0f, face.height() / 240.0f);
+    const float k = scaleOf(face.width(), face.height());
     face.fillScreen(BLACK);
     drawWords(marker->words(), WHITE, k);
     face.pushSprite(0, 0);
@@ -791,6 +829,34 @@ void drawMarker(uint32_t now) {
     lit = light;
     M5.Display.setBrightness(light);
   }
+}
+
+/** The display turned to the side held; the next draw paints the face again, that way up. */
+void applyTurn() {
+  M5.Display.setRotation(ROTATION[usbRight ? 1 : 0]);
+  drawn.clear();
+}
+
+void reportTurn() {
+  Serial.printf("face    landscape, USB %s; the power button turns it over\n", usbRight ? "right" : "left");
+}
+
+/** The side, kept, and at once: `turn` on the console, or the power button. */
+void turnTo(bool right) {
+  usbRight = right;
+  prefs.putString("turn", turnName(usbRight));
+  applyTurn();
+  reportTurn();
+}
+
+/** `turn usb-left|usb-right`. */
+void setTurn(const std::string& name) {
+  const int side = turnNamed(name);
+  if (side < 0) {
+    Serial.println("turn usb-left or turn usb-right");
+    return;
+  }
+  turnTo(side == 1);
 }
 
 // ---------- sound ----------
@@ -842,7 +908,9 @@ void help() {
       "  press face|side         a press, as a finger makes it\n"
       "  hold face|side          a hold, let go just after it counts\n"
       "  face                    what the screen shows now\n"
-      "  sound <name>            play one of the band's sounds, e.g. sound found\n"
+      "  snap                    the screen, as one line of base64 for a script\n"
+      "  turn usb-left|usb-right  which side is up (kept); the power button turns it over\n"
+      "  sound <name>         play one of the band's sounds, e.g. sound found\n"
       "  near                    what it last heard of other bands, and whether it beacons\n"
       "  near off|listen|on      stop both, stop only beaconing, or do both again\n"
       "  marker bar|stage|back   make it a marker at the bar, by the stage or out the back (it restarts)");
@@ -853,7 +921,9 @@ void helpMarker() {
       "  show                    which marker, and its beacons\n"
       "  press face|side         light its face, as a finger does\n"
       "  face                    what its screen shows now\n"
-      "  power <dBm>             for tests: its radio capped at 2 to 20 dBm, as if further away (not kept)\n"
+      "  snap                    the screen, as one line of base64 for a script\n"
+      "  turn usb-left|usb-right  which side is up (kept); the power button turns it over\n"
+      "  power <dBm>           for tests: its radio capped at 2 to 20 dBm, as if further away (not kept)\n"
       "  marker bar|stage|back   another area (it restarts)\n"
       "  marker off              a wristband again (it restarts)");
 }
@@ -878,16 +948,22 @@ void report() {
     usbSum = 0;
     usbCount = 0;
   }
+  reportTurn();
   reportNear(millis());
 }
 
 void run(const Command& c) {
   if (marker) {  // a marker takes nothing that would join a Wi-Fi or a relay
     if (c.verb == "marker") setMarker(trim(c.arg));
-    else if (c.verb == "show") reportMarker();
+    else if (c.verb == "show") {
+      reportMarker();
+      reportTurn();
+    }
     else if (c.verb == "press" || c.verb == "hold") marker->press(millis());
     else if (c.verb == "face") markerFace(millis());
     else if (c.verb == "power") setMarkPower(trim(c.arg));
+    else if (c.verb == "snap") snap();
+    else if (c.verb == "turn") setTurn(trim(c.arg));
     else helpMarker();
     return;
   }
@@ -922,6 +998,8 @@ void run(const Command& c) {
                   static_cast<unsigned>(p.ms));
   } else if (c.verb == "face") {
     Serial.println(faceLine(wrist->face(millis())).c_str());
+  } else if (c.verb == "snap") {
+    snap();
   } else if (c.verb == "sound") {
     // One of the band's own sounds, to hear the speaker without a room around it.
     const std::string name = trim(c.arg);
@@ -940,12 +1018,17 @@ void run(const Command& c) {
       beaconWanted = a == "on";
     }
     reportNear(millis());
+  } else if (c.verb == "turn") {
+    setTurn(trim(c.arg));
   } else if (c.verb == "marker") {
     setMarker(trim(c.arg));
   } else if (c.verb == "forget") {
     prefs.remove("ssid");
     prefs.remove("pass");
     prefs.remove("relay");
+    prefs.remove("turn");
+    usbRight = false;
+    applyTurn();
     loadSettings();
     startWifi();
     startRelay();
@@ -1014,8 +1097,8 @@ void setup() {
   // 18 dB over the room with it on, either way.
   if (M5.getBoard() == m5::board_t::board_M5StickCPlus) M5.Power.setExtOutput(true);
   startUsb();
-  M5.Display.setRotation(0);
-  if (M5.Display.width() > M5.Display.height()) M5.Display.setRotation(1);
+  // Landscape: worn in a watch clip, the band lies across the forearm (landscape spec).
+  M5.Display.setRotation(ROTATION[0]);
   M5.Display.setBrightness(LIGHT_OFF);
   face.setColorDepth(16);
   face.createSprite(M5.Display.width(), M5.Display.height());
@@ -1037,6 +1120,9 @@ void setup() {
   airSet = esp_wifi_set_mac(WIFI_IF_STA, air) == ESP_OK;
   prefs.begin("otb", false);
   if (prefs.isKey("id")) prefs.remove("id");  // the id an older build kept for good is not kept any more
+  // Which way up: the side `turn` or the power button kept; USB left if none, or an auto from an older build.
+  usbRight = turnNamed(setting("turn", "usb-left")) == 1;
+  applyTurn();
   // A marker is nothing else: no Wi-Fi, no relay, no key; the loop only beacons.
   const int area = markNamed(setting("marker", ""));
   if (area >= 0) {
@@ -1046,6 +1132,7 @@ void setup() {
     Serial.printf("\nON THE BEAT marker: %s\n", MARK_AREA[area].area);
     helpMarker();
     reportMarker();
+    reportTurn();
     return;
   }
   // A new wristband at every boot: the key lives in RAM only, and the id is its hash.
@@ -1069,6 +1156,12 @@ void setup() {
       ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   startWifi();
   startRelay();
+  // A handshake that checks the relay's certificate holds this core for seconds on end: from
+  // `relay` to on the relay took 5.9 to 6.3 s on a StickC Plus, whose ESP32 checks each ECDSA
+  // signature in software, and 3.0 to 3.4 s on a StickS3 (28 Sep 2026). The task watchdog, which
+  // restarts a band whose idle task here has not run for 5 s, restarted the Plus mid-handshake
+  // every time. It still watches, allowing more than three times the slowest.
+  esp_task_wdt_init(20, true);
   // On the core the Wi-Fi runs on, with the deep stack a TLS handshake wants.
   xTaskCreatePinnedToCore(socketTask, "socket", 12288, nullptr, 1, nullptr, 0);
   report();
@@ -1079,6 +1172,7 @@ void loop() {
   const uint32_t now = millis();
   console();
   readBattery(now);
+  if (M5.BtnPWR.wasClicked()) turnTo(!usbRight);  // a short press turns the face over, a marker's too
   if (marker) {
     if (M5.BtnA.isPressed() || M5.BtnB.isPressed()) marker->press(now);
     markerTick(now);

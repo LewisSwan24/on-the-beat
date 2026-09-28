@@ -11,6 +11,34 @@ written, `BEAT: ON` by default included. He chose to have it planned and
 built now, on a branch of its own, and merged only once round 3 (§4.1) has
 passed on the real bands; and to give the stand-in its `LISTEN` (§3).
 
+**Amended 27 Sep 2026, from the build** (its plan is
+`docs/superpowers/plans/2026-09-27-wrist-beat.md`). Made-up music and the
+spike's offline set of 30 runs showed four of §2's rules had to change, and
+the bands' own recordings showed the microphone's count needed holding to
+the band's clock. None of it moves what §1 promises. Each is marked
+*(amended)* below, and here is why:
+
+1. **A new grid pulses once four of its last five beats were heard**, not
+   three of three. Three of three counted beats the grid had just been
+   fitted through, so random kicks and made-up speech locked it: over 80
+   minutes of them, 152 pulses, and 80 now. Every offline run locked as fast
+   or faster (the crowd on a laptop 6.1 s to 4.6, the drift 3.6 to 2.6, the
+   medley in a hall 10.3 to 8.4), for 2 to 6 points of the hall's beats
+   pulsed. Five of five would pulse almost never on them, but locks later,
+   and in the hall's breakdown not at all; the owner kept four of five on
+   28 Sep 2026.
+2. **The fold carries a grid only while something near its last beat rose
+   as far as a heard beat must.** A song that stopped into quiet pulsed a
+   third beat after it, and a tempo change pulsed three beats off the grid;
+   now the first pulses no third beat, and the second two.
+3. **A beat the microphone was closed for is neither heard nor missed.** A
+   reaction's 600 ms gap stopped the pulse.
+4. **Each pulse is decided in the last block before it is due**, so it is
+   never a block late.
+5. **The count of samples is held to the band's clock.** Both bands'
+   samples run 382 ppm fast of `millis()`, which counting alone carries into
+   the pulses at 23 ms a minute.
+
 ## Goal
 
 **A lit card is easier to find in a dark, crowded room when it pulses on the
@@ -122,11 +150,19 @@ table.
   its beat switch is on, and it is not in NOT NOW. The wrist says so
   (`listening()`); the firmware opens and closes the microphone to match.
 - **What it hears:** 16 kHz samples in blocks of 128 (8 ms), timed by the
-  samples counted rather than by when a block arrives. For each block, the
+  samples counted rather than by when a block arrives, since both bands
+  hand blocks over two at a time. *(amended)* The count is held to the
+  band's clock: a block is never timed after it was handed over, the count
+  creeps later by at most `BEAT_CREEP` a block while blocks come later than
+  it says, and blocks the band could not keep are counted over. The first
+  `BEAT_SETTLE` blocks after the microphone opens are not heard while its
+  filters settle. For each block, the
   energy in five bands — below 150 Hz, 150–400, 400–1200, 1200–3500 and
   above 3500 Hz — from second-order filters (a middle band is a high-pass
   into a low-pass). A pure function in both twins turns samples into these
-  five numbers, and a test holds the twins equal on the same samples.
+  five numbers, and a test holds the twins equal on the same samples. The
+  levels, the onset strength and the tempo's sums are single precision in
+  both, so the twins agree to the bit.
 - **How strongly each block starts something:** each band's level in dB,
   and how far it rose above the higher of its two blocks before; the sum over
   the five bands is the block's onset strength (spectral flux, in dB).
@@ -156,17 +192,23 @@ table.
   `BEAT_PULL_PHASE` of the error on the next beat, `BEAT_PULL_PERIOD` of it
   on the period, which stays within `BEAT_CHANGE` of the tempo locked (a
   phase-locked loop). A noise just before a beat cannot take its place, and
-  an off-beat hi-hat never moves the grid.
-- **Pulsing:** a new grid pulses once its last three beats were all heard,
+  an off-beat hi-hat never moves the grid. *(amended)* A beat the microphone
+  was closed for — blocks more than a block and a half apart — is neither
+  heard nor missed.
+- **Pulsing:** *(amended)* a new grid pulses once `BEAT_START` of its last
+  `BEAT_START_OF` beats were heard, looking back from where it was laid,
   and keeps pulsing while at least `BEAT_CONFIRM` of the last three were —
-  or while one of them was and the last `BEAT_PHASE_MS`, folded on the
-  grid, peaks within `BEAT_NEAR` of its beat at `BEAT_HOLD` times the
-  fold's mean. The fold is what carries it through reverb, where the
+  or while one of them was, something within `BEAT_NEAR` of the last
+  counted beat rose at least as far as a heard beat must, and the last
+  `BEAT_PHASE_MS`, folded on the grid, peaks within `BEAT_NEAR` of its beat
+  at `BEAT_HOLD` times the fold's mean. The fold is what carries it
+  through reverb, where the
   strongest rise of a single beat is often a reflection. So a song that
   stops, or a grid left over from the last song, goes quiet within two
   beats, and a missed kick or a reaction's gap does not stop it. The pulse
   is drawn at each beat minus `MIC_LATENCY_MS`, the model's measured delay
-  from sound to block, so the light and the sound arrive together.
+  from sound to block, so the light and the sound arrive together; each is
+  decided in the last block before it is due *(amended)*.
 - **Another song:** a confident, steady reading at another tempo (off by
   more than `BEAT_CHANGE`) or on another phase replaces a grid that is not
   being heard at once, and one that is after `BEAT_OTHER_LOOKS` looks in a
@@ -188,18 +230,23 @@ table.
   | `BEAT_LOCK_LOOKS` | 6 | looks in a row with the same period |
   | `BEAT_PHASE_MS` | 2000 | the stretch folded to place the grid |
   | `BEAT_NEAR` | 12% | of a period, either side of a beat |
+  | `BEAT_RISE` | 0.25 | a rise is traced back while it is at least this much of its peak |
   | `BEAT_TIGHT_MS` | 30 | how near its beat a drum must start for the beat to be heard |
   | `BEAT_PULL_PHASE`, `BEAT_PULL_PERIOD` | 0.3, 0.05 | how far a heard beat pulls the grid |
   | `BEAT_CHANGE` | 5% | the most the period moves from its lock; more is another song |
+  | `BEAT_START`, `BEAT_START_OF` | 4 of 5 | heard beats that start a new grid pulsing *(amended)* |
   | `BEAT_CONFIRM` | 2 of 3 | heard beats that keep a grid pulsing |
   | `BEAT_HOLD` | 4 | or one heard, with the fold on the grid peaking this far above its mean |
   | `BEAT_OTHER_LOOKS` | 8 | looks before a heard grid gives way |
   | `BEAT_LOSE_MS` | 4000 | nothing heard this long, and the grid is dropped |
   | `MIC_LATENCY_MS` | measured | per model, at the gate (§4.1) |
+  | `BEAT_CREEP` | 0.125 ms | how far the count may creep later a block *(amended)* |
+  | `BEAT_SETTLE` | 16 blocks | not heard once the microphone opens; the lowest band settled by the twelfth on the bands' recordings *(amended)* |
 - **What it costs:** eight biquads per sample at 16 kHz, and every 128 ms
   an autocorrelation of 750 values over 53 periods and their doubles —
   about 0.6 million multiply-adds a second — and 6 KB for the onset
-  strength and its times. Measured on the Plus with Wi-Fi and TLS on in
+  strength and its times, and 4 KB for copies of blocks the loop has not
+  reached yet. Measured on the Plus with Wi-Fi and TLS on in
   §4.6.
 - **Reactions come first.** A reaction's sound takes the audio channel: the
   firmware closes the microphone, plays, and opens it again, and the clock

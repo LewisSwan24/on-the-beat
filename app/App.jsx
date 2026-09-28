@@ -45,6 +45,21 @@ function ContactForm({ initial, onSave }) {
   );
 }
 
+const WORDS_MAX = 200;   // relay/room.js keeps no more
+
+/** A report's few words for the venue team, if any. Its own state, so typing never reaches the app. */
+function ReportForm({ onSend }) {
+  const [v, setV] = useState('');
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSend(v.trim()); }} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <textarea className="words" rows={3} value={v} onChange={(e) => setV(e.target.value.slice(0, WORDS_MAX))}
+        placeholder="a few words for the venue team (optional)" aria-label="A few words for the venue team, optional" />
+      <div className="small" style={{ textAlign: 'right' }} aria-hidden="true">{v.length}/{WORDS_MAX}</div>
+      <button type="submit" className="cta" style={{ '--c': 'var(--stop)', '--g': 'transparent' }}>SEND REPORT</button>
+    </form>
+  );
+}
+
 export default function App() {
   const [s, update] = useStore();
   const night = store.tonight(s);
@@ -233,7 +248,8 @@ export default function App() {
       say(PAIR_SAY.paired);
       if (screen === 'pair') { setStack([]); setScreen('home'); }
     }
-    if (m.t === 'check' && m.ok === false) pairFailed(PAIR_SAY.timeout);
+    // A check that ended without YES: no answer in time, or turned away on the wrist it reached.
+    if (m.t === 'check' && m.ok === false) pairFailed(m.why === 'refused' ? PAIR_SAY.refused : PAIR_SAY.timeout);
     // Every refusal while pairing has its own words — the relay's throttle
     // included, which a real person only meets after a run of mistypes.
     if (m.t === 'error' && PAIR_SAY[m.why] && m.why !== 'gone') pairFailed(PAIR_SAY[m.why]);
@@ -407,11 +423,15 @@ export default function App() {
     setSheet(null);
     say(done);
   };
-  const report = (handle) => {
-    net.current?.send({ t: 'report', handle: handle || null, why: '' });
-    setSheet(null);
-    say('reported. the venue team has it.');
-  };
+  // A few words first, which the venue team sees with the report; none is fine.
+  const report = (handle) => setSheet({
+    title: handle ? 'Report' : 'Report something else', sub: 'goes to the venue team, with the time and the room.', close: 'Cancel',
+    body: <ReportForm onSend={(why) => {
+      net.current?.send({ t: 'report', handle: handle || null, why });
+      setSheet(null);
+      say('reported. the venue team has it.');
+    }} />,
+  });
 
   const personSheet = (handle, title) => setSheet({
     title, sub: 'they are never told either way.', close: 'Cancel',

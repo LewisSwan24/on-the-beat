@@ -12,7 +12,8 @@
 // same network.
 #define OTB_RELAY "https://on-the-beat.fly.dev"
 
-// Optional: the root certificate(s), PEM, that sign the relay's certificate.
-// Without it the connection to a https relay is encrypted, but the wristband
-// does not check it is talking to the real relay.
+// Optional: the root certificate(s), PEM, that sign the relay's certificate,
+// in place of relay_roots.h's, which cover the always-on relay and a
+// Cloudflare tunnel. A https relay whose certificate chains to none of them
+// is refused.
 // #define OTB_RELAY_CA "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"

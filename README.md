@@ -25,6 +25,7 @@ npm start            # build, then the relay and the app on http://localhost:879
 npm test             # build, then every test
 npm run dev          # Vite on :5178 for working on the app (run `npm run relay` beside it)
 npm run tunnel       # an https address for real phones (cloudflared must be installed)
+npm run staff-code   # one venue's staff passcode, as a line for STAFF_CODES (see The staff page)
 ```
 
 **The night ends at 06:00 at the venue.** `NIGHT_TZ=Australia/Brisbane npm start`
@@ -118,7 +119,8 @@ never becomes a match.
   WebSocket at `/api/ws`. One process on purpose: a host that scales out can
   put two phones at the same gig into two different rooms that share a name.
   The night is held in memory only; stop the relay and it is gone.
-  - After every change the relay pushes each phone its own `viewFor()`.
+  - After a change the relay pushes each phone its own `viewFor()`, at
+    most every 100 ms a room, so a burst of changes is one push.
   - What each wristband heard of the others and of the markers is kept
     30 s, in memory, and never leaves the relay; every five seconds each
     room works out who is near whom and who is in which area, and pushes
@@ -129,8 +131,10 @@ never becomes a match.
     the canvas says "it loops on the floor for an hour", and it does. Every
     room's clips together stay under 96 MB, what a small always-on machine
     can hold: past that the oldest go first, in whichever room they are.
-  - Reports are written to the relay's log. A venue would send them to its
-    own team's radio or dashboard.
+    Each is served only to someone whose own view shows it (*Abuse
+    resistance*, below).
+  - Reports go to the venue's own staff page, `/staff`, live (The staff
+    page, below). The log says only that one came.
   - `relay/shows.json` is tonight's shows: times, quiet corners to meet at,
     and the set list. A venue nobody listed still gets a room, named by what
     was typed.
@@ -147,10 +151,66 @@ never becomes a match.
   - `lib/phase.js`: DOORS · SUPPORT · BREAK · HEADLINE · AFTER, from the show's
     own times and the phone's clock. A time before six in the morning belongs
     to the night before.
+  - `staff.html` and `staff/`: the staff page, a second page of the same
+    build, served at `/staff`. It shares nothing with the app.
   - `public/sw.js`: keeps the shell so the app opens in a venue with no
-    signal. It never keeps the socket, the shows or the clips.
+    signal. It never keeps the socket, the shows, the clips or the staff
+    page.
 - **`firmware/`** — the wristband itself, an M5StickC Plus or a StickS3 on a
   strap, built with PlatformIO. See The wristband's firmware, below.
+
+## The staff page
+
+Every report reaches the venue's own team at `/staff`
+(https://on-the-beat.fly.dev/staff), within a second
+(`docs/superpowers/specs/2026-09-28-staff-reports-design.md`).
+
+- **Signing in.** Each venue has one passcode, shared by its team. The relay
+  keeps only an entry made from it, scrypt with a salt of its own, in
+  `STAFF_CODES`: a JSON object of venue id to entry. No passcode is in the
+  repository, the shows, a log or the image. A venue with no entry has no
+  staff page. A right passcode gives the tab a token until 06:00 at the
+  venue, kept in that tab only, so a reconnect signs in again by itself; at
+  06:00 the page is signed out and asks for the passcode again.
+- **What staff see.** Each report's time; who it is about, as a staff-only tag
+  such as `P-4F2A`, the same all night at that venue and nothing like the
+  handles phones are shown, with how many times and by how many different
+  people that person was reported tonight — or *Something else*; that
+  person's band then and now, or that they left; the reporter's band then;
+  and the reporter's own few words, if any. Never a name, a contact, a
+  photo, a handle, or who reported. Open reports come first; *HANDLED* dims
+  one on every screen at the venue, and *REOPEN* brings it back.
+- **A new report** flashes the top of the page, counts in the tab's title,
+  `(2) Staff · The Roundhouse, Camden · BRUNO MARS`, and plays two short
+  notes once a tap on the page has let it make sound. Nothing reaches a
+  device whose page is closed or asleep: keep it open on a screen that
+  stays awake.
+- **Reports last the night.** A venue with a staff page keeps tonight's
+  reports even once everyone has left, so a team that signs in later still
+  sees them; at 06:00 they go. A restart or a deploy empties them, as it
+  empties rooms, and signs every staff page out.
+
+To give a venue its page, make its line and set it on the relay:
+
+```
+npm run staff-code
+```
+
+It asks for the venue's show id and a passcode of at least eight characters,
+twice, never shows the passcode, and prints one line such as
+`"roundhouse-bruno-mars": "scrypt$16384$8$1$…"`. Put every venue's line
+between braces, separated by commas, in a file outside the repository as
+one line, `STAFF_CODES={"roundhouse-bruno-mars": "scrypt$…"}`, then:
+
+```
+flyctl secrets import --stage < staff-codes.env   # PowerShell: Get-Content staff-codes.env | flyctl secrets import --stage
+flyctl deploy --ha=false --remote-only            # between nights: it restarts the one machine
+```
+
+and delete the file. A mistake in `STAFF_CODES` stops the relay starting,
+with the venue named and the entry never printed. Locally,
+`STAFF_CODES='{…}' npm start`; under `npm run dev` the page is
+`http://localhost:5178/staff.html`.
 
 ## The wristband
 
@@ -180,8 +240,13 @@ that was taken.
   over it, and the phone asks *Does your wristband show 27?* in a sheet that
   stays over any screen and comes back after a reconnect. `YES` pairs, and the
   wristband flashes white once. `NO`, or no answer within a minute, drops it and
-  the wristband shows new letters; a second phone trying the same wristband
-  meanwhile is told someone is pairing it. A decoy code stuck on someone's
+  the wristband shows new letters. A check its person did not ask for —
+  someone read the letters off the wrist and typed them first — is turned
+  away on the wrist: holding the face button for 1.5 s on the number drops it
+  at once, the wristband shows new letters, and the phone that typed is told
+  the wristband said no. A second phone trying the same wristband meanwhile is
+  told someone else is pairing it, and, if it is theirs, to hold its face
+  button. A decoy code stuck on someone's
   wristband fails here: the number lights the decoy, not the wrist the person
   is looking at.
 
@@ -206,7 +271,8 @@ that was taken.
   itself.
 - **Its two buttons.** The face button (KEY1): a press wakes it for six
   seconds; held for 1.5 s it is NOT NOW — dark at once — and the phone
-  follows to the invisible screen. The side button (KEY2): a press shows
+  follows to the invisible screen, except on a check number, where the same
+  hold turns the check away. The side button (KEY2): a press shows
   the card that is armed; each press after moves a preview — HI, SONG,
   DANCE, OFF — and 3 s after the last one the choice goes to the relay,
   which decides; the face says `SET`, `CHANGED` or `NOT SENT`.
@@ -263,9 +329,9 @@ that was taken.
   paired and not in NOT NOW, it beacons four bytes by ESP-NOW twice a second,
   under an address it makes up at every boot, and for one second in every ten
   it listens for the others and tells the relay whom it heard and how
-  strongly. The relay scores each pair of bands in a room by the median of
-  what each heard of the other in the last 30 s, and every five seconds works
-  out each band's five heard most strongly; one of the five stays while it is
+  strongly. The relay scores how near each band is to each other band in the
+  room by the median of what its own band heard in the last 30 s, and every
+  five seconds works out each band's five heard most strongly; one of the five stays while it is
   among the ten strongest, so the list does not churn as people turn round.
   With a band, SAY HI then lists those five, everyone without a band as
   before, and anyone waved with either way or matched. Nobody else is taken
@@ -277,7 +343,7 @@ that was taken.
   area comes only from the markers (below). On a modelled floor of 750
   people, 150 of them banded, with bodies in the way, 99.8% of each five are
   truly within 10 m, against 33% for five picked at random from what the band
-  heard (`tests/near-crowd.test.js`).
+  heard, and about 4% of a five changes at each listen (`tests/near-crowd.test.js`).
 - **Markers say near the bar and by the stage.** Any wristband can be a
   marker: `marker bar`, `marker stage` or `marker back` on its console, kept
   across restarts. A marker joins no Wi-Fi, reaches no relay and has no key:
@@ -307,7 +373,8 @@ that was taken.
   and the face of one waiting for its owner after a restart, light for two
   minutes and then only the backlight goes off; a press lights them again.
   A press on the letters or on the check puts `PAIR ON YOUR PHONE` on the
-  face for 3 s, and does nothing else there.
+  face for 3 s, and does nothing else there; the one thing more is holding
+  the face button on the check, which turns it away.
 - **Who a wristband is.** It makes a random key at every boot and keeps it
   only in RAM; its id is the first half of the key's SHA-256, and every hello
   proves the id with the key. Knowing an id — every phone that ever paired it
@@ -366,7 +433,9 @@ Tell it the venue's Wi-Fi and the relay at the console — `relay` takes
 `https://on-the-beat.fly.dev`, or the address `npm run tunnel` prints — or
 copy `src/secrets.example.h` to `src/secrets.h`, which git ignores, to build
 them in. What is typed is kept across restarts, which matters: a quick
-tunnel's address changes every run.
+tunnel's address changes every run. A `https` relay's certificate is checked
+against the roots in `src/relay_roots.h`, which cover both of those; a relay
+of one's own needs its root built in as `OTB_RELAY_CA` in `secrets.h`.
 Off the Wi-Fi, it asks the radio to join again every 15 s. The console says
 what the band is doing: the Wi-Fi coming and going and the reason the radio
 gave, each hello and whether it carries its secret (never the secret), each
@@ -442,6 +511,14 @@ the relay reaches it.
   M5StickC has no speaker; it says so once on the console and only lights up.
   The Plus has no PSRAM, and the buffers take its static RAM from 51 KB to
   70 KB of 320 KB; `show` prints the free heap.
+- **Checking the relay's certificate takes the older chip seconds.** From
+  `relay` to on the Fly relay took 5.9 to 6.3 s on the StickC Plus, whose
+  ESP32 checks each ECDSA signature of the chain in software, and 3.0 to 3.4 s
+  on the StickS3. The socket task holds its core that long, and the task
+  watchdog, which restarts a band whose idle task there has not run for 5 s,
+  restarted the Plus mid-handshake every time; it now allows 20 s. Through a
+  run of handshakes to Fly and to badssl.com's test servers the Plus kept at
+  least 50 KB of its heap free.
 - **A change of light alone only turns the backlight.** A flash's dark steps
   and the meeting's blink never repaint the face, so a call that blinks for
   fifteen minutes never holds up the loop or misses a tap.
@@ -526,6 +603,12 @@ the relay reaches it.
 - **Pairing ends with a check** shown on the wrist and confirmed on the phone.
   Without it a decoy code would pair silently, and with `set` a wrongly paired
   wristband could make someone visible.
+- **The check can be turned away on the wrist.** Revision 6 has no check,
+  and its wristband takes no action while it pairs. The owner chose on 28 Sep
+  2026 that holding the face button on the build's check number turns that
+  check away, so someone who read the letters off a wrist and typed them
+  first holds its check only until its person holds the button, not for a
+  minute.
 - **The wristband flashes and chirps.** Revision 6 §8 rules out vibration or
   light patterns that pretend to carry a message. The owner chose on 25 Sep
   2026 that the band flashes and sounds, and none of it pretends: each
@@ -556,6 +639,12 @@ the relay reaches it.
   27 Sep 2026 that it is better not to say than to say it wrong. A third
   marker, `somewhere out the back`, which the prompt's list of bands already
   has, is allowed; revision 6 names only the bar and the stage.
+- **A staff page** at `/staff`, which the canvas does not have: someone has
+  to read the reports the canvas says go to the venue team. The owner chose
+  on 28 Sep 2026 a page per venue, signed in with a passcode only he sets.
+- **Report asks for a few words**, optional and at most 200 characters. The
+  canvas's Report is one tap. The owner chose on 28 Sep 2026 to ask, since
+  "someone was reported near the bar" alone gives staff little to act on.
 
 ## Abuse resistance
 
@@ -612,9 +701,15 @@ was red-teamed and hardened. A red/blue pass found and closed:
   twelve-hex address and a whole signal strength from -100 to 0; a hello whose
   `air` is not twelve lower-case hex digits is refused. An address counts only
   as the address of exactly one band paired in the same room, so one claimed
-  twice, or from another room, counts for nobody. A band that lies changes
-  only its own person's list, and nearness only ever removes, so it can show
-  nobody a phone could not see already. A band beaconing under another's
+  twice, or from another room, counts for nobody. Each person's five comes
+  from what their own band heard and nothing else, so a band that lies
+  changes only its own person's list, and nearness only ever removes, so it
+  can show nobody a phone could not see already. Until 28 Sep 2026 a pair was
+  scored on what both bands said, so a lie moved the other person's five
+  too: five made-up people on SAY HI, each with a scripted band saying it
+  heard someone loudly, could fill that person's five and push everyone they
+  were really near off their list. It took that person's address, which only
+  a radio at the venue hears; the second review found it. A band beaconing under another's
   address moves that band's nearness to where the liar stands, among
   strangers in the same room, and no further. A report's `marks`, when it
   has any, are at most three, each area `bar`, `stage` or `back` once and each
@@ -629,20 +724,94 @@ was red-teamed and hardened. A red/blue pass found and closed:
 - **Rooms that never emptied.** A venue with nobody in it, nobody in its grace
   window, no clip still loading and no wristband still worn is now reclaimed, so
   a long-lived relay does not keep a room object for every venue anyone typed.
-- **A report log without end** is capped at its most recent thousand.
+- **A report log without end** is capped at its most recent thousand a
+  venue, and a venue's reports go at 06:00.
+- **The staff page.** A passcode is kept only as a scrypt entry, and every
+  sign-in by passcode counts on the pairing counters, five a socket and
+  twenty an address a minute, its scrypt run off the event loop. A token
+  lasts until 06:00 at its own venue only. A socket is a phone, a wristband
+  or staff, never two, including one that joins while its passcode is being
+  checked; a staff socket can only mark reports. Staff see a person only as
+  a tag made with a key drawn at start, and never who reported; the relay's
+  log says only which venue and which report. What it cannot tell: someone
+  with many phones can report one person from each, so `reported 5 times by
+  5 people` is a lead for staff to look into, not proof.
 - **A flood of venue joins.** `join` is unthrottled and each new venue is a room
   object; the room table now has a ceiling that reclaims empty venues under
   pressure and refuses a new one only when every venue is genuinely in use, and
   a socket switching venues has its orphaned rooms reclaimed as it goes.
+- **A flood of messages.** Every change in a room used to push every phone
+  in it a fresh view at once, and working out a view is a pass over the
+  room, so one socket sending changes as fast as it could made the one
+  machine do the square of the room for each, and stalled every venue on
+  it. Now a room's views go out at most every 100 ms, carrying every change
+  before them, and a socket has a budget of 40 frames at once, earned back
+  at 20 a second. A phone or a wristband says about one every two seconds
+  and a reconnect about a dozen at once; a socket past its budget is closed
+  as `too fast` (4003) before its frame is read. The second review found it.
+- **A socket that changes who it is.** A socket that had joined could join
+  again as someone else, or at another venue, and the person it had stood
+  for stayed in the room with no phone, no grace and no wristband, for as
+  long as anyone else was there: one socket could leave any number of people
+  behind, each still on SAY HI if they had been. Now a new join leaves as
+  whoever the socket stood for, at once, unless another phone or a live
+  wristband of theirs still holds them. The app opens a new socket for each
+  venue and each night, so it never did this; a client of one's own could.
 - **MIME confusion.** Every served response — the app, a built asset, a clip,
   the shows feed — carries `X-Content-Type-Options: nosniff`, so a browser
   takes the declared type and never guesses one.
+- **A clip's address in the wrong hands.** A clip's address used to open it
+  for anyone holding it, for its hour, a blocked person included. Now each
+  viewer is sent an address of their own — the clip's 96-bit ref and a ticket
+  the relay makes, from a key it draws when it starts, for that clip and that
+  viewer — and the relay serves it only while that viewer's own view shows the
+  clip: not once either of them has blocked the other, while its owner is NOT
+  NOW, or after the viewer has left. A browser must ask again before it plays a
+  clip again (`no-cache`, with an ETag), and a refusal is the same 404 as a
+  clip that never was. A copy already on someone's phone stays theirs, as a
+  screenshot would.
+- **Something posing as the relay.** A wristband's `https` connection used to
+  be encrypted without checking whose certificate it was shown, so on a hostile
+  network something posing as the relay could drive what a wrist shows. Now
+  the band checks the certificate against four roots built into its firmware
+  (`firmware/src/relay_roots.h`): ISRG Root X1 and X2, which the Fly relay's
+  RSA and ECDSA chains end in, and GTS Root R1 and R4, which a Cloudflare
+  tunnel's do. A relay chaining to none of them is refused. On 28 Sep 2026
+  each of those four chains, as the two addresses served them, verified
+  against these roots, and `tests/relay-roots.test.js` holds each root's
+  fingerprint and that the band never opens `https` unchecked. Both real
+  bands, flashed with it that day, reached the Fly relay and refused every
+  attempt at badssl.com's self-signed, untrusted-root and wrong-host servers —
+  the last showing a Let's Encrypt certificate that chains to ISRG Root X1 but
+  names another host — while badssl.com itself, the same chain under its own
+  name, was not refused. The price: a
+  relay that moves to another certificate authority needs the bands flashed
+  again, and the roots last until 2035 (X1), 2036 (R1, R4) and 2040 (X2). A
+  plain `ws://` relay on the laptop's own network is still unchecked, as any
+  plain connection is; which relay a band uses is set only at its console or
+  when it is built.
+- **A check held open by someone watching.** A wristband's letters are on
+  its screen for anyone near to read. Typed first, they used to hold its
+  check for a minute at a time, the owner told only that someone was pairing
+  it: every attempt counted and the letters changed after each, so this
+  annoyed rather than paired, but the owner could do nothing about it. Now
+  holding the face button on the check turns it away (`{t:"refuse"}` with the
+  number the wrist shows): the relay drops it at once, the wristband shows new
+  letters, the phone that typed is told the wristband said no, and the busy
+  message tells the owner to hold the button. It lands only from that
+  wristband's own socket and only on the number its check still shows, so a
+  hold that arrives after `YES`, or names another check, unpairs nothing.
+  On 28 Sep 2026 both real bands did this through the Fly relay: a stand-in
+  phone typed each band's letters, the console's `hold face` held the face
+  button on the check, and within a second the phone was told the band said
+  no, and the band showed new letters and played fall.
 - **Malformed and hostile frames.** Non-JSON, wrong-typed fields, forged
   handles and unknown message types are all inert: a fuzz barrage of them
   leaves the relay serving and still forming rooms (`tests/server.test.js`).
 
-Each fix is a test in `tests/server.test.js`, `tests/wristband.test.js` or
-`tests/rules.test.js`, and each was mutation-checked — break the guard and
+Each fix is a test in `tests/server.test.js`, `tests/wristband.test.js`,
+`tests/rules.test.js`, `tests/relay-roots.test.js` or the wrist's table of
+cases (`tests/fixtures/wrist-cases.json`), and each was mutation-checked — break the guard and
 exactly its test goes red; where other tests stand on a guard, exactly that
 known set does. A dropped wristband keeps its
 letters through a wifi blip on purpose (so the code under a typing finger does
@@ -657,14 +826,6 @@ The room model itself — who appears in another person's view — was read end 
 end: before a mutual yes a person is only a per-viewer handle and a coarse band,
 name and contact arrive only when both keep, an invisible person is absent from
 everyone's lists, and a block cuts both directions and outlives leaving.
-
-Still open here: the clip bearer links below; the letters on a wristband's
-screen, which let someone watching hold its check open a minute at a time —
-every attempt counts and the letters change after each, so this annoys rather
-than pairs; and the firmware's https
-connection, which is encrypted but does not check the relay's certificate unless
-`OTB_RELAY_CA` is built in, so on a hostile network something posing as the
-relay could drive what a wrist shows.
 
 ## What is not done
 
@@ -775,10 +936,10 @@ relay could drive what a wrist shows.
   app's scanner read it through jsQR and paired, and a stranger's code was
   turned away. A real camera against a real screen, and Chrome on Android's own
   detector, are the next check.
-- **Clip links are bearer links.** Anyone holding a clip's address can load
-  it for its hour, including someone who has since been blocked. The address
-  is 96 random bits and only ever shown inside a room.
-- **Reports go to a log**, not to a person.
+- **The staff page has not met a venue.** It has run on a laptop, in two
+  tabs beside a phone in the same browser. Nothing reaches a staff device
+  whose page is closed or asleep, and one passcode a venue is shared by its
+  whole team; changing it is a secret set and a restart.
 - **Waves have run on the real bands from their consoles, not yet by hand.**
   On 26 Sep 2026, through the Fly relay, a stand-in phone paired the StickC
   Plus and a scripted one the StickS3, each saying YES only once the band's

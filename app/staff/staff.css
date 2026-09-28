@@ -1,0 +1,20 @@
+/* ON THE BEAT — the staff page, in the app's colours and type (../styles.css). */
+
+html, body { background: var(--ink-0); }
+.staff { max-width: 720px; margin: 0 auto; padding: 16px 16px 48px; display: flex; flex-direction: column; gap: 12px; }
+.staff-in { max-width: 440px; padding-top: 48px; }
+.staff-form { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.staff-form .cta { margin-top: 12px; }
+.staff-input { width: 100%; height: 52px; border-radius: 16px; background: var(--ink-2); border: 1px solid var(--line); padding: 0 16px; font: var(--body); color: #fff; }
+.staff-input:focus-visible { outline: 2px solid var(--hi); outline-offset: 2px; }
+.staff-error { color: var(--stop); margin: 4px 2px 0; }
+.staff-top { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 20px; background: var(--ink-1); }
+.staff-top.flash { animation: staff-flash 1.4s var(--ease); }
+@keyframes staff-flash { 0%, 35% { background: #3a0f12; border-color: var(--stop); } 100% { background: var(--ink-1); border-color: var(--line); } }
+.staff-note { margin: 4px 2px; }
+.staff-report { border: 1.5px solid var(--stop); border-radius: 20px; background: var(--ink-2); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.staff-report.done { border-color: var(--line-2); opacity: .55; }
+.staff-report .btn-s { align-self: flex-start; }
+.staff-line { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.staff-time { font: var(--num); color: var(--text-2); }
+.staff-why { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

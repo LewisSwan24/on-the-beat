@@ -133,7 +133,14 @@ All numbers are named constants in `firmware/src/band_logic.h`.
   hearing the other in the last `HEARD_MS` (30 s), in memory only; for each
   band, when it last reported and on which channel.
 - **A pair's score** is the median of those samples, both directions
-  together, so it is the same from either side.
+  together, so it is the same from either side. *Amended 28 Sep 2026, the
+  owner's choice after the second security review:* how near b is to a is
+  the median of what a's own band heard of b, and nothing b's band said. As
+  first written, a band's lie entered the other person's score, which §3
+  below said it could not: five made-up people on SAY HI with scripted bands
+  could fill someone's five and push the people they were really near off
+  their list. On the modelled crowd the five stay 99.8% within 10 m, and
+  change about 4% a listen instead of 2%.
 - **The five.** Every `NEAR_TICK_MS` (5 s) the room works out, for each
   person whose band reported in the last `HEARD_MS`, their five among the
   people on SAY HI with a band and a score: last time's five stay while

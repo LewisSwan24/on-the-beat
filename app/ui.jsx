@@ -45,9 +45,10 @@ export function Sheet({ sheet, onClose, screenRef }) {
   useEffect(() => {
     const under = screenRef.current;
     if (under) under.inert = true;
-    const focusables = () => [...(ref.current?.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])') || [])]
+    const focusables = () => [...(ref.current?.querySelectorAll('button, input, textarea, [tabindex]:not([tabindex="-1"])') || [])]
       .filter((el) => !el.disabled && el.offsetParent !== null);
-    (ref.current?.querySelector('input') || focusables()[0])?.focus();
+    // An input is typed into at once; a textarea is optional words, so it waits for a tap and the keyboard stays down.
+    (ref.current?.querySelector('input') || focusables().find((el) => el.tagName !== 'TEXTAREA'))?.focus();
     const onKey = (e) => {
       if (e.key === 'Escape') { onClose(); return; }
       if (e.key !== 'Tab') return;

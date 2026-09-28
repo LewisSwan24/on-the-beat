@@ -12,11 +12,12 @@ import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, isAbsolute, join, normalize, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { createRoom, INTENTS, MARKS, SPOTS } from './room.js';
 import { MEET_MS, bandShow, cleanCode, newCode } from './band.js';
 import { nightOf } from './night.js';
+import { checkCode, isEntry } from './staff.js';
 
 export const WS_PATH = '/api/ws';
 export const PAIR_CHECK_MS = 60_000;          // a pending pairing waits this long for YES
@@ -40,6 +41,11 @@ const HEX32 = /^[a-f0-9]{32}$/;
 const AIR = /^[a-f0-9]{12}$/;         // a wristband's radio: its Wi-Fi MAC, new every boot
 const HEARD_MAX = 16;                 // the most bands one report may name
 const NEAR_TICK_MS = 5000;            // how often each room works out who is near whom
+const PUSH_GAP_MS = 100;              // a room's views go out at most this often: a burst of changes is one push
+const FRAMES_AT_ONCE = 40;            // frames one socket may send at once: far past a reconnect's burst
+const FRAMES_A_SECOND = 20;           // and the rate it earns them back; a phone or a band says one every two seconds
+const STAFF_TOKENS_MAX = 1000;        // staff sign-ins kept for tonight; past it the oldest is forgotten
+const CODE_MAX = 200;                 // the longest passcode a staff sign-in may carry
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
@@ -64,6 +70,24 @@ export function loadShows(file) {
 }
 
 /**
+ * STAFF_CODES: a JSON object of venue id -> passcode entry (relay/staff.js), or nothing. Anything else throws
+ * when the relay starts, naming the venue and never the entry.
+ */
+export function readStaffCodes(text) {
+  const entries = new Map();
+  if (!text) return entries;
+  let all;
+  try { all = JSON.parse(text); } catch { throw new Error('STAFF_CODES is not JSON'); }
+  if (!all || typeof all !== 'object' || Array.isArray(all)) throw new Error('STAFF_CODES is not an object of venue -> entry');
+  for (const [venue, entry] of Object.entries(all)) {
+    if (!venue || venueKey(venue) !== venue) throw new Error('STAFF_CODES: ' + JSON.stringify(venue) + ' is not a venue id');
+    if (!isEntry(entry)) throw new Error('STAFF_CODES: the entry for ' + venue + ' is not one npm run staff-code makes');
+    entries.set(venue, entry);
+  }
+  return entries;
+}
+
+/**
  * The relay: the app, and one socket per phone and per wristband.
  *
  * The clock and the waits are options so tests can drive them: `clock` reads
@@ -72,24 +96,39 @@ export function loadShows(file) {
  * owner, and `graceMs` how long a person with no phone and no live wristband
  * stays. `nightTz` is the venue's time zone, an IANA name, whose 06:00 ends
  * the night; the machine's own by default.
+ * `staffCodes` is STAFF_CODES (readStaffCodes()): the venues with a staff page, and their passcodes' entries.
  */
 export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile, maxBands = 5_000, maxRooms = 5_000,
   clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS, graceMs = GRACE_MS, nightTz,
-  clientIpHeader, allClipsMax = ALL_CLIPS_MAX } = {}) {
+  clientIpHeader, allClipsMax = ALL_CLIPS_MAX, staffCodes = process.env.STAFF_CODES } = {}) {
   const now = () => clock();
   // A misspelt zone throws here, when the relay starts, not at its first sweep in the middle of the night.
   nightOf(now(), nightTz);
+  // The venues with a staff page (docs/superpowers/specs/2026-09-28-staff-reports-design.md §2). A mistake in
+  // STAFF_CODES throws here too.
+  const staffEntries = readStaffCodes(staffCodes);
   const here = fileURLToPath(new URL('..', import.meta.url));
   const dist = root ?? join(here, 'dist');
   const shows = loadShows(showsFile ?? process.env.SHOWS ?? join(here, 'relay', 'shows.json'));
   const showsJson = JSON.stringify(shows);
   // key -> { room, sockets:Set, clips:Map(ref -> {mime, buf, by, slot, at}), left:Map(id -> timer),
-  //          heard:Map(id -> when a phone of theirs last spoke) }
+  //          heard:Map(id -> when a phone of theirs last spoke), staff:Set of signed-in staff sockets }
   const rooms = new Map();
   let closing = false;
+  // Each viewer's own address for a clip: its ref and a ticket only this relay can make, for that clip and that
+  // viewer. It opens the clip only while their view shows it (serveClip), so a blocked person's old address stops.
+  const clipKey = randomBytes(32);
+  const ticketFor = (ref, id) => createHmac('sha256', clipKey).update(ref + ':' + id).digest('hex').slice(0, 32);
+  const addressed = (ref, id) => (ref ? ref + '.' + ticketFor(ref, id) : ref);
   // Wrong pairing codes by address, so four letters cannot be walked: 23^4 is
   // 279,841 codes, and one unthrottled socket walked them in fifteen seconds.
   const tries = new Map();   // address -> [times of wrong codes]
+  // Staff signed in with a right passcode tonight: token -> { key, night }. Good until the venue's 06:00.
+  const tokens = new Map();
+  // Staff see a reported person as a tag: the same at one venue all night, and nothing like any handle a phone
+  // is shown. A restart draws a new key, so new tags.
+  const staffKey = randomBytes(32);
+  const tagOf = (key, id) => 'P-' + createHmac('sha256', staffKey).update(key + '|' + id).digest('hex').slice(0, 4).toUpperCase();
 
   function roomFor(key) {
     if (!rooms.has(key)) {
@@ -101,12 +140,26 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       const spots = Array.isArray(show?.spots) && show.spots.length ? show.spots.map(String) : SPOTS;
       // sound: each person's sound switch, as their phone last said it. Leaving forgets it; the grace does not.
       // The room reads the relay's clock: a wave's number is the time it was made, so it only goes up.
-      rooms.set(key, { key, room: createRoom({ spots, now }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(), sound: new Map() });
+      rooms.set(key, { key, room: createRoom({ spots, now }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(), sound: new Map(), staff: new Set() });
     }
     return rooms.get(key);
   }
 
+  /**
+   * Every change in a room ends here. Working out a view is a pass over the room for each of its phones, so
+   * one push per change let one socket's burst of changes stall the whole relay. Now a room's views go out
+   * at most every PUSH_GAP_MS, on the real clock, and the push that goes carries every change before it.
+   */
   function push(r) {
+    if (r.due || closing) return;
+    r.due = setTimeout(() => {
+      r.due = null;
+      r.pushedAt = Date.now();
+      if (!closing) pushNow(r);
+    }, Math.max(0, (r.pushedAt ?? 0) + PUSH_GAP_MS - Date.now()));
+  }
+
+  function pushNow(r) {
     for (const ws of r.sockets) {
       const view = r.room.viewFor(ws.me);
       if (!view) continue;
@@ -115,10 +168,20 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       view.me.wristband = b ? { battery: b.battery, live: !!b.ws } : null;
       // A pairing waiting for YES belongs to the person, not the socket: every phone of theirs is asked.
       view.me.check = pendingOf(r.key, ws.me)?.pending.number ?? null;
+      view.me.clip = addressed(view.me.clip, ws.me);
+      for (const c of view.floor) c.ref = addressed(c.ref, ws.me);
       const text = JSON.stringify({ t: 'view', view });
       if (text !== ws.lastView) { ws.lastView = text; ws.send(text); }
     }
     for (const b of bands.values()) if (b.key === r.key || b.pending?.key === r.key) showBand(b);
+    reportsTo(r);
+  }
+
+  /** The venue's reports, to its signed-in staff sockets that do not have this list yet. */
+  function reportsTo(r, sockets = r.staff) {
+    if (!sockets.size) return;
+    const text = JSON.stringify({ t: 'reports', reports: r.room.staffReports((id) => tagOf(r.key, id)) });
+    for (const ws of sockets) if (text !== ws.lastReports) { ws.lastReports = text; ws.send(text); }
   }
 
   // ---------- the grace, and leaving (rule 2) ----------
@@ -313,12 +376,25 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     return answer(null);
   }
 
+  /**
+   * A check turned away on the wrist: its person held the face button on a
+   * number they did not ask for, which someone who read the letters off the
+   * wrist may be holding open. It lands only on the check the wrist shows —
+   * a hold that arrives after YES, or names another number, changes nothing.
+   */
+  function refuseFromBand(b, m) {
+    // Only the number its check shows, said as the wrist shows it: two digits, in a string.
+    if (b.pending && m.number === String(b.pending.number)) dropPending(b, 'refused');
+  }
+
   function handleBand(ws, m) {
     const b = bands.get(ws.band);
     // Only from the wristband's current socket: a set stuck in a replaced one must not land.
     if (!b || b.ws !== ws) return;
     // What it heard is for the room's next tick, which pushes what changed: nothing to push now.
     if (m.t === 'heard') { heardFromBand(b, m); return; }
+    // Dropping the check shows the new letters and pushes the room of the phone that typed.
+    if (m.t === 'refuse') { refuseFromBand(b, m); return; }
     if (m.t === 'battery') b.battery = clampBattery(m.level);
     // Held: NOT NOW, from the wrist. The phone follows.
     if (m.t === 'hold') holdOn(b);
@@ -519,19 +595,86 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     return ref;
   }
 
+  // ---------- staff (docs/superpowers/specs/2026-09-28-staff-reports-design.md §3) ----------
+  // A socket is a phone, a wristband or staff, and only one. Staff sign in with their venue's passcode, or the
+  // token a right one got tonight, and are then sent the venue's reports; they can only mark them.
+
+  async function staffIn(ws, m) {
+    const answer = (x) => ws.send(JSON.stringify({ t: 'staff', ...x }));
+    if (ws.staffing) return;   // one sign-in at a time: the page waits for its answer
+    if (ws.me || ws.band) { answer({ ok: false, why: 'bad staff' }); return; }
+    const key = venueKey(m.venue);
+    if (typeof m.token === 'string') {
+      const t = tokens.get(m.token);
+      if (!t || t.key !== key || t.night !== nightOf(now(), nightTz)) { answer({ ok: false, why: 'expired' }); return; }
+      signIn(ws, key, m.token, t.night);
+      return;
+    }
+    if (typeof m.code !== 'string') { answer({ ok: false, why: 'bad staff' }); return; }
+    if (tooMany(ws)) { answer({ ok: false, why: 'too many tries' }); return; }
+    attempt(ws);   // every sign-in by passcode counts, right or wrong, on the pairing counters
+    const entry = staffEntries.get(key);
+    if (!entry) { answer({ ok: false, why: 'no staff page' }); return; }
+    ws.staffing = true;
+    const right = await checkCode(entry, m.code.slice(0, CODE_MAX));
+    ws.staffing = false;
+    if (closing || ws.readyState !== ws.OPEN) return;
+    // It may have joined as a phone, or said hello as a wristband, while the check ran.
+    if (ws.me || ws.band) { answer({ ok: false, why: 'bad staff' }); return; }
+    if (!right) { answer({ ok: false, why: 'wrong code' }); return; }
+    const token = randomBytes(16).toString('hex');
+    const night = nightOf(now(), nightTz);
+    tokens.set(token, { key, night });
+    if (tokens.size > STAFF_TOKENS_MAX) tokens.delete(tokens.keys().next().value);
+    signIn(ws, key, token, night);
+  }
+
+  function signIn(ws, key, token, night) {
+    const r = roomFor(key);
+    if (!r) { ws.send(JSON.stringify({ t: 'staff', ok: false, why: 'too many venues' })); return; }
+    ws.staff = { key, night };
+    r.staff.add(ws);
+    ws.send(JSON.stringify({ t: 'staff', ok: true, venue: key, token }));
+    reportsTo(r, new Set([ws]));
+  }
+
+  /** A staff socket marks a report of its own venue handled, or opens it again: every staff screen there sees it. */
+  function handledBy(ws, m) {
+    if (typeof m.id !== 'string' || typeof m.on !== 'boolean') return;
+    const r = rooms.get(ws.staff.key);
+    // Only while signed in there: a socket signed out at 06:00 may still be closing.
+    if (r?.staff.has(ws) && r.room.markHandled(m.id, m.on)) push(r);
+  }
+
   function handle(ws, m) {
     // A phone of theirs was heard: any message, pings included (rule 2).
     if (ws.r && ws.me) ws.r.heard.set(ws.me, now());
     if (m.t === 'ping') { ws.send('{"t":"pong"}'); return; }
+    // A signed-in staff socket only marks reports: what a phone or a wristband would say is ignored.
+    if (ws.staff) { if (m.t === 'handled') handledBy(ws, m); return; }
+    // Its check runs off the event loop; a failure there ends this socket, never the process.
+    if (m.t === 'staff') { staffIn(ws, m).catch(() => ws.terminate()); return; }
     if (m.t === 'wristband') { hello(ws, m); return; }
     if (ws.band) { handleBand(ws, m); return; }
     if (m.t === 'join') {
       const key = venueKey(m.venue);
       const me = String(m.me || '');
       if (!key || !/^[a-f0-9]{16,64}$/.test(me)) { ws.send(JSON.stringify({ t: 'error', why: 'bad join' })); return; }
+      // A socket stands for one person in one room. Joining as someone else, or somewhere else, is leaving as
+      // whoever it stood for — at once, unless another phone or a live wristband of theirs still holds them —
+      // or one socket could leave people behind with no phone and no grace, on SAY HI for as long as the venue
+      // is busy. The app itself opens a new socket for a new venue or a new night.
+      if (ws.r && (ws.r.key !== key || ws.me !== me)) {
+        const was = ws.r;
+        was.sockets.delete(ws);
+        ws.r = null;
+        if (!phoneOf(was, ws.me) && !bandOf(was.key, ws.me)?.ws) {
+          stopGrace(was, ws.me);
+          leaveRoom(was, ws.me);
+        }
+      }
       const nextRoom = roomFor(key);
       if (!nextRoom) { ws.send(JSON.stringify({ t: 'error', why: 'too many venues' })); return; }
-      if (ws.r && ws.r !== nextRoom) ws.r.sockets.delete(ws);
       ws.r = nextRoom;
       ws.me = me;
       stopGrace(ws.r, me);
@@ -578,8 +721,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       case 'unlike': room.unlike(me, m.handle); break;
       case 'block': room.block(me, m.handle); break;
       case 'report':
-        // The venue team's copy. A real deployment sends this to their radio or dashboard.
-        if (room.report(me, m.handle || null, m.why)) console.log('REPORT', JSON.stringify(room.reports().at(-1)));
+        // To the venue's staff page, with the push below. The log says one came and nothing it says: logs are kept.
+        if (room.report(me, m.handle || null, m.why)) console.log('REPORT', r.key, room.reports().at(-1).id);
         break;
       case 'keep': room.keep(me, m.match, m.on); break;
       case 'found': room.found(me, m.match); break;
@@ -615,17 +758,34 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     push(r);
   }
 
-  function serveClip(res, url) {
-    const [, , key, ref] = url.split('?')[0].split('/');   // /clip/<venue>/<ref>
-    let c = null;
-    try { c = rooms.get(venueKey(decodeURIComponent(key || '')))?.clips.get(ref || ''); } catch { /* malformed */ }
-    if (!c) { res.writeHead(404).end(); return; }
-    res.writeHead(200, { 'content-type': c.mime, 'cache-control': 'private, max-age=3600', 'x-content-type-options': 'nosniff' }).end(c.buf);
+  /**
+   * /clip/<venue>/<ref>.<ticket>: the clip, only for the viewer the ticket was made for, and only while their own
+   * view shows it — so not once either has blocked the other, its owner is NOT NOW, or the viewer has left. A
+   * browser must ask again before it plays it again, and is told the same.
+   */
+  function serveClip(req, res, url) {
+    const [, , key, address] = url.split('?')[0].split('/');
+    const [ref = '', ticket = ''] = String(address || '').split('.');
+    let r = null;
+    try { r = rooms.get(venueKey(decodeURIComponent(key || ''))); } catch { /* malformed */ }
+    const c = r?.clips.get(ref);
+    const same = (id) => {
+      const want = Buffer.from(ticketFor(ref, id));
+      const got = Buffer.from(ticket);
+      return got.length === want.length && timingSafeEqual(got, want);
+    };
+    const viewer = c ? r.room.ids().find(same) : undefined;
+    const view = viewer ? r.room.viewFor(viewer) : null;
+    if (!view || !(view.me.clip === ref || view.floor.some((f) => f.ref === ref))) { res.writeHead(404).end(); return; }
+    const etag = '"' + ref + '"';
+    const head = { 'content-type': c.mime, 'cache-control': 'private, no-cache', etag, 'x-content-type-options': 'nosniff' };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, head).end(); return; }
+    res.writeHead(200, head).end(c.buf);
   }
 
-  /** A file from dist/, or the app itself for any route it owns. Never anything outside dist/. */
+  /** A file from dist/, the staff page at /staff, or the app itself for any route it owns. Never anything outside dist/. */
   function serveStatic(res, url) {
-    let file = join(dist, 'index.html');
+    let file = join(dist, /^\/staff\/?$/.test(url.split('?')[0]) ? 'staff.html' : 'index.html');
     try {
       const want = join(dist, normalize(decodeURIComponent(url.split('?')[0])).replace(/^([/\\])+/, ''));
       const inside = relative(dist, want);
@@ -644,7 +804,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const url = req.url || '/';
     if (url === '/api/shows') {
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' }).end(showsJson);
-    } else if (url.startsWith('/clip/')) serveClip(res, url);
+    } else if (url.startsWith('/clip/')) serveClip(req, res, url);
     else serveStatic(res, url);
   });
 
@@ -677,15 +837,32 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     ws.addr = addressOf(req);
     ws.fails = [];
     ws.alive = true;
+    // Its frame budget, on the real clock: FRAMES_AT_ONCE, earned back at FRAMES_A_SECOND.
+    ws.frames = FRAMES_AT_ONCE;
+    ws.framesAt = Date.now();
     ws.on('pong', () => { ws.alive = true; });
     // An oversized or broken frame ends this socket, never the process.
     ws.on('error', () => ws.terminate());
     ws.on('message', (data) => {
+      const t = Date.now();
+      ws.frames = Math.min(FRAMES_AT_ONCE, ws.frames + ((t - ws.framesAt) * FRAMES_A_SECOND) / 1000);
+      ws.framesAt = t;
+      // Far faster than any phone or wristband: closed before its frame is even read.
+      if (ws.frames < 1) { ws.close(4003, 'too fast'); return; }
+      ws.frames -= 1;
       let m;
       try { m = JSON.parse(String(data)); } catch { return; }
       if (m && typeof m.t === 'string') handle(ws, m);
     });
     ws.on('close', () => {
+      if (ws.staff) {
+        const sr = rooms.get(ws.staff.key);
+        if (sr) {
+          sr.staff.delete(ws);
+          if (!closing) gcRoom(sr);
+        }
+        return;
+      }
       const b = ws.band && bands.get(ws.band);
       if (b && b.ws === ws) {
         b.ws = null;
@@ -728,11 +905,13 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     for (const r of rooms.values()) if (r.room.nearTick()) push(r);
   }
   const nearly = setInterval(() => tickNear(), NEAR_TICK_MS);
-  // A venue with nobody in it, nobody in its grace window, no clip still loading
+  // A venue with nobody in it, nobody in its grace window, no staff signed in, no clip still loading
   // and no wristband still worn holds nothing — so it is let go, or a long-lived
   // relay would keep a room object for every venue anyone ever typed.
   function gcRoom(r) {
-    if (r.sockets.size || r.left.size || r.clips.size) return;
+    if (r.sockets.size || r.left.size || r.clips.size || r.staff.size) return;
+    // A venue with a staff page keeps tonight's reports for its team once everyone has gone; 06:00 clears them.
+    if (staffEntries.has(r.key) && r.room.hasReports()) return;
     for (const b of bands.values()) if (b.key === r.key && b.ws) return;
     rooms.delete(r.key);
   }
@@ -773,6 +952,18 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
       if (changed) push(r);
     }
+    // 06:00: a night's reports go, and staff signed in for it are signed out; the page asks for the passcode again.
+    const tonight = night(at);
+    for (const [token, t] of tokens) if (t.night !== tonight) tokens.delete(token);
+    for (const r of rooms.values()) {
+      for (const ws of [...r.staff]) {
+        if (ws.staff.night === tonight) continue;
+        r.staff.delete(ws);
+        ws.send(JSON.stringify({ t: 'staff', ok: false, why: 'expired' }));
+        ws.close(4004, 'expired');
+      }
+      if (r.room.forgetReports((t) => night(t) !== tonight)) push(r);
+    }
     for (const r of [...rooms.values()]) gcRoom(r);
   }
 
@@ -796,7 +987,10 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         clearInterval(sweep);
         clearInterval(lights);
         clearInterval(nearly);
-        for (const r of rooms.values()) for (const t of r.left.values()) clearTimeout(t);
+        for (const r of rooms.values()) {
+          for (const t of r.left.values()) clearTimeout(t);
+          clearTimeout(r.due);
+        }
         for (const ws of wss.clients) ws.terminate();
         wss.close(() => server.close(() => done()));
       }),

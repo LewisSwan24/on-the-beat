@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoom, BANDS, MARKS } from '../relay/room.js';
+import { createRoom, BANDS, MARKS, HEARD_MS } from '../relay/room.js';
 
 let channel = 1;
 /**
@@ -342,15 +342,94 @@ test('found: only the two of a match say it, the first time is kept, and a match
   assert.equal(room.found('ana', other.id), false, 'a blocked match is gone');
 });
 
-test('a report is kept for the venue team with the band, never a position — about someone, or something', () => {
+test('a report keeps the band of each side when it was made, and words only as a string, cut to 200', () => {
   const { room, handleOf } = night();
   room.arm('ben', 'hi');
   assert.equal(room.report('ana', handleOf('ana', 'ben'), 'followed me'), true);
-  assert.equal(room.report('ana', null, 'someone is being sick by the stairs'), true);
+  assert.equal(room.report('ana', null, 'x'.repeat(250)), true);
+  assert.equal(room.report('ana', null, { toString: () => 'sneaky' }), true);
   assert.equal(room.report('ana', 'not-a-handle', 'x'), false, 'a handle nobody holds is refused');
-  const [r1, r2] = room.reports();
-  assert.deepEqual([r1.from, r1.about, r1.band, r1.why], ['ana', 'ben', 'by the stage', 'followed me']);
-  assert.deepEqual([r2.about, r2.band], [null, 'near the bar']);
+  const [r1, r2, r3] = room.reports();
+  assert.deepEqual([r1.id, r1.from, r1.about, r1.aboutBand, r1.fromBand, r1.why, r1.handledAt],
+    ['r1', 'ana', 'ben', 'by the stage', 'near the bar', 'followed me', 0]);
+  assert.deepEqual([r2.id, r2.about, r2.aboutBand, r2.fromBand, r2.why.length], ['r2', null, null, 'near the bar', 200]);
+  assert.equal(r3.why, '', 'anything but a string is no words');
+});
+
+test('the venue report log has a ceiling: its newest thousand', () => {
+  const { room } = night();
+  for (let i = 0; i < 1500; i += 1) room.report('ana', null, 'report ' + i);
+  const kept = room.reports();
+  assert.equal(kept.length, 1000);
+  assert.deepEqual([kept[0].why, kept.at(-1).why], ['report 500', 'report 1499']);
+});
+
+// ---------- what the venue's staff see (staff spec §1) ----------
+
+test('staff see each report newest first, the person as a tag with how often and by how many — never who reported', () => {
+  const { room, handleOf } = night();
+  room.arm('ben', 'hi');
+  room.report('ana', handleOf('ana', 'ben'), 'followed me');
+  room.report('cai', handleOf('cai', 'ben'), '');
+  room.report('ana', handleOf('ana', 'ben'), 'again');
+  room.report('cai', null, 'spill by the stairs');
+  // A tag that gives nothing away, as the relay's HMAC does.
+  const tags = new Map();
+  const tag = (id) => { if (!tags.has(id)) tags.set(id, 'P-' + (tags.size + 1)); return tags.get(id); };
+  const list = room.staffReports(tag);
+  assert.deepEqual(list.map((r) => r.id), ['r4', 'r3', 'r2', 'r1']);
+  assert.deepEqual(list[1], {
+    id: 'r3', at: list[1].at, about: 'P-1', times: 3, people: 2, bandNow: 'by the stage',
+    bandThen: 'by the stage', fromThen: 'near the bar', why: 'again', handledAt: 0,
+  });
+  assert.deepEqual([list[0].about, list[0].times, list[0].people, list[0].bandNow, list[0].bandThen, list[0].fromThen],
+    [null, 0, 0, null, null, 'in this room']);
+  const text = JSON.stringify(list);
+  for (const secret of ['ana', 'ben', 'cai', 'ANA', 'BEN', 'CAI', '@ana', '@ben', '@cai', handleOf('ana', 'ben'), handleOf('cai', 'ben')]) {
+    assert.equal(text.includes(secret), false, secret + ' reached staff');
+  }
+});
+
+test('staff see where a reported person is now, and that they left', () => {
+  const { room, handleOf, tick } = night();
+  room.arm('ben', 'hi');
+  room.report('ana', handleOf('ana', 'ben'), '');
+  tick(HEARD_MS + 1);
+  place(room, [['ben', 'somewhere out the back']]);
+  const [r] = room.staffReports(() => 'P-1');
+  assert.deepEqual([r.bandThen, r.bandNow], ['by the stage', 'somewhere out the back']);
+  room.leave('ben');
+  assert.equal(room.staffReports(() => 'P-1')[0].bandNow, 'left');
+});
+
+test('a report is marked handled with the time, and opened again; one that is not there is false', () => {
+  const { room, tick } = night();
+  room.report('ana', null, 'spill');
+  tick(60_000);
+  assert.equal(room.markHandled('r1', true), true);
+  const at = room.staffReports(() => '')[0].handledAt;
+  assert.ok(at > 0);
+  tick(1000);
+  room.markHandled('r1', true);
+  assert.equal(room.staffReports(() => '')[0].handledAt, at, 'marking it again keeps when it was first handled');
+  assert.equal(room.markHandled('r1', false), true);
+  assert.equal(room.staffReports(() => '')[0].handledAt, 0);
+  assert.equal(room.markHandled('r9', true), false);
+  assert.equal(room.hasReports(), true);
+});
+
+test('the reports of a night that is over can be let go, oldest first, and only those', () => {
+  const { room, tick } = night();
+  assert.equal(room.hasReports(), false);
+  room.report('ana', null, 'old');
+  const oldAt = room.reports()[0].at;
+  tick(1000);
+  room.report('ana', null, 'new');
+  assert.equal(room.forgetReports((at) => at <= oldAt), true);
+  assert.deepEqual(room.reports().map((r) => r.why), ['new']);
+  assert.equal(room.forgetReports((at) => at <= oldAt), false);
+  assert.equal(room.forgetReports(() => true), true);
+  assert.equal(room.hasReports(), false);
 });
 
 // ---------- who changed it, and when (spec §2) ----------

@@ -657,7 +657,7 @@
       ]
     },
     {
-      "name": "the check stays lit; a press there says PAIR ON YOUR PHONE in place of ON YOUR PHONE? and a hold does nothing; the letters after it light, even with the same code",
+      "name": "the check stays lit; a press there says PAIR ON YOUR PHONE in place of ON YOUR PHONE? and a SIDE hold does nothing; the letters after it light, even with the same code",
       "steps": [
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
         { "at": "0", "show": "PAIRING" },
@@ -668,6 +668,64 @@
         { "at": "130000+HOLD_MS", "key2": "up", "face": { "small": "PAIR ON YOUR PHONE" } },
         { "at": "130000+HINT_MS", "face": { "big": "27", "small": "ON YOUR PHONE?" } },
         { "at": "140000", "show": "PAIRING", "sounds": ["fall"], "face": { "big": "KXRT", "small": "", "light": "LIGHT_PAIR" } }
+      ]
+    },
+    {
+      "name": "FACE held on the check turns it away: KEEP HOLDING from BAR_MS, and at HOLD_MS the number it shows goes to the relay; the letters that answer play fall",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "PAIRING" },
+        { "at": "1000", "show": "CHECK", "sounds": ["ask"] },
+        { "at": "5000", "key1": "down", "sounds": ["tick"], "face": { "big": "27", "small": "PAIR ON YOUR PHONE", "bar": -1, "light": "LIGHT_PAIR" } },
+        { "at": "5000+BAR_MS-1", "face": { "small": "PAIR ON YOUR PHONE", "bar": -1 } },
+        { "at": "5000+BAR_MS", "face": { "big": "27", "small": "KEEP HOLDING", "bar": 20 } },
+        { "at": "5000+HOLD_MS-1", "face": { "small": "KEEP HOLDING", "bar": 99 } },
+        { "at": "5000+HOLD_MS", "sent": [{ "t": "refuse", "number": "27" }], "face": { "big": "27", "small": "PAIR ON YOUR PHONE", "bar": -1 } },
+        { "at": "5000+HOLD_MS+100", "key1": "up", "face": { "big": "27", "small": "PAIR ON YOUR PHONE", "bar": -1 } },
+        { "at": "9000", "show": "PAIRING", "with": { "code": "MQTV" }, "sounds": ["fall"], "face": { "big": "MQTV", "code": "MQTV", "small": "", "light": "LIGHT_PAIR" } }
+      ]
+    },
+    {
+      "name": "a FACE press on the check only says where to go; a FACE hold whose check is gone before HOLD_MS ends with it, and is no NOT NOW; the next check can be turned away",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "PAIRING" },
+        { "at": "1000", "show": "CHECK", "sounds": ["ask"] },
+        { "at": "5000", "press": 1, "face": { "big": "27", "small": "PAIR ON YOUR PHONE", "bar": -1 } },
+        { "at": "5000+HINT_MS", "face": { "big": "27", "small": "ON YOUR PHONE?" } },
+        { "at": "10000", "key1": "down", "sounds": ["tick"] },
+        { "at": "10000+BAR_MS", "face": { "small": "KEEP HOLDING" } },
+        { "at": "10500", "show": "PAIRING", "with": { "code": "MQTV" }, "sounds": ["fall"], "face": { "big": "MQTV", "bar": -1 } },
+        { "at": "10000+HOLD_MS", "face": { "big": "MQTV", "bar": -1, "light": "LIGHT_PAIR" } },
+        { "at": "10000+HOLD_MS+100", "key1": "up", "face": { "big": "MQTV", "code": "MQTV" } },
+        { "at": "20000", "show": "CHECK", "with": { "big": "58" }, "sounds": ["ask"] },
+        { "at": "21000", "key1": "down", "sounds": ["tick"] },
+        { "at": "21000+HOLD_MS", "sent": [{ "t": "refuse", "number": "58" }] },
+        { "at": "21000+HOLD_MS+100", "key1": "up", "face": { "big": "58" } }
+      ]
+    },
+    {
+      "name": "SIDE pressed during a FACE hold on the check only ticks; the FACE hold still turns the check away, and is no NOT NOW",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "PAIRING" },
+        { "at": "1000", "show": "CHECK", "sounds": ["ask"] },
+        { "at": "5000", "key1": "down", "sounds": ["tick"] },
+        { "at": "5500", "press": 2, "face": { "big": "27", "small": "KEEP HOLDING" } },
+        { "at": "5000+HOLD_MS", "sent": [{ "t": "refuse", "number": "27" }], "face": { "big": "27", "bar": -1 } },
+        { "at": "5000+HOLD_MS+100", "key1": "up", "face": { "big": "27" } }
+      ]
+    },
+    {
+      "name": "a FACE press on the check wakes nothing: paired a moment later, the band rests dark",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "PAIRING" },
+        { "at": "1000", "show": "CHECK", "sounds": ["ask"] },
+        { "at": "2000", "press": 1, "face": { "big": "27", "small": "PAIR ON YOUR PHONE" } },
+        { "at": "2500", "frame": { "t": "paired", "secret": "5ec2e75ec2e75ec2e75ec2e75ec2e75e" } },
+        { "at": "2500", "show": "TEST", "sounds": ["up"] },
+        { "at": "3500", "show": "OFF", "rev": 1, "face": { "big": "", "light": "LIGHT_OFF" } }
       ]
     },
     {
