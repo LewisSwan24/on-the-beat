@@ -1,7 +1,8 @@
 // The phone's line to its room.
 //
-// The relay forgets everything when it restarts, and a person who has been
-// gone longer than its grace period is taken out of the room. So on every
+// The relay carries the night across a restart, but it can come back without
+// it (its file lost, or one a new build cannot read), and a person who has
+// been gone longer than its grace period is taken out of the room. So on every
 // join the phone says again who it is and what it is doing, and the room is
 // rebuilt from the phones — but only as facts marked `again`, which the relay
 // applies only when they are news to it and only when they hide the person

@@ -22,6 +22,9 @@ COPY vendor ./vendor
 RUN npm ci --omit=dev
 COPY relay ./relay
 COPY --from=build /app/dist ./dist
-USER node
+# The night's file is on the volume at /data (fly.toml), which Fly mounts owned by root. So the machine starts as
+# root only to give /data to `node`, then runs the relay as `node`, with exec so Fly's stop signal reaches Node.
+# The build makes the same setpriv call: a missing or refused setpriv fails the build, never the machine.
+RUN setpriv --reuid=node --regid=node --init-groups id -un | grep -qx node
 EXPOSE 8080
-CMD ["node", "relay/server.js"]
+CMD ["sh", "-c", "chown node:node /data 2>/dev/null; exec setpriv --reuid=node --regid=node --init-groups node relay/server.js"]

@@ -364,6 +364,22 @@ test('the venue report log has a ceiling: its newest thousand', () => {
   assert.deepEqual([kept[0].why, kept.at(-1).why], ['report 500', 'report 1499']);
 });
 
+test('a full report log drops handled reports first, oldest first, and the oldest of the rest only when none is handled', () => {
+  const { room } = night();
+  for (let i = 0; i < 1000; i += 1) room.report('ana', null, 'report ' + i);
+  room.markHandled('r3', true);   // 'report 2'
+  room.markHandled('r7', true);   // 'report 6'
+  room.report('ana', null, 'one more');
+  let kept = room.reports().map((r) => r.why);
+  assert.equal(kept.length, 1000);
+  assert.deepEqual([kept.includes('report 2'), kept.includes('report 0'), kept.includes('report 6')], [false, true, true], 'the oldest handled one went');
+  room.report('ana', null, 'and another');
+  kept = room.reports().map((r) => r.why);
+  assert.deepEqual([kept.includes('report 6'), kept.includes('report 0')], [false, true], 'then the next handled one');
+  room.report('ana', null, 'and one more');
+  assert.equal(room.reports()[0].why, 'report 1', 'with none handled, the oldest');
+});
+
 // ---------- what the venue's staff see (staff spec §1) ----------
 
 test('staff see each report newest first, the person as a tag with how often and by how many — never who reported', () => {
@@ -485,4 +501,85 @@ test("two people's revs start far apart, so a rev chosen from one never names th
   const [a, b] = [room.viewFor('ana').me.rev, room.viewFor('ben').me.rev];
   assert.ok(Number.isSafeInteger(a) && Number.isSafeInteger(b));
   assert.notEqual(a, b);
+});
+
+// ---------- restart spec §1: a room carried across a restart ----------
+
+/** A room as a restart brings it back: its dump, through JSON, made again on the same clock. */
+const carried = (room, now) => createRoom({ now, restore: JSON.parse(JSON.stringify(room.dump())) });
+
+test('a room carried across a restart shows everyone what it did, and goes on from where it was', () => {
+  let t = Date.UTC(2026, 8, 29, 11, 0);
+  const now = () => t;
+  const room = createRoom({ now });
+  const ids = ['ana', 'ben', 'cai', 'dan', 'eve'];
+  for (const id of ids) {
+    room.join(id);
+    room.setProfile(id, { name: id.toUpperCase(), contact: '@' + id });
+    room.pick(id, 'track of ' + id);
+  }
+  /** The handle `viewer` is shown for `target`, found by the answer only `target` gave. */
+  const h = (r, viewer, target) => r.viewFor(viewer).wall.find((p) => p.pick === 'track of ' + target).handle;
+  // Ana and Ben meet on SAY HI; both keep, and Ana has said she found him.
+  room.arm('ana', 'hi');
+  room.arm('ben', 'hi');
+  room.wave('ana', h(room, 'ana', 'ben'));
+  t += 1000;
+  const match = room.wave('ben', h(room, 'ben', 'ana'));
+  room.keep('ana', match.id, true);
+  room.keep('ben', match.id, true);
+  room.found('ana', match.id);
+  // Cai waves at Ana, not returned; Dan likes Eve's answer; Eve blocks Cai.
+  room.arm('cai', 'hi');
+  t += 1000;
+  room.wave('cai', h(room, 'cai', 'ana'));
+  room.like('dan', h(room, 'dan', 'eve'));
+  room.block('eve', h(room, 'eve', 'cai'));
+  // Dan reports Ben in his own words, the venue marks it handled, and Dan goes NOT NOW.
+  room.report('dan', h(room, 'dan', 'ben'), 'kept following me');
+  room.markHandled('r1', true);
+  room.setInvisible('dan', true);
+  // Cai leaves: the room keeps his rev, and Eve's block.
+  room.leave('cai');
+
+  const again = carried(room, now);
+  const tag = (id) => 'P-' + id;
+  const same = (why) => {
+    for (const id of ids) {
+      assert.deepEqual(again.viewFor(id), room.viewFor(id), id + "'s view " + why);
+      assert.deepEqual(again.wavesAt(id), room.wavesAt(id), id + "'s waves " + why);
+    }
+    assert.deepEqual(again.staffReports(tag), room.staffReports(tag), "the venue's list " + why);
+  };
+  same('after the restart');
+
+  // From here the two go on alike: Dan back on SAY HI and a match with Ana, a report, Cai back.
+  t += 1000;
+  for (const r of [room, again]) {
+    r.arm('dan', 'hi');
+    r.wave('dan', h(r, 'dan', 'ana'));
+    r.wave('ana', h(r, 'ana', 'dan'));
+    r.report('ana', null, 'a spill by the stairs');
+    r.join('cai');
+  }
+  same('as the night goes on');
+  assert.equal(again.viewFor('dan').matches[0].id, 'm2', 'the next match takes the next id');
+  assert.equal(again.staffReports(tag)[0].id, 'r2', 'the next report takes the next id');
+  assert.equal(again.viewFor('cai').me.rev, room.viewFor('cai').me.rev, "Cai's rev goes on from his tomb");
+});
+
+test('a room carried across a restart drops every clip, and a dance back sent before it still makes the match', () => {
+  const room = createRoom();
+  for (const id of ['ana', 'ben']) room.join(id);
+  room.pick('ben', 'Treasure');
+  room.postClip('ana', 'clip-of-ana');
+  const [onFloor] = room.viewFor('ben').floor;              // Ana dancing, on Ben's floor
+  assert.equal(room.danceBack('ben', onFloor.handle, 'clip-of-ben'), null, 'a yes, not returned yet');
+  assert.equal(JSON.stringify(room.dump()).includes('clip-of'), false, 'no clip ref is written');
+  const again = carried(room, Date.now);
+  assert.equal(again.viewFor('ana').me.clip, null, 'her own clip is gone');
+  assert.deepEqual(again.viewFor('ana').floor, [], "Ben's dance to her went with its clip");
+  const [ben] = again.viewFor('ana').wall;                   // Ben, by his answer
+  const match = again.danceBack('ana', ben.handle, 'clip-of-ana-again');
+  assert.equal(match?.intent, 'dance', "Ben's yes from before the restart still counts");
 });

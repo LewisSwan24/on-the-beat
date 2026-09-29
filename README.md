@@ -54,19 +54,36 @@ flyctl auth login                        # once, in your own terminal
 flyctl deploy --ha=false --remote-only   # built on Fly's builder; the one machine restarts on it
 ```
 
-- **Exactly one machine.** Every room lives in the relay's memory, so a second
-  machine would split phones from their wristbands. `--ha=false` keeps a
-  deploy from starting two; `flyctl scale count 1` puts it back if it ever does.
-- **A deploy is a restart.** Rooms, pairings and clips go with the old
-  process, and phones and wristbands come back as after any restart: a
-  wristband waits with `OPEN YOUR PHONE` until its phone claims it back.
-  Deploy between nights.
+- **Exactly one machine, and one volume.** Every room lives in the relay's
+  memory, so a second machine would split phones from their wristbands.
+  `--ha=false` keeps a deploy from starting two, and a machine with a volume
+  is never given a second; `flyctl scale count 1` puts it back if it ever is.
+- **A deploy carries the night on.** The relay writes the night to
+  `/data/night.json` on the machine's volume within a second of any change,
+  and once more when Fly stops it; the new process reads it back. People keep
+  their rooms, cards, handles, blocks and matches; staff stay signed in with
+  tonight's reports and tags; a wristband goes straight back to its person.
+  The clips on the floor do not survive it, nor a pairing waiting for YES.
+  The file never holds a phone's id, a wristband's secret or a staff token,
+  only their SHA-256; a file from another night is removed unread, and the
+  file goes once the night holds nothing. The log says `night: carried on
+  from /data/night.json — …` in counts.
+- **The volume.** One, made once:
+  `flyctl volumes create night -r syd -s 1 --scheduled-snapshots=false`
+  (1 GB, about US$0.15 a month). No snapshots: nothing of a night is kept
+  past it on Fly's side. A volume is tied to one host: if that drive fails,
+  the machine cannot start anywhere else — make a new volume the same way and
+  deploy, and the night starts empty; staff devices turn their notifications
+  on again at their next sign-in.
 - **Only what the image is built from reaches the builder.** `.dockerignore`
   lets through `package.json`, `package-lock.json`, `vendor/`,
   `vite.config.js`, `app/` and `relay/`, and nothing else: never
   `firmware/src/secrets.h`. The first deploy sent 465 kB.
-- `fly.toml` sets `NIGHT_TZ=Australia/Brisbane` and
-  `CLIENT_IP_HEADER=fly-client-ip` (see Abuse resistance).
+- `fly.toml` sets `NIGHT_TZ=Australia/Brisbane`,
+  `CLIENT_IP_HEADER=fly-client-ip` (see Abuse resistance), and
+  `PUSH_KEYS_FILE=/data/push-keys.json`: the keys staff devices'
+  notifications are signed with, made at the first start and kept on the
+  volume, so a deploy leaves every device's notifications on.
 
 **Showing it with one phone.** `node scripts/crowd.mjs [venue] [how many]`
 puts a few demo people in a venue: they show blue, pick tracks, wave back at
@@ -74,6 +91,13 @@ anyone who waves, like every pick and keep every match. Every one of them has
 `demo` in their name, so a match with one cannot pass for a real person. They
 never dance — a clip from them would be made up. Nothing in the app starts
 them.
+
+**Running a real show night.** `docs/show-night.md` is the operator's
+one-pager: what to carry, the relay health checks before doors, wristband
+triage during the night, marker placement, and what a restart costs
+mid-show. `node scripts/load.mjs` re-measures how many people one machine
+holds — a local-only rig of simulated phones and paired bands on the real
+protocols, never pointed at Fly (*What is not done* has the numbers).
 
 ## The four promises, and where each one is kept
 
@@ -118,7 +142,9 @@ never becomes a match.
 - **`relay/`** — one Node process: the pages, and one room per venue over a
   WebSocket at `/api/ws`. One process on purpose: a host that scales out can
   put two phones at the same gig into two different rooms that share a name.
-  The night is held in memory only; stop the relay and it is gone.
+  The night is held in memory and, with `NIGHT_FILE` set (on Fly), written
+  to that file so a restart carries it on (*Always on*, above); without it,
+  stop the relay and the night is gone.
   - After a change the relay pushes each phone its own `viewFor()`, at
     most every 100 ms a room, so a burst of changes is one push.
   - What each wristband heard of the others and of the markers is kept
@@ -133,14 +159,19 @@ never becomes a match.
     can hold: past that the oldest go first, in whichever room they are.
     Each is served only to someone whose own view shows it (*Abuse
     resistance*, below).
-  - Reports go to the venue's own staff page, `/staff`, live (The staff
-    page, below). The log says only that one came.
+  - Reports go to the venue's own staff page, `/staff`, live, and to its
+    staff devices' notifications (The staff page, below). The log says only
+    that one came.
+  - `relay/push.js` is Web Push on `node:crypto` alone: the relay's own
+    keys, kept in `PUSH_KEYS_FILE`; each payload sealed for one device
+    (RFC 8291); and requests only to the push services' own hosts.
   - `relay/shows.json` is tonight's shows: times, quiet corners to meet at,
     and the set list. A venue nobody listed still gets a room, named by what
     was typed.
 - **`app/`** — React, built by Vite into `dist/`, installable as a PWA.
   - `lib/net.js`: on every join the phone says again what it is (name, armed
-    card, NOT NOW, pick), because the relay may have restarted and forgotten.
+    card, NOT NOW, pick), because the relay may have restarted without its
+    night.
     It asks every two seconds and takes six of silence as a dead socket,
     since a socket can die without ever closing. Actions taken with no signal
     are queued: "Saved. It'll sync when you're out."
@@ -153,6 +184,9 @@ never becomes a match.
     to the night before.
   - `staff.html` and `staff/`: the staff page, a second page of the same
     build, served at `/staff`. It shares nothing with the app.
+    `public/staff-sw.js`, its own service worker, only shows its
+    notifications and opens the page from one; `public/staff.webmanifest`
+    lets an iPhone add it to the Home Screen.
   - `public/sw.js`: keeps the shell so the app opens in a venue with no
     signal. It never keeps the socket, the shows, the clips or the staff
     page.
@@ -170,8 +204,11 @@ Every report reaches the venue's own team at `/staff`
   `STAFF_CODES`: a JSON object of venue id to entry. No passcode is in the
   repository, the shows, a log or the image. A venue with no entry has no
   staff page. A right passcode gives the tab a token until 06:00 at the
-  venue, kept in that tab only, so a reconnect signs in again by itself; at
-  06:00 the page is signed out and asks for the passcode again.
+  venue, kept in that tab only, or on the device once its notifications are
+  on (below), so a reconnect signs in again by itself; at 06:00 the page is
+  signed out and asks for the passcode again. A token belongs to the
+  passcode entry it was made under: change the venue's entry and every
+  sign-in made under the old one ends at the restart that follows.
 - **What staff see.** Each report's time; who it is about, as a staff-only tag
   such as `P-4F2A`, the same all night at that venue and nothing like the
   handles phones are shown, with how many times and by how many different
@@ -182,13 +219,23 @@ Every report reaches the venue's own team at `/staff`
   one on every screen at the venue, and *REOPEN* brings it back.
 - **A new report** flashes the top of the page, counts in the tab's title,
   `(2) Staff · The Roundhouse, Camden · BRUNO MARS`, and plays two short
-  notes once a tap on the page has let it make sound. Nothing reaches a
-  device whose page is closed or asleep: keep it open on a screen that
-  stays awake.
+  notes once a tap on the page has let it make sound.
+- **Notifications, with the page closed or the phone asleep**
+  (`docs/superpowers/specs/2026-09-29-staff-push-design.md`). *NOTIFY THIS
+  DEVICE* under the header turns them on. A notification says *New report ·
+  The Roundhouse, Camden* and *2 open — tap to see them*, never who, where
+  or what was said, and a tap on it opens the list. On Android it works in
+  Chrome as it is; on an iPhone (iOS 16.4 or later), add the page to the
+  Home Screen first (Share, then Add to Home Screen) and turn them on from
+  there. A device with notifications on keeps its sign-in until 06:00, so
+  the tap finds it signed in, and each sign-in after that turns them on
+  again by itself. SIGN OUT reaches the relay: that sign-in, and its
+  notifications, end on every tab that shared it.
 - **Reports last the night.** A venue with a staff page keeps tonight's
   reports even once everyone has left, so a team that signs in later still
-  sees them; at 06:00 they go. A restart or a deploy empties them, as it
-  empties rooms, and signs every staff page out.
+  sees them; at 06:00 they go. A restart or a deploy keeps them, and keeps
+  every staff page signed in, unless its venue's passcode entry changed: the
+  page signs back in with its token.
 
 To give a venue its page, make its line and set it on the relay:
 
@@ -196,9 +243,11 @@ To give a venue its page, make its line and set it on the relay:
 npm run staff-code
 ```
 
-It asks for the venue's show id and a passcode of at least eight characters,
-twice, never shows the passcode, and prints one line such as
-`"roundhouse-bruno-mars": "scrypt$16384$8$1$…"`. Put every venue's line
+It asks for the venue's show id and a passcode of at least twelve
+characters, twice, or Enter for one made for you: three groups of four
+letters and digits, such as `k7m2-q9xr-4twd`, shown once in that terminal
+and kept nowhere. It never shows a passcode you type, and prints one line
+such as `"roundhouse-bruno-mars": "scrypt$16384$8$1$…"`. Put every venue's line
 between braces, separated by commas, in a file outside the repository as
 one line, `STAFF_CODES={"roundhouse-bruno-mars": "scrypt$…"}`, then:
 
@@ -211,6 +260,13 @@ and delete the file. A mistake in `STAFF_CODES` stops the relay starting,
 with the venue named and the entry never printed. Locally,
 `STAFF_CODES='{…}' npm start`; under `npm run dev` the page is
 `http://localhost:5178/staff.html`.
+
+**To sign everyone out at a venue**, or to close a passcode that has
+leaked, make its line again (with the same passcode if it is to stay: the
+salt is new, so the entry is), put it into `STAFF_CODES`, and set the secret
+and deploy as above. The machine restarts, and every sign-in made under the
+old entry ends with it: the page asks for the passcode again, and the
+notifications those sign-ins held stop. The log says how many, and no venue.
 
 ## The wristband
 
@@ -398,9 +454,12 @@ that was taken.
   two-minute grace applies as before. Once they are out, the wrist says
   `OPEN YOUR PHONE` / `TO COME BACK` on a press, and a hold is kept until they
   are back.
-- **After a relay restart** the wristband comes back with its secret and waits
-  for its owner — `OPEN YOUR PHONE` / `OR SWITCH ME OFF`, no letters — until
-  the phone's claim with the same secret pairs it again; a hold meanwhile is
+- **After a relay restart** the wristband comes back with its secret and goes
+  straight back to its person: the relay carried its record across (*Always
+  on*). A relay that comes back without its night — no file, or one another
+  build cannot read — does not know the secret, and the wristband waits for
+  its owner — `OPEN YOUR PHONE` / `OR SWITCH ME OFF`, no letters — until the
+  phone's claim with the same secret pairs it again; a hold meanwhile is
   applied then. Whichever is back first, the secret decides. Nobody by the hour
   or by 06:00, and it shows new letters. A paired wristband away for an hour is
   forgotten, and only then, told so by the relay, does the phone say *Your
@@ -424,7 +483,7 @@ a dead socket. Its two buttons work as above.
 ```
 cd firmware
 pio run -t upload       # build it and flash it over USB
-pio device monitor      # its console: ssid, pass, relay, show, forget, press, hold, face, near, marker
+pio device monitor      # its console: ssid, pass, relay, show, forget, press, hold, face, snap, turn, near, marker
 
 pio run -e m5sticks3 -t upload    # the same, for a StickS3
 ```
@@ -458,6 +517,7 @@ console takes only `show` (its area, its address on the air this boot, the
 beacons sent, lost and refused, and how long the last sweep of the thirteen
 channels took), `press` to light its face, `face` to read back what its
 screen shows (the words, the backlight, and how many pixels are lit),
+`snap` and `turn` as a wristband takes them,
 `power <dBm>` to cap its radio from 2 to 20 dBm for a test (not kept
 across a restart), another `marker`, and `marker off`, which restarts it
 as a wristband. The cap is no smooth stand-in for distance: with the Plus
@@ -468,6 +528,23 @@ what the band draws from USB, the mean since the last `show`. Only the
 USB cable reaches the console, and
 whoever holds the cable holds the band and its buttons anyway; no frame from
 the relay reaches it.
+
+**Which way up.** The face is landscape and reads from one of two sides: the
+USB-C socket to the left of the words, or to their right. The side is held,
+and kept across restarts: `turn usb-left`, the default (worn on the left
+wrist with the socket toward the elbow), or `turn usb-right`; `forget` goes
+back to USB left, and `show` says which. On a StickC Plus a short press of the
+power button turns it over too, read from its AXP192. On a StickS3 only
+`turn` does: its power chip powers the band off or restarts it on a short
+press, before the firmware sees anything. The side is not worked out from
+the accelerometer. That was built and worn on 28 Sep 2026: looking at the
+band as at a watch, the face lay nearly flat, gravity in its plane ran along
+the arm, and across the short side, the one reading in which the two wrists
+differ, it read a tenth to three tenths of a g, and the wrong way, so moving
+to the other wrist never turned it. `snap` sends what the screen shows as
+one line, `snap <W> <H> <base64>`, its pixels RGB565 little-endian row by
+row; every landscape face was looked at through it, and the pairing code
+read back from the picture with jsQR, the scanner the app uses.
 
 - **Everything that decides anything is in `src/band_logic.h`**, plain C++ with
   no hardware in it; `src/main.cpp` is only the screen, the speaker, the two
@@ -645,6 +722,14 @@ the relay reaches it.
 - **Report asks for a few words**, optional and at most 200 characters. The
   canvas's Report is one tap. The owner chose on 28 Sep 2026 to ask, since
   "someone was reported near the bar" alone gives staff little to act on.
+- **The band is landscape.** Revision 6 draws a portrait band with a strap
+  stub above and below. The owner's watch clip holds a Stick across the
+  forearm, long side along the arm, and he chose on 28 Sep 2026 that both
+  bands go landscape: every face is laid out at 240 x 135, sized from the
+  canvas's band turned, with the pairing code on the left and its letters
+  beside it. Which side is up is held, not worked out (see the firmware
+  section). The browser stand-in at `/band` stays portrait, as the canvas
+  draws it.
 
 ## Abuse resistance
 
@@ -658,9 +743,12 @@ was red-teamed and hardened. A red/blue pass found and closed:
   a minute. The address is the real client, so one attacker cannot spend the
   whole room's budget. On Fly.io it is `fly-client-ip`, which Fly's proxy sets
   from the connection it accepted, read only because `CLIENT_IP_HEADER` names
-  it; that the proxy also replaces one a client sends is reported by others,
-  not measured here. Behind the tunnel it is `cf-connecting-ip`, trusted only
-  because the socket is on loopback.
+  it; that the proxy also replaces one a client sends was measured on
+  29 Sep 2026: six sockets that each sent a different `fly-client-ip` still
+  shared one budget of twenty. Behind the tunnel it is `cf-connecting-ip`,
+  trusted only because the socket is on loopback. An IPv6 client counts as
+  its /64, since anyone on a network holds 2^64 addresses of it, and an
+  IPv4-mapped one as the IPv4 address it wraps.
 - **Piling up placeholder claims.** A phone claims a wristband by id and
   secret, which a restarted relay must accept before the wristband is back. A
   claim nothing answers is a placeholder, one per person, forgotten after the
@@ -724,16 +812,31 @@ was red-teamed and hardened. A red/blue pass found and closed:
 - **Rooms that never emptied.** A venue with nobody in it, nobody in its grace
   window, no clip still loading and no wristband still worn is now reclaimed, so
   a long-lived relay does not keep a room object for every venue anyone typed.
-- **A report log without end** is capped at its most recent thousand a
-  venue, and a venue's reports go at 06:00.
+- **A flood of reports.** One phone could send 1,100 reports in 71 s at
+  the pace the frame budget allows, fill a venue's staff list at a thousand,
+  push out a real one and make the relay send that list to staff 633 times
+  (measured on 29 Sep 2026). Now a person may send ten reports an hour and
+  a network sixty, counting every one sent, refused ones too; past either
+  the report is refused, unlogged and unpushed, and the phone says to tell
+  a member of staff. The log is still capped at a thousand a venue, but
+  drops the reports the team has handled first, and a venue's reports go at
+  06:00. The counts are in memory: a restart clears them
+  (`tests/staff.test.js`, `tests/limits.test.js`).
 - **The staff page.** A passcode is kept only as a scrypt entry, and every
   sign-in by passcode counts on the pairing counters, five a socket and
-  twenty an address a minute, its scrypt run off the event loop. A token
-  lasts until 06:00 at its own venue only. A socket is a phone, a wristband
+  twenty an address a minute, its scrypt run off the event loop. At most
+  eight checks run at once: a ninth is refused unheard and counted against
+  nobody, so a crowd of guessers cannot queue behind the four threads that
+  also write the night. A passcode is at least twelve characters, or one
+  the script makes. A token lasts until 06:00 at its own venue only, and
+  only under the passcode entry it was made with, so a changed passcode
+  ends its sign-ins at the restart. A socket is a phone, a wristband
   or staff, never two, including one that joins while its passcode is being
   checked; a staff socket can only mark reports. Staff see a person only as
-  a tag made with a key drawn at start, and never who reported; the relay's
-  log says only which venue and which report. What it cannot tell: someone
+  a tag of six hex digits made with a key drawn at start (kept in the night
+  file, so it survives a restart), and never who reported; the relay's
+  log says only which venue and which report, with anything a stranger could
+  shape in a venue name replaced. What it cannot tell: someone
   with many phones can report one person from each, so `reported 5 times by
   5 people` is a lead for staff to look into, not proof.
 - **A flood of venue joins.** `join` is unthrottled and each new venue is a room
@@ -760,6 +863,25 @@ was red-teamed and hardened. A red/blue pass found and closed:
 - **MIME confusion.** Every served response — the app, a built asset, a clip,
   the shows feed — carries `X-Content-Type-Options: nosniff`, so a browser
   takes the declared type and never guesses one.
+- **Framing, referrers, injected script.** Every response says
+  `Referrer-Policy: no-referrer`, and over https `Strict-Transport-Security`
+  for a year (Fly's proxy says which; not for subdomains, no preload).
+  Every page says `X-Frame-Options: DENY` and `frame-ancestors 'none'`, so no
+  other site can frame it and steal a tap. The staff page also carries a
+  full Content-Security-Policy: its own scripts, styles, worker, manifest
+  and socket, fonts from Google, nothing inline, no plugin, no `<base>`, no
+  form posted elsewhere. It has no inline script or style to allow, and
+  headless Chrome signs in and lists under it with nothing in the console.
+  The phone app has no such policy yet (*What is not done*).
+- **Other sites' pages driving the socket.** The socket used to open for
+  any page's script, so a page a stranger made could send every visitor's
+  browser to the relay, to report, join or try a passcode, from the
+  visitors' own addresses and outside the per-address counters. Now a
+  handshake with an `Origin` is refused (403, before a socket exists)
+  unless it is this site's own host, `file://` (what the wristband's
+  library sends) or the dev server on loopback. A tool that sets no
+  `Origin` is let through, as it always was: the limits above are for it
+  (`tests/origin.test.js`, `tests/server.test.js`).
 - **A clip's address in the wrong hands.** A clip's address used to open it
   for anyone holding it, for its hour, a blocked person included. Now each
   viewer is sent an address of their own — the clip's 96-bit ref and a ticket
@@ -808,9 +930,31 @@ was red-teamed and hardened. A red/blue pass found and closed:
 - **Malformed and hostile frames.** Non-JSON, wrong-typed fields, forged
   handles and unknown message types are all inert: a fuzz barrage of them
   leaves the relay serving and still forming rooms (`tests/server.test.js`).
+- **Reading the night's file.** Whoever reads `/data/night.json` finds no
+  phone's id, no wristband's secret and no staff token, only their SHA-256
+  (and, beside a sign-in, a print of the passcode entry it was made under,
+  from which nothing can be worked back): it signs nobody in, takes no
+  wristband and joins no room. It still holds
+  names, contacts and reporters' words, as the relay's memory does; it is
+  written readable by its owner only, is removed once the night holds
+  nothing, is never read on another night, and Fly keeps no snapshot of it
+  (`tests/restart.test.js`, `tests/deploy.test.js`).
+- **Staff notifications.** The relay calls a push service only at an
+  address on its own hosts: `fcm.googleapis.com`,
+  `android.googleapis.com`, or a name under `push.apple.com`,
+  `push.services.mozilla.com` or `notify.windows.com`. The address must be
+  https on 443 with no user in it. It is checked when a device hands it
+  over and again before every request, the relay never follows a redirect,
+  and it gives up after 10 s, so a staff sign-in cannot aim it anywhere
+  else. A subscription needs a real P-256 key and a 16-byte secret. A venue
+  holds at most 50 and hears at most one push each 10 s. What is sent is
+  sealed for the one device (RFC 8291) and says only the venue and how many
+  are open. The log counts pushes; it never holds an address or a key
+  (`tests/push.test.js`, `tests/staff-push.test.js`).
 
 Each fix is a test in `tests/server.test.js`, `tests/wristband.test.js`,
-`tests/rules.test.js`, `tests/relay-roots.test.js` or the wrist's table of
+`tests/rules.test.js`, `tests/relay-roots.test.js`, `tests/restart.test.js`,
+`tests/push.test.js`, `tests/staff-push.test.js` or the wrist's table of
 cases (`tests/fixtures/wrist-cases.json`), and each was mutation-checked — break the guard and
 exactly its test goes red; where other tests stand on a guard, exactly that
 known set does. A dropped wristband keeps its
@@ -829,13 +973,31 @@ everyone's lists, and a block cuts both directions and outlives leaving.
 
 ## What is not done
 
-- **One machine, and its memory is everything.** The relay has a fixed
-  address now, https://on-the-beat.fly.dev, but every room, pairing and clip
-  lives in one machine's memory: a deploy or any restart empties it, and
-  everyone finds their way back as after any restart. More people than one
-  small machine holds, or a restart nobody notices, needs the rooms kept
-  outside the process first. A phone that used a tunnel address starts over
-  at the fixed one: a browser keeps the app's storage per address.
+- **One machine and one volume.** The relay has a fixed address,
+  https://on-the-beat.fly.dev, and a restart carries the night on through a
+  file on the machine's own volume, but it is still one small machine: more
+  people than it holds needs more than one, and one volume means a failed
+  drive takes the relay down until a new volume is made (*Always on*). Clips
+  are not carried across a restart. A wristband still worn past 06:00 keeps
+  its venue's room, and so last night's matches, in memory and in the file,
+  until it is switched off. A phone that used a tunnel address starts over at
+  the fixed one: a browser keeps the app's storage per address.
+  **How many one machine holds** was measured on 29 Sep 2026 with
+  `scripts/load.mjs` — a local-only rig that fills a venue with simulated
+  phones and paired wristbands speaking the real protocols (join, arm, pick,
+  wave, like, keep, ping, and a band's heard report every 5 s), never
+  touching Fly. The relay's cost grows with the square of a venue's
+  population, since every push works out each person's own view of everyone:
+  a keen room (a wave every 6-14 s a person) cost ~10% of a laptop core
+  (Ryzen 7 5800H) at 50 people, ~40% at 100 and ~93% at 150, and a calm room
+  (a wave a minute or two each) was about five times cheaper. Memory is the
+  harder wall on the small machine: 223 MB at 100 keen people, 278 MB at
+  150, 441 MB at 500 calm ones, against the Fly machine's 256 MB. So
+  **about 100 people a venue on the Fly machine** is the number to plan the
+  door around; past a ceiling the night keeps running, only slower — at 300
+  keen people a wave took 0.57 s to come back instead of 0.15 s, and nobody
+  was dropped. `docs/show-night.md` carries this to the door, with the
+  health checks, band triage and what a restart costs mid-show.
 - **Who is near has not met a crowd.** On 27 Sep 2026 it ran on both real
   bands through the Fly relay, each paired to a stand-in phone on SAY HI with
   a third phone that had no band. Each band joined the Wi-Fi under an address
@@ -909,6 +1071,19 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   bands. A night's worth of battery, and the Plus's face button, are not
   tried. CI builds both envs with PlatformIO on every push — the ESP32 image
   is about 1.2 MB of its 3 MB app partition — and keeps each image to flash.
+- **The band never turns itself, and the StickS3 turns only from a laptop.**
+  Landscape faces run on both real bands (28 Sep 2026): the pairing face,
+  the check, READY, a card and a marker's face were snapped on both or one
+  and looked at, KEEP HOLDING on the Plus only; the same face snapped on
+  either side was the same frame; and the side each was set to came back
+  after a restart. A band moved
+  to the right wrist needs `turn usb-right`, or on a Plus a press of the power
+  button; the owner wears the StickS3 on his left, the default. A press of
+  both buttons at once, or a button in the phone app, would turn a StickS3
+  over at a venue, and both were offered and not taken up. The first check
+  typed at the StickS3 that night ended as it was answered: the band had
+  reconnected, with new letters, while the relay still held its old ones.
+  The two after it paired, and why it reconnected is not known.
 - **The reactions have run on both real bands, but nobody has listened yet.**
   On 26 Sep 2026, driven from their USB consoles through the Fly relay, both
   bands played each reaction where it belongs: `ask` at the check, `up` on
@@ -937,9 +1112,24 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   turned away. A real camera against a real screen, and Chrome on Android's own
   detector, are the next check.
 - **The staff page has not met a venue.** It has run on a laptop, in two
-  tabs beside a phone in the same browser. Nothing reaches a staff device
-  whose page is closed or asleep, and one passcode a venue is shared by its
-  whole team; changing it is a secret set and a restart.
+  tabs beside a phone in the same browser. A notification has reached
+  Chrome on that laptop through Google's push service: Chrome's own records
+  show the push received and decrypted, and *New report · The Roundhouse,
+  Camden* displayed. No phone has had one yet, and no iPhone ever has. On
+  that laptop's Chrome a page cannot see the notifications it shows, so an
+  open staff page does not clear them there; Android is untried. One
+  passcode a venue is shared by its whole team; changing it, or making it
+  again, is a secret set and a restart, which ends every sign-in made under
+  the old one.
+- **The phone app has no Content-Security-Policy.** The staff page has one;
+  the phone app's needs the camera scanner, clips as `blob:` media and
+  Safari's reading of `connect-src` tried on a real phone first, so it gets
+  only the framing rule. **Left as they are** (staff review, 29 Sep 2026):
+  the staff page asks Google for its font, which tells Google a staff
+  device's address and browser; `no staff page` and `wrong code` tell a
+  guesser which venues have one; scrypt's cost stays at 16 MiB a check for a
+  256 MB machine; and a passcode holder can push the 1,000 oldest sign-ins
+  out of the table by signing in a thousand times.
 - **Waves have run on the real bands from their consoles, not yet by hand.**
   On 26 Sep 2026, through the Fly relay, a stand-in phone paired the StickC
   Plus and a scripted one the StickS3, each saying YES only once the band's

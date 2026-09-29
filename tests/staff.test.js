@@ -9,8 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import WebSocket from 'ws';
-import { createRelay, WS_PATH, bandIdOf } from '../relay/server.js';
-import { makeEntry } from '../relay/staff.js';
+import { createRelay, WS_PATH, bandIdOf, personOf } from '../relay/server.js';
+import { checkCode, makeEntry } from '../relay/staff.js';
 import { helpers, newKey, pause } from './relay-harness.js';
 
 const TZ = 'Australia/Brisbane';                     // UTC+10, no daylight saving
@@ -21,12 +21,23 @@ let root;
 let CODES;
 const running = [];
 
+/** Polls until `pred()` holds, or fails after `ms`. */
+async function until(pred, ms = 3000) {
+  const end = Date.now() + ms;
+  while (!pred()) {
+    if (Date.now() > end) throw new Error('timed out');
+    await pause(20);
+  }
+}
+
 before(async () => {
   base = mkdtempSync(join(tmpdir(), 'otb-staff-'));
   root = join(base, 'dist');
   mkdirSync(root);
   writeFileSync(join(root, 'index.html'), '<!doctype html><title>On The Beat</title>');
   writeFileSync(join(root, 'staff.html'), '<!doctype html><title>Staff</title>');
+  mkdirSync(join(root, 'assets'));
+  writeFileSync(join(root, 'assets', 'app-abc123.js'), 'export {};');
   CODES = JSON.stringify({ 'staff-venue': await makeEntry('test-passcode-1'), 'staff-other': await makeEntry('test-passcode-2') });
 });
 
@@ -39,10 +50,10 @@ after(async () => {
 });
 
 let addresses = 0;
-/** A relay of its own, on a clock the test moves, where two venues have a staff page. */
-async function start() {
+/** A relay of its own, on a clock the test moves, where two venues have a staff page. `staffCheck` replaces the passcode check. */
+async function start({ staffCheck } = {}) {
   const clock = { t: EIGHT_PM };
-  const relay = await createRelay({ port: 0, host: '127.0.0.1', root, clock: () => clock.t, nightTz: TZ, staffCodes: CODES });
+  const relay = await createRelay({ port: 0, host: '127.0.0.1', root, clock: () => clock.t, nightTz: TZ, staffCodes: CODES, ...(staffCheck ? { staffCheck } : {}) });
   const h = helpers(() => relay.port);
   running.push({ relay, h });
 
@@ -114,24 +125,60 @@ test('a wrong passcode is refused and counted: past five a socket and twenty an 
   assert.equal((await elsewhere.signIn({ venue: 'staff-venue', code: 'test-passcode-1' })).ok, true, 'another address is not held back');
 });
 
-test('the right passcode signs in with a token, and the list comes at once', async () => {
+test('an IPv6 attacker has one allowance for a whole /64, not one an address', async () => {
   const { staff } = await start();
+  for (const ip of ['2001:db8:1:2::1', '2001:db8:1:2:a::2', '2001:db8:1:2:b::3', '2001:db8:1:2:c::4']) {
+    const s = await staff({ ip });
+    for (let i = 0; i < 5; i += 1) assert.equal((await s.signIn({ venue: 'staff-venue', code: 'wrong ' + i })).why, 'wrong code');
+  }
+  const same = await staff({ ip: '2001:db8:1:2:dead:beef::5' });
+  assert.equal((await same.signIn({ venue: 'staff-venue', code: 'test-passcode-1' })).why, 'too many tries', 'the fifth address in the /64 has none of its own');
+  const apart = await staff({ ip: '2001:db8:1:3::1' });
+  assert.equal((await apart.signIn({ venue: 'staff-venue', code: 'test-passcode-1' })).ok, true, 'another /64 is not held back');
+});
+
+test('at most eight passcode checks run at once: a ninth is refused unheard and does not spend its tries', async () => {
+  const held = [];
+  let open = true;
+  const staffCheck = (entry, code) => (open ? new Promise((resolve) => held.push(() => resolve(checkCode(entry, code)))) : checkCode(entry, code));
+  const { staff } = await start({ staffCheck });
+  const busy = [];
+  for (let i = 0; i < 8; i += 1) {
+    const s = await staff();
+    s.send({ t: 'staff', venue: 'staff-venue', code: 'test-passcode-1' });
+    busy.push(s);
+  }
+  await until(() => held.length === 8);
+  const ninth = await staff();
+  assert.deepEqual(await ninth.signIn({ venue: 'staff-venue', code: 'test-passcode-1' }), { t: 'staff', ok: false, why: 'too many tries' });
+  open = false;
+  held.splice(0).forEach((go) => go());
+  for (const s of busy) await s.until(() => s.answers.length === 1);
+  assert.equal(busy.every((s) => s.answers[0].ok), true, 'the eight were checked as usual');
+  for (let i = 0; i < 5; i += 1) assert.equal((await ninth.signIn({ venue: 'staff-venue', code: 'wrong ' + i })).why, 'wrong code', 'its own five tries are all still there: ' + i);
+  assert.equal((await ninth.signIn({ venue: 'staff-venue', code: 'test-passcode-1' })).why, 'too many tries', 'the sixth is over its own five');
+});
+
+test('the right passcode signs in with a token, and the list comes at once', async () => {
+  const { relay, staff } = await start();
   const s = await staff();
   const a = await s.signIn({ venue: ' Staff-Venue ', code: 'test-passcode-1' });
   assert.equal(a.ok, true);
   assert.equal(a.venue, 'staff-venue', 'the venue as its room is named');
   assert.match(a.token, /^[a-f0-9]{32}$/);
+  assert.equal(a.push, relay.pushKey, 'the key its notifications are signed with');
+  assert.match(relay.pushKey, /^B[A-Za-z0-9_-]{86}$/);
   await s.until(() => s.lists.length === 1);
   assert.deepEqual(s.list(), []);
 });
 
 test('a token signs in again after a reconnect, only at its own venue; a made-up one is expired', async () => {
-  const { staff } = await start();
+  const { relay, staff } = await start();
   const first = await staff();
   const { token } = await first.signIn({ venue: 'staff-venue', code: 'test-passcode-1' });
   first.ws.close();
   const again = await staff();
-  assert.deepEqual(await again.signIn({ venue: 'staff-venue', token }), { t: 'staff', ok: true, venue: 'staff-venue', token });
+  assert.deepEqual(await again.signIn({ venue: 'staff-venue', token }), { t: 'staff', ok: true, venue: 'staff-venue', token, push: relay.pushKey });
   await again.until(() => again.lists.length === 1);
   const elsewhere = await staff();
   assert.equal((await elsewhere.signIn({ venue: 'staff-other', token })).why, 'expired');
@@ -169,7 +216,7 @@ test('a phone or a wristband cannot sign in as staff, and staff cannot act as ei
   s.send({ t: 'report', why: 'from staff' });
   s.send({ t: 'wristband', id: bandIdOf(key), key, v: 2, battery: 50 });
   await pause(300);
-  assert.equal(relay.rooms.get('staff-venue').room.has(me), false, 'no person made');
+  assert.equal(relay.rooms.get('staff-venue').room.has(personOf(me)), false, 'no person made');
   assert.equal(relay.bandCount(), 1, 'no wristband made but the real one');
   assert.equal(relay.rooms.get('staff-venue').room.hasReports(), false, 'no report made');
   assert.equal(s.closed, null, 'still signed in');
@@ -229,7 +276,7 @@ test('a report made after sign-in reaches staff within a second: a tag, how ofte
   await s.until(() => s.list().length === 1);
   assert.ok(Date.now() - sent < 1000, 'within a second');
   const [r] = s.list();
-  assert.match(r.about, /^P-[0-9A-F]{4}$/);
+  assert.match(r.about, /^P-[0-9A-F]{6}$/);
   assert.deepEqual({ ...r, about: 'tag' }, {
     id: 'r1', at: EIGHT_PM, about: 'tag', times: 1, people: 1, bandNow: 'in this room', bandThen: 'in this room',
     fromThen: 'in this room', why: 'followed me to the bar', handledAt: 0,
@@ -332,9 +379,127 @@ test('the relay\'s log says a report came, and never what it says or who made it
   assert.equal(logged.some((l) => l.includes('secret words') || l.includes(ana.me)), false);
 });
 
+test('the log line for a report replaces control, format and separator characters in the venue name, which a stranger typed', async () => {
+  const { phone } = await start();
+  // An escape, a right-to-left override, a line separator (which venueKey folds to a space) and a NUL.
+  const ana = await phone('evil' + String.fromCodePoint(0x1b) + '[31m venue' + String.fromCodePoint(0x202e, 0x2028) + 'x' + String.fromCodePoint(0));
+  const logged = [];
+  const was = console.log;
+  console.log = (...a) => logged.push(a.join(' '));
+  try {
+    ana.send({ t: 'report', why: 'words' });
+    await pause(300);
+  } finally {
+    console.log = was;
+  }
+  assert.deepEqual(logged.filter((l) => l.startsWith('REPORT')), ['REPORT evil?[31m venue? x? r1']);
+});
+
+test('a person may send ten reports an hour: the eleventh is refused, unlogged and unpushed, and an hour later they may again', async () => {
+  const { relay, clock, phone, signedIn } = await start();
+  const s = await signedIn();
+  const ana = await phone('staff-venue');
+  for (let i = 0; i < 10; i += 1) ana.send({ t: 'report', why: 'report ' + i });
+  await s.until(() => s.list().length === 10);
+  const lists = s.lists.length;
+  const logged = [];
+  const was = console.log;
+  console.log = (...a) => logged.push(a.join(' '));
+  try {
+    ana.send({ t: 'report', why: 'the eleventh' });
+    await ana.until((v, p) => p.errors.includes('report refused'));
+    await pause(300);   // a list would have been pushed by now
+  } finally {
+    console.log = was;
+  }
+  assert.equal(logged.some((l) => l.startsWith('REPORT')), false, 'nothing logged for it');
+  assert.equal(s.lists.length, lists, 'no list pushed for it');
+  assert.equal(relay.rooms.get('staff-venue').room.reports().length, 10);
+  clock.t += 3_600_001;
+  ana.send({ t: 'report', why: 'an hour later' });
+  await s.until(() => s.list().length === 11);
+});
+
+test('a network may send sixty reports an hour over everyone on it: the sixty-first is refused, from whoever sends it', async () => {
+  const { relay, phone } = await start();
+  const reports = () => relay.rooms.get('staff-venue').room.reports().length;
+  const people = [];
+  for (let i = 0; i < 7; i += 1) people.push(await phone('staff-venue', { ip: '198.51.100.91' }));
+  for (const p of people.slice(0, 6)) for (let i = 0; i < 10; i += 1) p.send({ t: 'report', why: 'x' });
+  await until(() => reports() === 60);
+  people[6].send({ t: 'report', why: 'the sixty-first' });
+  await people[6].until((v, p) => p.errors.includes('report refused'));
+  assert.equal(reports(), 60);
+  const elsewhere = await phone('staff-venue', { ip: '198.51.100.92' });
+  elsewhere.send({ t: 'report', why: 'another network' });
+  await until(() => reports() === 61);
+});
+
+test('a refused report still counts against its network', async () => {
+  const { relay, phone } = await start();
+  const reports = () => relay.rooms.get('staff-venue').room.reports().length;
+  const ip = '198.51.100.93';
+  const flooder = await phone('staff-venue', { ip });
+  for (let i = 0; i < 15; i += 1) flooder.send({ t: 'report', why: 'x' });   // ten taken, five refused
+  await flooder.until((v, p) => p.errors.length === 5);
+  for (let k = 0; k < 5; k += 1) {
+    const other = await phone('staff-venue', { ip });
+    for (let i = 0; i < 9; i += 1) other.send({ t: 'report', why: 'x' });   // forty-five more: sixty sent in all
+  }
+  await until(() => reports() === 55);
+  const last = await phone('staff-venue', { ip });
+  last.send({ t: 'report', why: 'the sixty-first sent' });
+  await last.until((v, p) => p.errors.includes('report refused'));
+  assert.equal(reports(), 55, 'fifty-five were taken, and sixty were sent');
+});
+
 test('the relay serves the staff page at /staff, and the app everywhere else', async () => {
   const { relay } = await start();
   const get = async (path) => (await fetch('http://127.0.0.1:' + relay.port + path)).text();
   for (const path of ['/staff', '/staff/', '/staff?venue=x']) assert.match(await get(path), /<title>Staff<\/title>/, path);
   for (const path of ['/', '/tonight', '/staffroom', '/staff/x']) assert.match(await get(path), /<title>On The Beat<\/title>/, path);
+});
+
+test('every response carries the security headers, every page is unframeable, and only the staff page has a full policy', async () => {
+  const { relay } = await start();
+  const h = async (path, headers) => (await fetch('http://127.0.0.1:' + relay.port + path, { headers })).headers;
+  for (const path of ['/', '/staff', '/tonight', '/assets/app-abc123.js', '/api/shows', '/clip/nobody/nothing']) {
+    const headers = await h(path);
+    assert.equal(headers.get('referrer-policy'), 'no-referrer', path);
+    assert.equal(headers.get('x-content-type-options'), 'nosniff', path);
+    assert.equal(headers.get('strict-transport-security'), null, path + ' over plain http');
+  }
+  for (const path of ['/', '/tonight', '/index.html']) {
+    const headers = await h(path);
+    assert.equal(headers.get('x-frame-options'), 'DENY', path);
+    assert.equal(headers.get('content-security-policy'), "frame-ancestors 'none'", path);
+  }
+  for (const path of ['/staff', '/staff/', '/staff?venue=x', '/staff.html']) {
+    const headers = await h(path);
+    const policy = headers.get('content-security-policy');
+    assert.equal(headers.get('x-frame-options'), 'DENY', path);
+    for (const directive of ["default-src 'self'", "script-src 'self'", "connect-src 'self' ws: wss:", "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'"]) {
+      assert.ok(policy.split('; ').includes(directive), path + ' lacks ' + directive + ' in ' + policy);
+    }
+    assert.doesNotMatch(policy, /unsafe-/, 'no inline script or eval is allowed');
+  }
+  for (const path of ['/assets/app-abc123.js', '/api/shows']) {
+    const headers = await h(path);
+    assert.deepEqual([headers.get('x-frame-options'), headers.get('content-security-policy')], [null, null], path + ' is not a page');
+  }
+  assert.equal((await h('/', { 'x-forwarded-proto': 'https' })).get('strict-transport-security'), 'max-age=31536000');
+  assert.equal((await h('/', { 'x-forwarded-proto': 'https,http' })).get('strict-transport-security'), 'max-age=31536000');
+  assert.equal((await h('/', { 'x-forwarded-proto': 'http' })).get('strict-transport-security'), null);
+});
+
+test('a 503 carries them too, when there is no build to serve', async () => {
+  const bare = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'nowhere'), nightTz: TZ });
+  try {
+    const res = await fetch('http://127.0.0.1:' + bare.port + '/');
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  } finally {
+    await bare.close();
+  }
 });

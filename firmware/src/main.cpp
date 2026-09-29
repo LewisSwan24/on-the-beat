@@ -103,7 +103,10 @@ constexpr uint16_t WHITE = 0xFFFF;
 // The same on both boards, measured on 28 Sep 2026: at rotation 1 the socket is to the right.
 constexpr uint8_t ROTATION[2] = {3, 1};
 
-bool usbRight = false;  // which way up the face reads: held, and turned over by the power button (landscape spec §2)
+// Which way up the face reads: held, and kept (landscape spec §2). On the StickC Plus a short press of the
+// power button turns it over, read from its AXP192 (`axp`). Not on the StickS3: its power chip powers the
+// band off or restarts it on a short press (28 Sep 2026), so there only `turn` on the console does.
+bool usbRight = false;
 
 const lgfx::IFont* const BIG[] = {&lgfx::fonts::FreeSansBold18pt7b, &lgfx::fonts::FreeSansBold12pt7b,
                                   &lgfx::fonts::FreeSansBold9pt7b};
@@ -838,7 +841,7 @@ void applyTurn() {
 }
 
 void reportTurn() {
-  Serial.printf("face    landscape, USB %s; the power button turns it over\n", usbRight ? "right" : "left");
+  Serial.printf("face    landscape, USB %s%s\n", usbRight ? "right" : "left", axp ? "; the power button turns it over" : "");
 }
 
 /** The side, kept, and at once: `turn` on the console, or the power button. */
@@ -909,8 +912,8 @@ void help() {
       "  hold face|side          a hold, let go just after it counts\n"
       "  face                    what the screen shows now\n"
       "  snap                    the screen, as one line of base64 for a script\n"
-      "  turn usb-left|usb-right  which side is up (kept); the power button turns it over\n"
-      "  sound <name>         play one of the band's sounds, e.g. sound found\n"
+      "  turn usb-left|usb-right  which side is up (kept); on a StickC Plus the power button turns it over too\n"
+      "  sound <name>        play one of the band's sounds, e.g. sound found\n"
       "  near                    what it last heard of other bands, and whether it beacons\n"
       "  near off|listen|on      stop both, stop only beaconing, or do both again\n"
       "  marker bar|stage|back   make it a marker at the bar, by the stage or out the back (it restarts)");
@@ -922,8 +925,8 @@ void helpMarker() {
       "  press face|side         light its face, as a finger does\n"
       "  face                    what its screen shows now\n"
       "  snap                    the screen, as one line of base64 for a script\n"
-      "  turn usb-left|usb-right  which side is up (kept); the power button turns it over\n"
-      "  power <dBm>           for tests: its radio capped at 2 to 20 dBm, as if further away (not kept)\n"
+      "  turn usb-left|usb-right  which side is up (kept); on a StickC Plus the power button turns it over too\n"
+      "  power <dBm>          for tests: its radio capped at 2 to 20 dBm, as if further away (not kept)\n"
       "  marker bar|stage|back   another area (it restarts)\n"
       "  marker off              a wristband again (it restarts)");
 }
@@ -1172,7 +1175,7 @@ void loop() {
   const uint32_t now = millis();
   console();
   readBattery(now);
-  if (M5.BtnPWR.wasClicked()) turnTo(!usbRight);  // a short press turns the face over, a marker's too
+  if (axp && M5.BtnPWR.wasClicked()) turnTo(!usbRight);  // on the Plus a short press turns the face over, a marker's too
   if (marker) {
     if (M5.BtnA.isPressed() || M5.BtnB.isPressed()) marker->press(now);
     markerTick(now);

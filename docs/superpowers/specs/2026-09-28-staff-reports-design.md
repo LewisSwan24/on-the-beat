@@ -223,3 +223,11 @@ on 28 Sep 2026, after reading the code the spec builds on:
   secret and a restart.
 - **A four-digit tag** could give two people the same tag; with the handful
   of people reported at one venue in a night, 65,536 values make that rare.
+
+## Amended after the security review (29 Sep 2026)
+
+Three things above are out of date; `2026-09-29-staff-security-design.md` has the current rules.
+
+- **§1, the tag.** It is `P-` and six upper-case hex digits, and the key it is made under is kept in the night file, so a restart no longer gives new tags. The Risks entry on a four-digit tag is why: at about 300 reported people at one venue two of them are more likely than not to share one.
+- **§2, staying signed in.** A token from before a restart is refused only when its venue's passcode entry changed since. Under the same entry it signs in again (restart spec, 29 Sep 2026).
+- **§6 and Risks, changing a passcode.** Setting a new entry is a restart, and a token now belongs to the entry it was made under, so every sign-in under the old one ends with it.

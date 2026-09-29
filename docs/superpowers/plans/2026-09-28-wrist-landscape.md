@@ -706,6 +706,8 @@ Needs the owner: ask in Chinese, with AskUserQuestion, before flashing; and ask 
   4. a marker's face: `marker bar`, `press face`, snap, `marker off`.
   Read every PNG. Decode each pairing frame's QR with `qr.mjs`: the address must be the relay's pairing link for the letters shown. Unpair the stand-in when done (it does so itself at the end of its time), and say each band's state.
 
+  *Done 28-29 Sep 2026, after Task 4b.* `snap` reads the sprite, which is the same whichever side is up, so the sides were checked once: the StickS3's pairing face snapped at USB right and again after `turn usb-left` gave byte-identical 240 x 135 frames. Faces, read as PNGs: the pairing face with and without the hint on both (QR decoded to `https://on-the-beat.fly.dev/pair/TVGC` and `/pair/SFJQ`, the letters shown); the check (66 on the StickS3, 58 on the Plus, one line of ON YOUR PHONE? over the number); READY / 100% and READY / SIDE TO CHANGE; a card, HI :) in its colour, on both (so the RGB565 byte order is right); KEEP HOLDING with its bar about 70% along, clear of the words, on the Plus only; a marker's face, MARKER / NEAR THE BAR, on the StickS3, whose marker `show` gave the side too. NOT NOW is a dark face: nothing new is drawn. The Plus's `snap` takes about 4 s over its UART at 115200, the StickS3's about 1.5 s. The first check typed at the StickS3 (TVGC, 92) ended `false` the moment YES was sent: the band had reconnected with new letters (FEZF) while the relay held the old; the relay does not log band sockets, and the two checks after it paired. `faces.py` in the scratchpad runs the check-and-paired sequence against `pairphone.mjs`'s output; `snap.py` takes lines to type first, and `wait:<s>`. Both bands left on Y70, `on it`, USB left, unpaired.
+
 - [x] **Step 5: On the wrist, with him.** Worn in the clip: raising the wrist reads the right way up; turning the arm the other way round turns the face within about half a second; flat on the table and hanging at his side, it does not flicker. Each wrist once. `show` on the Plus before and after five minutes of wear for the power line.
 
   *Worn 28 Sep 2026, and it failed:* on both bands, raising the wrist read the right way up and flat or hanging never flickered, but moving to the other wrist never turned the face. `tiltlog.py` (below) recorded why: looking at the StickS3 on his left wrist as at a watch, socket toward the elbow, the face lay nearly flat (z +0.75 to +0.95 g), gravity in its plane ran along the arm (x -0.5 to -0.7 g), and across the short side read only -0.1 to -0.3 g, the opposite way to a face held upright. A face seen from above has no down that gravity can find, and across the short side is the only reading in which the two wrists differ. He asked whether it was too hard, and chose to hold the side and turn it over by hand. The spec's §2 and §3 were amended; Task 4b builds that.
@@ -776,9 +778,12 @@ Needs the owner: ask in Chinese, with AskUserQuestion, before flashing; and ask 
 - [x] **Step 2: `band_logic.h`** — the turning section is a comment on why the side is held, `turnNamed()` and `turnName(bool)`. Green: 111 of 111.
 - [x] **Step 3: `main.cpp`** — `bool usbRight` replaces `Turning` and the accelerometer; `applyTurn()` turns the display to `ROTATION[usbRight]`; `turnTo(right)` keeps `turn`, applies and reports; `setTurn()` takes the two names; `setup()` reads `turn` with `usb-left` as the fallback, so a kept `auto` reads as USB left; `loop()`, before the marker branch, has `if (M5.BtnPWR.wasClicked()) turnTo(!usbRight);`; `forget` sets USB left; `show` says `face    landscape, USB left; the power button turns it over`; `help()` and `helpMarker()` say `turn usb-left|usb-right  which side is up (kept); the power button turns it over`.
 - [x] **Step 4: Build both, the suite, two mutations** — both `[SUCCESS]`; `npm test` 470 of 470; *the two sides swapped* and *an old auto taken as a side* each turn *the wristband logic passes its own checks* red, restored byte for byte.
-- [ ] **Step 5: Commit, push, and flash both** (he said yes, 28 Sep 2026).
-- [ ] **Step 6: On both bands, with him** — `show` says USB left; a short press of the power button turns the face over and `show` says USB right; a second press turns it back; left on USB right, a restart (`pio device monitor`'s reset, or power) comes back USB right; then back to USB left. If `M5.BtnPWR` never clicks on a board, say so and stop: the gesture is his to choose again.
-- [ ] **Step 7:** Task 4's Step 4 (every face snapped, both sides) and Task 5 go on from here.
+- [x] **Step 5: Commit, push, and flash both** (he said yes, 28 Sep 2026). `335573e`. Both came back `on it`, and the `auto` each had kept read as USB left.
+- [x] **Step 6: On both bands, with him** — `show` says USB left; a short press of the power button turns the face over and `show` says USB right; a second press turns it back; left on USB right, a restart (`pio device monitor`'s reset, or power) comes back USB right; then back to USB left. If `M5.BtnPWR` never clicks on a board, say so and stop: the gesture is his to choose again.
+
+  *28 Sep 2026:* the StickC Plus turned over on a press (its console: `USB right`, then `USB left` 1.2 s later on the second press). The StickS3 powered off or restarted on a short press, from its power chip, and its console never saw a click. Offered a press of both buttons at once or a phone-app button, he chose to leave the StickS3 to `turn` from the laptop and keep the power button on the Plus.
+- [x] **Step 6b: The power button on the Plus only** (`4f604f2`, flashed on his yes; after `turn usb-right` and a reset through the serial port both came back USB right, the StickS3's `show` without the power button, the Plus's with it) — `main.cpp` reads `M5.BtnPWR` only where `axp` (the StickC Plus, whose AXP192 it comes from); `show` adds `; the power button turns it over` only there; `help()` and `helpMarker()` say `turn usb-left|usb-right  which side is up (kept); on a StickC Plus the power button turns it over too`. Build both, `npm test`, commit, push; ask him before flashing both. Then on the Plus a press turns it over and a restart keeps the side; on the StickS3 `turn usb-right`, a restart keeps it, `turn usb-left` back.
+- [x] **Step 7:** Task 4's Step 4 (every face snapped, both sides) and Task 5 go on from here.
 
 ---
 
@@ -787,7 +792,7 @@ Needs the owner: ask in Chinese, with AskUserQuestion, before flashing; and ask 
 **Files:**
 - Modify: `README.md` (*Where this differs from the canvas*; *The wristband's firmware*; *What is not done*)
 
-- [ ] **Step 1: README** — *Where this differs from the canvas*, at the end of the list:
+- [x] **Step 1: README** — *Written 29 Sep 2026, after Task 4b: the blocks below describe the accelerometer and were not used as they stand. The README says instead that the side is held, `turn usb-left|usb-right`, the Plus's power button, why the StickS3 has none, why the accelerometer was dropped with the numbers, `snap`; and under What is not done, that the band never turns itself, that the StickS3 turns only from a laptop, and the one unexplained reconnect.* As planned — *Where this differs from the canvas*, at the end of the list:
 
 ```
 - **The band is landscape, and turns itself.** Revision 6 draws a portrait
@@ -819,7 +824,7 @@ base64, which is how every landscape face was looked at from a laptop.
   worn for a night; each is one constant in `band_logic.h`.
 ```
 
-- [ ] **Step 2: Suite, commit, push** — `npm test` green (`tests/copy.test.js` reads the README).
+- [x] **Step 2: Suite, commit, push** — `npm test` green (470 of 470, 29 Sep 2026) (`tests/copy.test.js` reads the README).
 
 ```bash
 git add README.md
@@ -827,4 +832,4 @@ git commit -m "README: the band sideways" -m "Why the band is landscape, how it 
 git push origin main
 ```
 
-- [ ] **Step 3: Memory** — update `watch-kit` (done, with the measured constants and his wear test) and its line in `MEMORY.md`.
+- [x] **Step 3: Memory** — update `watch-kit` (done, with the measured constants and his wear test) and its line in `MEMORY.md`.

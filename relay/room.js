@@ -36,9 +36,12 @@
 // person reported only as a tag the relay makes, their band then and now, and the reporter's own words — never
 // a name, a contact, a handle, or who reported.
 //
-// It holds nothing past the night: a room is a Map in memory, and when the
-// relay stops it is gone. Pure and synchronous — no sockets, no clock of its
-// own — so the promises can be tested without a network.
+// It holds nothing past the night: a room is a Map in memory. dump() is how
+// the relay writes it to its night file so a restart carries the night on, and
+// that file never outlives the night either
+// (docs/superpowers/specs/2026-09-29-restart-persistence-design.md). Pure and
+// synchronous — no sockets, no clock of its own — so the promises can be
+// tested without a network.
 
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 
@@ -49,7 +52,7 @@ export const SPOTS = ["by the merch stand — it's the quietest corner", 'at the
 const NAME_MAX = 24;
 const CONTACT_MAX = 60;
 const TRACK_MAX = 60;
-const REPORTS_MAX = 1000;      // the newest kept a venue, for its staff page (relay/server.js reportsTo())
+const REPORTS_MAX = 1000;      // the newest kept a venue, handled ones dropped first, for its staff page (relay/server.js reportsTo())
 const WHY_MAX = 200;           // a reporter's few words for the venue team
 
 // Near (docs/superpowers/specs/2026-09-26-wrist-near-design.md §2).
@@ -82,7 +85,12 @@ export function createRoom({
   // people's revs are all but never equal, and a set chosen while a wristband
   // was someone else's cannot name this person's rev and land on them.
   firstRev = () => randomInt(2 ** 31) + 1,
+  // A room's dump() from before a restart: the room comes back as it was
+  // (docs/superpowers/specs/2026-09-29-restart-persistence-design.md §1).
+  restore = null,
 } = {}) {
+  // Handles come from the salt, so a room carried across a restart keeps the one it had.
+  if (restore) salt = restore.salt;
   const people = new Map();   // id -> person
   const blocks = new Map();   // id -> Set of ids they blocked; outlives leave()
   // 'a>b' -> its number: a waved at b (SAY HI). The number is the time it was made, and at least one past
@@ -108,6 +116,22 @@ export function createRoom({
   const listening = new Map();
   const fives = new Map();
   const marked = new Map();
+
+  if (restore) {
+    if (!Number.isInteger(restore.nextReport) || !Number.isInteger(restore.nextMatch)) throw new TypeError('not a room dump');
+    for (const p of restore.people) people.set(p.id, { ...p, clip: null });
+    for (const [id, ids] of restore.blocks) blocks.set(id, new Set(ids));
+    for (const [k, n] of restore.waves) waves.set(k, n);
+    for (const [id, n] of restore.latest) latest.set(id, n);
+    for (const k of restore.likes) likes.add(k);
+    // A dance back comes back as the yes it was; its clip does not.
+    for (const k of restore.dances) dances.set(k, null);
+    for (const m of restore.matches) matches.set(pairKey(m.a, m.b), m);
+    for (const [id, tomb] of restore.tombs) tombs.set(id, tomb);
+    reports.push(...restore.reports);
+    nextReport = restore.nextReport;
+    nextMatch = restore.nextMatch;
+  }
 
   const handle = (viewer, target) =>
     createHash('sha256').update(salt + '|' + viewer + '|' + target).digest('hex').slice(0, 10);
@@ -332,7 +356,11 @@ export function createRoom({
       aboutBand: t ? (people.get(t)?.band ?? null) : null, fromBand: people.get(viewer).band,
       why: typeof why === 'string' ? clip(why, WHY_MAX) : '', handledAt: 0,
     });
-    if (reports.length > REPORTS_MAX) reports.splice(0, reports.length - REPORTS_MAX);
+    // Full: a report the team has handled goes first, the oldest of those, and only then the oldest of the rest.
+    while (reports.length > REPORTS_MAX) {
+      const handled = reports.findIndex((x) => x.handledAt);
+      reports.splice(handled === -1 ? 0 : handled, 1);
+    }
     return true;
   }
 
@@ -581,9 +609,30 @@ export function createRoom({
     };
   }
 
+  /**
+   * What a restart must carry (docs/superpowers/specs/2026-09-29-restart-persistence-design.md §1), as plain data:
+   * no clip ref, and nothing a band heard.
+   */
+  function dump() {
+    return {
+      salt,
+      people: [...people.values()].map((p) => ({ ...p, clip: null })),
+      blocks: [...blocks].map(([id, ids]) => [id, [...ids]]),
+      waves: [...waves],
+      latest: [...latest],
+      likes: [...likes],
+      dances: [...dances.keys()],
+      matches: [...matches.values()],
+      tombs: [...tombs],
+      reports: reports.slice(),
+      nextReport,
+      nextMatch,
+    };
+  }
+
   return {
     join, leave, setProfile, arm, setInvisible, fromPhone, pick, postClip,
-    wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, found, heard, nearTick, viewFor,
+    wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, found, heard, nearTick, viewFor, dump,
     /** For the relay: who is here, so it knows whose view to push. */
     ids: () => [...people.keys()],
     has: (id) => people.has(id),

@@ -6,6 +6,7 @@ import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
 import { meetingOn, newlyFound } from './lib/found.js';
 import { connect } from './lib/net.js';
 import { phaseLine, phaseOf } from './lib/phase.js';
+import { refusalWords } from './lib/refusals.js';
 import * as store from './lib/store.js';
 import { WAVES_HOW, buzzes, newWaves } from './lib/waved.js';
 import { Bar, Home } from './screens/Home.jsx';
@@ -224,7 +225,8 @@ export default function App() {
   // long-lived connection always acts on this render's state.
   const onRelay = useRef(null);
   onRelay.current = (m) => {
-    if (m.t === 'error' && m.why === 'clip refused') say("that didn't go. they may have left, or gone quiet.");
+    const refusal = refusalWords(m);
+    if (refusal) say(refusal);
     if (m.t === 'refused' && m.why === 'changed') refused.current = m.seq;
     if (m.t === 'left') {
       net.current?.forget('leave');

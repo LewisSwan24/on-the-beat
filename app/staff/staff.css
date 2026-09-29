@@ -12,6 +12,7 @@ html, body { background: var(--ink-0); }
 .staff-top.flash { animation: staff-flash 1.4s var(--ease); }
 @keyframes staff-flash { 0%, 35% { background: #3a0f12; border-color: var(--stop); } 100% { background: var(--ink-1); border-color: var(--line); } }
 .staff-note { margin: 4px 2px; }
+.staff-notify { align-self: flex-start; }
 .staff-report { border: 1.5px solid var(--stop); border-radius: 20px; background: var(--ink-2); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
 .staff-report.done { border-color: var(--line-2); opacity: .55; }
 .staff-report .btn-s { align-self: flex-start; }

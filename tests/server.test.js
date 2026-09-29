@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import WebSocket from 'ws';
-import { createRelay, WS_PATH, BAND_ALONE_MS, bandIdOf, venueKey } from '../relay/server.js';
+import { createRelay, WS_PATH, BAND_ALONE_MS, bandIdOf, personOf, venueKey } from '../relay/server.js';
 import { helpers, newKey, pause } from './relay-harness.js';
 
 let relay;
@@ -724,8 +724,8 @@ test('a socket that moves to another venue leaves the first as it goes, though o
   await ana.until((v) => v.near.length === 1);
   ben.send({ t: 'join', venue: 'orphan-to', me: ben.me });
   await ana.until((v) => v.near.length === 0);
-  assert.ok(!relay.rooms.get(venueKey('orphan-from')).room.has(ben.me));
-  assert.ok(relay.rooms.get(venueKey('orphan-to')).room.has(ben.me), 'and is in the second');
+  assert.ok(!relay.rooms.get(venueKey('orphan-from')).room.has(personOf(ben.me)));
+  assert.ok(relay.rooms.get(venueKey('orphan-to')).room.has(personOf(ben.me)), 'and is in the second');
   close(ana, ben);
 });
 
@@ -866,4 +866,24 @@ test('the pages: the app for every route, no way out of dist, and tonight\'s sho
   assert.equal(shows[0].id, 'roundhouse-bruno-mars');
   assert.equal(shows[0].setlist.length, 6);
   assert.equal((await fetch(url('/clip/roundhouse-bruno-mars/nothing'))).status, 404);
+});
+
+/** The status a handshake with this Origin (none when undefined) is answered: 101 when it opens. */
+function handshake(origin) {
+  return new Promise((resolve) => {
+    const ws = new WebSocket('ws://127.0.0.1:' + relay.port + WS_PATH, origin === undefined ? undefined : { origin });
+    ws.on('open', () => { resolve(101); ws.close(); });
+    ws.on('unexpected-response', (req, res) => { resolve(res.statusCode); res.resume(); });
+    ws.on('error', () => {});
+  });
+}
+
+test('a page of another site cannot open the socket; this site\'s pages, the wristband and tools with no Origin can', async () => {
+  const host = '127.0.0.1:' + relay.port;
+  for (const origin of [undefined, 'file://', 'http://' + host, 'http://localhost:5178', 'http://127.0.0.1:1', 'http://[::1]:5178']) {
+    assert.equal(await handshake(origin), 101, String(origin));
+  }
+  for (const origin of ['https://evil.example', 'null', 'http://' + host + '.evil.example', 'http://localhost.evil.example', 'ftp://' + host, 'not a url']) {
+    assert.equal(await handshake(origin), 403, JSON.stringify(origin));
+  }
 });

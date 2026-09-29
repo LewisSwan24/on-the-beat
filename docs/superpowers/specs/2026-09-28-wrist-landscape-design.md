@@ -68,7 +68,7 @@ said "with no setting": that part was measured and dropped (§2).
 - **KEEP HOLDING** keeps its bar along the bottom; **a glow** is drawn over
   the whole face, as now; **a marker's face** is words.
 
-## §2. Which way up: held, and the power button turns it over (`main.cpp`)
+## §2. Which way up: held, and turned over by hand (`main.cpp`)
 
 **Amended 28 Sep 2026, after the bands were worn.** As first approved, this
 section turned the face from the accelerometer: gravity across the short
@@ -91,11 +91,15 @@ The owner then chose (28 Sep 2026) to hold the side and turn it by hand:
 - **The side is held.** Two sides: the USB-C socket to the left of the
   words, or to their right. The default is USB-left: his left wrist, socket
   toward the elbow. It is kept in `Preferences` as `turn`.
-- **A short press of the power button** (on the side; M5Unified reads it
-  from the power chip, the M5PM1 on the StickS3 and the AXP192 on the Plus,
-  as `M5.BtnPWR`) turns the face over and keeps the new side. A long hold
-  still powers the band off, as the chip does on its own. A marker turns
-  over the same way.
+- **On the StickC Plus, a short press of the power button** (on the side;
+  M5Unified reads it from the AXP192 as `M5.BtnPWR`) turns the face over and
+  keeps the new side. A long hold still powers the band off, as the chip
+  does on its own. A marker turns over the same way.
+- **On the StickS3 only `turn` does.** Tried on 28 Sep 2026: a short press of
+  its power button powers the band off or restarts it, from its power chip,
+  before the firmware sees anything. Offered a press of both buttons at
+  once, or a button in the phone app, the owner chose to switch the StickS3
+  from the laptop: he wears it on his left wrist, the default.
 - A face that turns is drawn again at once.
 - **The accelerometer is not read.**
 
@@ -104,8 +108,8 @@ The owner then chose (28 Sep 2026) to hold the side and turn it by hand:
 - **`turn usb-left|usb-right`**: kept in `Preferences` as `turn`, like
   `relay`, and removed by `forget`. Anything else, and a kept `turn` from
   before this amendment (`auto`), is answered with, or read as, USB-left.
-- **`show`** gains a line: `face    landscape, USB left; the power button
-  turns it over`.
+- **`show`** gains a line: `face    landscape, USB left`, and on a StickC
+  Plus `; the power button turns it over` after it.
 - **`snap`**: the frame last pushed, sent over the console as one line,
   `snap <W> <H> <base64 of RGB565, row by row, little-endian>`, for a script
   that makes it an image. It changes nothing on the band. A marker answers
@@ -123,9 +127,10 @@ The owner then chose (28 Sep 2026) to hold the side and turn it by hand:
   and looked at, and the pairing QR decoded from its image by jsQR, the
   scanner the app itself uses.
 - **On the wrist**, after the owner says yes to flashing both: worn in the
-  clip on the left wrist it reads the right way up; a press of the power
-  button turns it over, and again turns it back; the side it was left on
-  holds through a restart; moved about, laid flat or hanging, it never
+  clip on the left wrist it reads the right way up; on the Plus a press of
+  the power button turns it over, and again turns it back, and on the
+  StickS3 `turn` does; the side it was left on holds through a restart;
+  moved about, laid flat or hanging, it never
   turns on its own. On each band.
 
 ## Also to change when this is built
@@ -137,8 +142,7 @@ The owner then chose (28 Sep 2026) to hold the side and turn it by hand:
 
 ## Risks
 
-- **A knock on the power button** turns the face over; another press turns
-  it back. The owner chose a single press over a double one.
-- **The power button is read through the power chip**, which neither band's
-  firmware had read before; it is proved on both boards before it is relied
-  on.
+- **A knock on the Plus's power button** turns the face over; another press
+  turns it back. The owner chose a single press over a double one.
+- **The StickS3 cannot be turned over at a venue** without a laptop. He
+  wears it on the left wrist, the default.

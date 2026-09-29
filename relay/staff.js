@@ -5,7 +5,7 @@
 // owner makes one with `npm run staff-code` (scripts/staff-code.mjs) and gives the relay a JSON object of venue
 // id -> entry as STAFF_CODES. No passcode is kept anywhere.
 
-import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, scrypt, timingSafeEqual } from 'node:crypto';
 
 // 16 MiB and tens of milliseconds a check: dear to guess at, cheap for a team signing in.
 const N = 16384;
@@ -22,6 +22,19 @@ const derive = (code, salt) => new Promise((resolve, reject) => {
 
 /** Is this an entry makeEntry() makes? */
 export const isEntry = (entry) => typeof entry === 'string' && ENTRY.test(entry);
+
+/**
+ * A print of a whole entry, its salt and its hash, for the night file: a sign-in made under one entry does not
+ * survive another, not even the same passcode set again (docs/superpowers/specs/2026-09-29-staff-security-design.md
+ * §1). It can be worked out only by someone who already holds the entry, a secret of the deployment.
+ */
+export const entryPrint = (entry) => createHash('sha256').update('staff-entry|' + entry).digest('hex').slice(0, 32);
+
+// No i, l, o, 0 or 1: they read wrongly aloud and off a phone. 31 characters, twelve of them: about 59 bits.
+const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+
+/** A passcode made for you (npm run staff-code): three groups of four from ALPHABET, joined by dashes. */
+export const madeCode = () => [0, 1, 2].map(() => Array.from({ length: 4 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('')).join('-');
 
 /** An entry for a passcode, with a salt of its own. */
 export async function makeEntry(code, salt = randomBytes(16).toString('hex')) {

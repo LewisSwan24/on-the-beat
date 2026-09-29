@@ -1,7 +1,10 @@
 # ON THE BEAT — the relay on Fly.io: one machine, always on, in Sydney.
 #
 # Exactly one machine: every room lives in its memory, so a second machine
-# would split the phones from their wristbands. Deploy with --ha=false.
+# would split the phones from their wristbands. Deploy with --ha=false. The
+# night is also written to the machine's one volume, so a deploy or a restart
+# carries it on (docs/superpowers/specs/2026-09-29-restart-persistence-design.md),
+# and a machine with a volume is never given a second.
 
 app = "on-the-beat"
 primary_region = "syd"
@@ -12,6 +15,17 @@ primary_region = "syd"
   NIGHT_TZ = "Australia/Brisbane"
   # Fly's proxy is the only way in, and it names each client here.
   CLIENT_IP_HEADER = "fly-client-ip"
+  # The night, written within a second of a change and read back at start.
+  NIGHT_FILE = "/data/night.json"
+  # The keys staff devices' notifications are signed with, made at the first start and kept on the same volume.
+  PUSH_KEYS_FILE = "/data/push-keys.json"
+
+# One 1 GB volume, made once: flyctl volumes create night -r syd -s 1 --scheduled-snapshots=false
+# No snapshots: nothing of a night is kept past it, and last night's file is no use tonight.
+[mounts]
+  source = "night"
+  destination = "/data"
+  scheduled_snapshots = false
 
 [http_service]
   internal_port = 8080

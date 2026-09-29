@@ -6,9 +6,10 @@ export const REFUSED = {
   'no staff page': 'This venue has no staff page yet.',
   'wrong code': 'That passcode is not right.',
   'too many tries': 'Too many tries. Wait a minute, then try again.',
-  expired: 'Signed out: it is a new night, or the relay restarted. Enter the passcode again.',
+  expired: 'Signed out: it is a new night, or the passcode was changed. Enter the passcode again.',
   'bad staff': 'This page could not sign in. Reload it and try again.',
   'too many venues': 'The relay is full right now. Try again in a minute.',
+  'signed out': 'Signed out. Enter the passcode again.',
 };
 
 /** Open reports first, then handled ones; each newest first, as the relay sends them. */
@@ -16,7 +17,7 @@ export const ordered = (reports) => [...reports].sort((a, b) => (a.handledAt ? 1
 
 export const openCount = (reports) => reports.filter((r) => !r.handledAt).length;
 
-/** About someone · P-4F2A · reported 3 times by 2 people, or Something else. */
+/** About someone · P-4F2A91 · reported 3 times by 2 people, or Something else. */
 export function whoLine(r) {
   if (!r.about) return 'Something else';
   const times = r.times === 1 ? 'reported once' : 'reported ' + r.times + ' times';
