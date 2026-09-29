@@ -460,7 +460,7 @@ test('the relay serves the staff page at /staff, and the app everywhere else', a
   for (const path of ['/', '/tonight', '/staffroom', '/staff/x']) assert.match(await get(path), /<title>On The Beat<\/title>/, path);
 });
 
-test('every response carries the security headers, every page is unframeable, and only the staff page has a full policy', async () => {
+test('every response carries the security headers, every page is unframeable, and each page carries its own full policy', async () => {
   const { relay } = await start();
   const h = async (path, headers) => (await fetch('http://127.0.0.1:' + relay.port + path, { headers })).headers;
   for (const path of ['/', '/staff', '/tonight', '/assets/app-abc123.js', '/api/shows', '/clip/nobody/nothing']) {
@@ -469,10 +469,21 @@ test('every response carries the security headers, every page is unframeable, an
     assert.equal(headers.get('x-content-type-options'), 'nosniff', path);
     assert.equal(headers.get('strict-transport-security'), null, path + ' over plain http');
   }
+  // The phone app's policy is the staff page's plus `media-src` for the clips: the recorded five seconds play
+  // from a blob URL the phone made itself, and the floor's from /clip/ (docs/superpowers/specs/2026-09-30-app-csp-design.md).
   for (const path of ['/', '/tonight', '/index.html']) {
     const headers = await h(path);
+    const policy = headers.get('content-security-policy');
     assert.equal(headers.get('x-frame-options'), 'DENY', path);
-    assert.equal(headers.get('content-security-policy'), "frame-ancestors 'none'", path);
+    for (const directive of [
+      "default-src 'self'", "script-src 'self'", "style-src 'self' https://fonts.googleapis.com",
+      "font-src https://fonts.gstatic.com", "img-src 'self' data:", "media-src 'self' blob:",
+      "connect-src 'self' ws: wss:", "worker-src 'self'", "manifest-src 'self'",
+      "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'",
+    ]) {
+      assert.ok(policy.split('; ').includes(directive), path + ' lacks ' + directive + ' in ' + policy);
+    }
+    assert.doesNotMatch(policy, /unsafe-/, 'no inline script or eval is allowed');
   }
   for (const path of ['/staff', '/staff/', '/staff?venue=x', '/staff.html']) {
     const headers = await h(path);

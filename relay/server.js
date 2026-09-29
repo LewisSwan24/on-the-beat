@@ -74,7 +74,17 @@ const STAFF_POLICY = [
   'font-src https://fonts.gstatic.com', "img-src 'self' data:", "connect-src 'self' ws: wss:", "worker-src 'self'",
   "manifest-src 'self'", "base-uri 'none'", "object-src 'none'", "form-action 'self'", "frame-ancestors 'none'",
 ].join('; ');
-const NO_FRAMES = "frame-ancestors 'none'";
+// The phone app's policy (docs/superpowers/specs/2026-09-30-app-csp-design.md): the staff page's, with `media-src`
+// added for the two places a clip plays — the five seconds just recorded, from a blob URL the phone made itself,
+// and the floor's, from /clip/. Nothing else widens: the built app has no inline script or style, no eval and no
+// worker of its own, and the camera scanner needs no allowance here (a MediaStream on a <video> is not a fetched
+// source, and getUserMedia answers to the browser's permission, not to this header).
+const APP_POLICY = [
+  "default-src 'self'", "script-src 'self'", "style-src 'self' https://fonts.googleapis.com",
+  "font-src https://fonts.gstatic.com", "img-src 'self' data:", "media-src 'self' blob:",
+  "connect-src 'self' ws: wss:", "worker-src 'self'", "manifest-src 'self'",
+  "base-uri 'none'", "object-src 'none'", "form-action 'self'", "frame-ancestors 'none'",
+].join('; ');
 
 /** A venue's room key: its name, folded, so "The Roundhouse " and "the roundhouse" meet. */
 export const venueKey = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 80);
@@ -966,9 +976,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     } catch { /* a malformed escape is just a route the app does not have */ }
     if (!existsSync(file)) { res.writeHead(503).end('build the app first: npm run build'); return; }
     const hashed = /[/\\]assets[/\\]/.test(file);
-    // A page nobody may frame, and the staff page under its full policy, chosen by the file that is served (§4).
+    // A page nobody may frame, each under its own full policy, chosen by the file that is served (§4).
     const page = extname(file) === '.html'
-      ? { 'x-frame-options': 'DENY', 'content-security-policy': file === join(dist, 'staff.html') ? STAFF_POLICY : NO_FRAMES }
+      ? { 'x-frame-options': 'DENY', 'content-security-policy': file === join(dist, 'staff.html') ? STAFF_POLICY : APP_POLICY }
       : {};
     res.writeHead(200, {
       'content-type': TYPES[extname(file)] || 'application/octet-stream',

@@ -86,7 +86,13 @@ with `--wave-min 60000 --wave-max 180000`.
   area, press it, and check the face says `MARKER` over its area. A marker
   names an area only when a band hears it at -56 dBm or louder, so a marker
   behind a fridge names nobody; expect only 12-35% of people to carry an
-  area at all, and that is by design — unnamed beats named wrong.
+  area at all, and that is by design — unnamed beats named wrong. The day
+  before, make the placement a number: walk the room once with
+  `scripts/venue-walk.py` (PlatformIO's python) on a carried band, typing
+  each spot's name as you reach it; the page it writes draws every marker's
+  curve against the -56 line that names an area and the -60 line that holds
+  it, so a marker that stays under -56 where its crowd will stand is in the
+  wrong place, or the venue wants a lower floor.
 - **Hand out bands at the door** and pair each with its person's phone: the
   phone types the four letters the band shows; the band then shows a
   two-digit check; the phone says YES **only once its own screen shows the

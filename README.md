@@ -98,6 +98,13 @@ triage during the night, marker placement, and what a restart costs
 mid-show. `node scripts/load.mjs` re-measures how many people one machine
 holds — a local-only rig of simulated phones and paired bands on the real
 protocols, never pointed at Fly (*What is not done* has the numbers).
+`scripts/venue-walk.py` makes the venue walk data instead of impressions:
+run with PlatformIO's python (the one that has pyserial), it types `near`
+at the walking band's console every few seconds, records what each listen
+heard — markers and other bands, in dBm — beside a line the walker types at
+each spot, and draws every source's curve on one page against the two
+loudnesses that name an area (-56 dBm) and hold a name (-60). `--fake` runs
+the whole pipeline with generated listens and no band.
 
 ## The four promises, and where each one is kept
 
@@ -872,7 +879,18 @@ was red-teamed and hardened. A red/blue pass found and closed:
   and socket, fonts from Google, nothing inline, no plugin, no `<base>`, no
   form posted elsewhere. It has no inline script or style to allow, and
   headless Chrome signs in and lists under it with nothing in the console.
-  The phone app has no such policy yet (*What is not done*).
+  The phone app carries one of the same shape (`APP_POLICY`,
+  `docs/superpowers/specs/2026-09-30-app-csp-design.md`), written against
+  what the built app actually loads and one line wider: `media-src 'self'
+  blob:`, since a recorded five seconds plays from a blob URL the phone made
+  itself and the floor's clips play from `/clip/`. The camera needs no
+  allowance in any policy. Headless Chrome walked the app under it — join a
+  show, a socket round trip, a blob in a `<video>` — with no refusal in the
+  console, and headless WebKit, the engine family Safari reads
+  `connect-src` with, opened it with an empty console and a socket join
+  answered. The live machine still serves the framing rule only, until
+  Safari's reading of `connect-src` has been tried on a real iPhone
+  (*What is not done*).
 - **Other sites' pages driving the socket.** The socket used to open for
   any page's script, so a page a stranger made could send every visitor's
   browser to the relay, to report, join or try a passcode, from the
@@ -1044,7 +1062,11 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   is not listed or shown to the venue anywhere. Channels 12 and 13 are
   allowed in Australia and not everywhere: a marker used elsewhere would
   hop 1 to 11. A marker on a laptop's USB may be switched off with it; a
-  marker wants a wall charger.
+  marker wants a wall charger. Since 30 Sep 2026 the walk has its tool:
+  `scripts/venue-walk.py`, which types `near` at the walking band's console
+  every few seconds and draws what it heard — every marker and band, in dBm,
+  against the -56 and -60 lines — so the walk says whether the venue wants
+  another floor, and where.
 - **The firmware has run on two wristbands, for one day.** On 25 Sep
   2026 a StickS3 and an M5StickC Plus joined an Android phone's hotspot and
   reached the relay through a quick tunnel, with that phone and a laptop
@@ -1121,10 +1143,22 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   passcode a venue is shared by its whole team; changing it, or making it
   again, is a secret set and a restart, which ends every sign-in made under
   the old one.
-- **The phone app has no Content-Security-Policy.** The staff page has one;
-  the phone app's needs the camera scanner, clips as `blob:` media and
-  Safari's reading of `connect-src` tried on a real phone first, so it gets
-  only the framing rule. **Left as they are** (staff review, 29 Sep 2026):
+- **The phone app's Content-Security-Policy is written and locally proven,
+  not yet live.** The staff page has run under its policy since 29 Sep 2026.
+  The app's (`APP_POLICY` in `relay/server.js`, spec
+  `docs/superpowers/specs/2026-09-30-app-csp-design.md`) was drafted on
+  30 Sep against the built app's real inventory — its own scripts, styles,
+  worker, manifest and socket, fonts from Google, clips as `blob:` and
+  `/clip/` media, and no camera allowance needed — and headless Chrome ran
+  the whole first-run walk under it with nothing refused. Headless WebKit,
+  the engine family Safari reads `connect-src` with, opened the same page
+  under it too, console empty, a socket join answered one frame each way;
+  that narrows the Safari risk but the real-phone gate stands. Pushing it
+  does not redeploy Fly: the live phone app keeps the framing rule only
+  until a deploy that waits on Safari's reading of
+  `connect-src 'self' ws: wss:` tried on a real phone, which no iPhone has
+  ever run.
+  **Left as they are** (staff review, 29 Sep 2026):
   the staff page asks Google for its font, which tells Google a staff
   device's address and browser; `no staff page` and `wrong code` tell a
   guesser which venues have one; scrypt's cost stays at 16 MiB a check for a

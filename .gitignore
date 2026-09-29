@@ -8,3 +8,4 @@ CLAUDE.md
 # The wristband's build, and the Wi-Fi password someone built into it.
 firmware/.pio/
 firmware/src/secrets.h
+__pycache__/
