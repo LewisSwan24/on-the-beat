@@ -89,3 +89,42 @@ test('the offline shell never keeps the staff page, nor answers for it', () => {
   assert.equal(answered('/'), true, 'the app itself is still kept');
   assert.equal(answered('/tonight'), true);
 });
+
+// The shell worker's own side of the fonts being the page's (scripts/fonts.mjs): it once kept Google's, in a cache of its own.
+function shellWorker(caches) {
+  const listeners = {};
+  const context = {
+    self: { addEventListener: (type, f) => { listeners[type] = f; }, clients: { claim: () => Promise.resolve() } },
+    location: { origin: 'https://otb.test' },
+    URL,
+    caches,
+    fetch: () => new Promise(() => {}),
+  };
+  vm.runInNewContext(readFileSync(root + 'app/public/sw.js', 'utf8'), context);
+  return listeners;
+}
+
+test('the offline shell leaves another host\'s requests to the browser, and keeps the page\'s own fonts for good', () => {
+  const listeners = shellWorker({ open: () => new Promise(() => {}) });
+  const answered = (url) => {
+    let took = false;
+    listeners.fetch({ request: { url, method: 'GET', mode: 'cors' }, respondWith: () => { took = true; } });
+    return took;
+  };
+  assert.equal(answered('https://fonts.googleapis.com/css2?family=Chewy&display=swap'), false);
+  assert.equal(answered('https://fonts.gstatic.com/s/chewy/v18/uK_94ruUb-k-wn52KjI.woff2'), false);
+  assert.equal(answered('https://elsewhere.example/script.js'), false);
+  assert.equal(answered('https://otb.test/assets/chewy-latin-BFhrjfYU.woff2'), true, 'a built asset, kept cache first');
+});
+
+test('the shell that takes over drops the shell and the font cache a phone kept from before', async () => {
+  const dropped = [];
+  const listeners = shellWorker({
+    keys: async () => ['otb-shell-v2', 'otb-fonts-v1', 'otb-shell-v3', 'something-else'],
+    delete: async (key) => { dropped.push(key); },
+  });
+  let done;
+  listeners.activate({ waitUntil: (p) => { done = p; } });
+  await done;
+  assert.deepEqual(dropped.sort(), ['otb-fonts-v1', 'otb-shell-v2', 'something-else']);
+});

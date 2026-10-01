@@ -12,7 +12,15 @@ const page = (name) => fileURLToPath(new URL('./app/' + name, import.meta.url));
 export default defineConfig({
   root: 'app',
   plugins: [react()],
-  build: { outDir: '../dist', emptyOutDir: true, rolldownOptions: { input: { main: page('index.html'), staff: page('staff.html') } } },
+  build: {
+    outDir: '../dist',
+    emptyOutDir: true,
+    // A font is always a file under /assets/, never a data: URL. Vite inlines anything under 4 KB, and the pages' policy
+    // lets fonts come from their own origin and says nothing of data:, so an icon font that shrank under that size (a
+    // handful of icons) would stop drawing on every phone. undefined leaves every other file to the build's default.
+    assetsInlineLimit: (file) => (file.endsWith('.woff2') ? false : undefined),
+    rolldownOptions: { input: { main: page('index.html'), staff: page('staff.html') } },
+  },
   server: {
     port: 5178,
     proxy: {

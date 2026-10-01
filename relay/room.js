@@ -75,6 +75,17 @@ const median = (list) => {
 const pairKey = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
 const clip = (s, n) => String(s ?? '').trim().slice(0, n);
 
+/**
+ * How many handles (a viewer's name for one other person) a relay's rooms may hold between them. A room works each one out
+ * once and keeps it, which is cheaper than hashing every pair every push, but the pairs are the square of the room: measured
+ * 1 Oct 2026 at about 62 bytes each, so 500 people hold 15 MB, 1000 hold 58 MB and 1500 hold 151 MB, where the Fly machine
+ * gives its process 207 MB and nothing stops a venue reaching those sizes. The ledger is the one number every room of a relay
+ * spends from; a pair past it is worked out each time it is asked for, as it was before any were held, and shows the same
+ * handle. 400,000 pairs is about 25 MB: a room of 630 people, or more rooms of fewer.
+ */
+export const HANDLES_MAX = 400_000;
+export const handleLedger = (max = HANDLES_MAX) => ({ held: 0, max });
+
 export function createRoom({
   now = () => Date.now(),
   salt = randomBytes(16).toString('hex'),
@@ -88,6 +99,9 @@ export function createRoom({
   // A room's dump() from before a restart: the room comes back as it was
   // (docs/superpowers/specs/2026-09-29-restart-persistence-design.md §1).
   restore = null,
+  // The budget of held handles this room spends from (handleLedger): a relay gives all its rooms the one, and a room made
+  // alone gets its own.
+  ledger = handleLedger(),
 } = {}) {
   // Handles come from the salt, so a room carried across a restart keeps the one it had.
   if (restore) salt = restore.salt;
@@ -133,8 +147,24 @@ export function createRoom({
     nextMatch = restore.nextMatch;
   }
 
-  const handle = (viewer, target) =>
-    createHash('sha256').update(salt + '|' + viewer + '|' + target).digest('hex').slice(0, 10);
+  // A handle is a function of the salt and the two ids alone, and a push asks for P*P of them (every person's view of
+  // everyone), so each pair is worked out once and held: hashing them again every push was a third of what a full room cost
+  // (docs/show-night.md). leave() lets go of a person's pairs, so what is held never outgrows who is here, and dump() never
+  // writes any of it down: a room carried across a restart works its handles out again, the same ones. What is held is
+  // counted against the ledger, and a pair that finds it spent is worked out and not kept: the handle is the same either way.
+  const handles = new Map();   // viewer -> Map(target -> handle)
+  const handle = (viewer, target) => {
+    let row = handles.get(viewer);
+    const kept = row?.get(target);
+    if (kept !== undefined) return kept;
+    const h = createHash('sha256').update(salt + '|' + viewer + '|' + target).digest('hex').slice(0, 10);
+    if (ledger.held < ledger.max) {
+      if (!row) handles.set(viewer, (row = new Map()));
+      row.set(target, h);
+      ledger.held += 1;
+    }
+    return h;
+  };
 
   /** Which person a viewer means by a handle they were shown, or null. */
   function resolve(viewer, h) {
@@ -171,6 +201,10 @@ export function createRoom({
     const p = people.get(id);
     if (p) tombs.set(id, { rev: p.rev, invisible: p.invisible });
     people.delete(id);
+    // Their handles go with them: the ones they were shown, and everyone else's of them.
+    ledger.held -= handles.get(id)?.size ?? 0;
+    handles.delete(id);
+    for (const row of handles.values()) if (row.delete(id)) ledger.held -= 1;
   }
 
   /**
@@ -443,7 +477,8 @@ export function createRoom({
    * SAY HI's list: who is showing blue to this person, less anyone near hides
    * (below). The phone's list and wavesAt() both come from here.
    */
-  const blue = (id) => seen(id).filter((p) => p.armed === 'hi' && !hidden(id, p.id));
+  const blueOf = (id, others) => others.filter((p) => p.armed === 'hi' && !hidden(id, p.id));
+  const blue = (id) => blueOf(id, seen(id));
 
   // ---------- near ----------
 
@@ -579,7 +614,7 @@ export function createRoom({
         rev: me.rev, seq: me.seq, by: me.by, fresh: me.by === 'relay',
       },
       // SAY HI: who is showing blue, as a band and at most a pick — and whether they waved at you.
-      near: blue(id).map((p) => ({
+      near: blueOf(id, others).map((p) => ({
         ...row(p), pick: p.pick, waved: waves.has(id + '>' + p.id), wavedAtYou: waves.has(p.id + '>' + id),
       })),
       // FIRST SONG?: everyone's answer, liked as an answer, never as a face.
@@ -633,7 +668,8 @@ export function createRoom({
   return {
     join, leave, setProfile, arm, setInvisible, fromPhone, pick, postClip,
     wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, found, heard, nearTick, viewFor, dump,
-    /** For the relay: who is here, so it knows whose view to push. */
+    /** How many handles the room holds now (a count for the tests, so the ones of people who left are seen to go). */
+    handlesHeld: () => { let n = 0; for (const row of handles.values()) n += row.size; return n; },    /** For the relay: who is here, so it knows whose view to push. */
     ids: () => [...people.keys()],
     has: (id) => people.has(id),
     /** The rev a wristband's `set` must name (rule 1), or null for someone not here. */

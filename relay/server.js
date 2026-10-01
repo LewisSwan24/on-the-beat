@@ -14,10 +14,11 @@ import { extname, isAbsolute, join, normalize, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer } from 'ws';
-import { createRoom, INTENTS, MARKS, SPOTS } from './room.js';
+import { createRoom, handleLedger, HANDLES_MAX, INTENTS, MARKS, SPOTS } from './room.js';
 import { MEET_MS, bandShow, cleanCode, newCode } from './band.js';
 import { addressKey } from './address.js';
 import { rolling } from './limits.js';
+import { createMeter, formatLoad, startLine } from './load.js';
 import { nightOf } from './night.js';
 import { originAllowed } from './origin.js';
 import { checkCode, entryPrint, isEntry } from './staff.js';
@@ -32,8 +33,11 @@ export const HEARD_GAP_MS = 5000;             // a wristband may say what it hea
 export const PUSH_EVERY_MS = 10_000;          // a venue's staff devices hear of new reports at most this often
 const MAX_FRAME = 1_600_000;          // a five-second clip, base64, with room to spare
 const CLIP_MAX = 1_200_000;           // bytes of video per clip
-const ROOM_CLIPS_MAX = 60_000_000;    // all clips in one room; the oldest go first
-const ALL_CLIPS_MAX = 96_000_000;     // every room's clips together: what a small always-on machine can hold
+// Every room's clips together, the oldest going first. Fly's machine gives the process 207 MB, and a store of 96 MB was too much
+// of it: in a 207 MB cgroup (scripts/load.mjs --cgroup-mem 207M --clip-kb 375) a hundred phones posting clips reached 178 MB of
+// memory with the old cap and 161 MB with this one, a full store included. A hundred floor clips of five seconds at 600 kbit/s
+// are 37.5 MB, the plan number for a venue. A machine with more memory can hold more.
+const ALL_CLIPS_MAX = 40_000_000;
 const CLIP_TTL_MS = 3_600_000;        // "it loops on the floor for an hour"
 const PING_MS = 15_000;
 const BAND_GRACE_MS = 60_000;         // a wristband that drops keeps its letters this long
@@ -66,12 +70,12 @@ const TYPES = {
 };
 
 // The staff page's policy (docs/superpowers/specs/2026-09-29-staff-security-design.md §4): its own scripts, styles,
-// worker, manifest and socket, fonts from Google and nothing else. It can be this tight because the page has no
-// inline script or style. `ws:` and `wss:` are named beside 'self' because some browsers do not count a WebSocket
-// to the page's own host as 'self'.
-const STAFF_POLICY = [
-  "default-src 'self'", "script-src 'self'", "style-src 'self' https://fonts.googleapis.com",
-  'font-src https://fonts.gstatic.com', "img-src 'self' data:", "connect-src 'self' ws: wss:", "worker-src 'self'",
+// fonts, worker, manifest and socket, and nothing else. It can be this tight because the page has no inline script or
+// style, and because its fonts are files of its own (app/fonts/) rather than Google's. `ws:` and `wss:` are named
+// beside 'self' because some browsers do not count a WebSocket to the page's own host as 'self'.
+export const STAFF_POLICY = [
+  "default-src 'self'", "script-src 'self'", "style-src 'self'",
+  "font-src 'self'", "img-src 'self' data:", "connect-src 'self' ws: wss:", "worker-src 'self'",
   "manifest-src 'self'", "base-uri 'none'", "object-src 'none'", "form-action 'self'", "frame-ancestors 'none'",
 ].join('; ');
 // The phone app's policy (docs/superpowers/specs/2026-09-30-app-csp-design.md): the staff page's, with `media-src`
@@ -79,12 +83,17 @@ const STAFF_POLICY = [
 // and the floor's, from /clip/. Nothing else widens: the built app has no inline script or style, no eval and no
 // worker of its own, and the camera scanner needs no allowance here (a MediaStream on a <video> is not a fetched
 // source, and getUserMedia answers to the browser's permission, not to this header).
-const APP_POLICY = [
-  "default-src 'self'", "script-src 'self'", "style-src 'self' https://fonts.googleapis.com",
-  "font-src https://fonts.gstatic.com", "img-src 'self' data:", "media-src 'self' blob:",
+export const APP_POLICY = [
+  "default-src 'self'", "script-src 'self'", "style-src 'self'",
+  "font-src 'self'", "img-src 'self' data:", "media-src 'self' blob:",
   "connect-src 'self' ws: wss:", "worker-src 'self'", "manifest-src 'self'",
   "base-uri 'none'", "object-src 'none'", "form-action 'self'", "frame-ancestors 'none'",
 ].join('; ');
+// What the phone app was served under before its policy, and still is by a relay told so (APP_CSP=framing-only): the
+// framing rule alone. The policy above is written and was walked in headless Chrome and WebKit, but no iPhone has read
+// its `connect-src` yet, so Fly holds the app to this until one has (docs/superpowers/specs/2026-09-30-app-csp-design.md,
+// "Rollout switch"). The staff page is not in the switch: it has run under its full policy since 29 Sep 2026.
+export const FRAMING_ONLY = "frame-ancestors 'none'";
 
 /** A venue's room key: its name, folded, so "The Roundhouse " and "the roundhouse" meet. */
 export const venueKey = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 80);
@@ -103,14 +112,71 @@ export const personOf = (me) => sha256(me).slice(0, 32);
 const secretHashOf = (secret) => sha256(secret);
 const tokenHashOf = (token) => sha256(token);
 
-/** Tonight's shows, as the venue team wrote them. A venue nobody listed still gets a room. */
-export function loadShows(file) {
+// A name out of a shows file, as a log line may carry it: short, and with no control character.
+const shown = (text) => { const t = plain(text); return t.length > 80 ? t.slice(0, 80) + '...' : t; };
+
+// The fields of a show the phone app draws as text, and the two it reads as a list of text. React cannot draw an object, so one
+// of them typed wrong in a hand-edited file would blank the app for every phone; such an entry is dropped, and the rest stand.
+// Only the id is required: a field that is absent, or null, is the app's own default.
+const SHOW_TEXT = ['act', 'venue', 'doors', 'support', 'break', 'headline', 'end'];
+const SHOW_LISTS = ['spots', 'setlist'];
+
+/** What is wrong with one entry of a shows file, or '' when it stands. A show is named by its id, which is its room's key. */
+const showFault = (s) => {
+  if (!s || typeof s !== 'object') return 'not a show';
+  if (typeof s.id !== 'string') return 'no id';
+  const key = venueKey(s.id);
+  if (!key) return 'the id is empty';
+  if (key !== s.id) return `the id "${shown(s.id)}" should read "${shown(key)}"`;
+  for (const f of SHOW_TEXT) if (s[f] != null && typeof s[f] !== 'string') return `"${f}" must be text`;
+  for (const f of SHOW_LISTS) if (s[f] != null && !(Array.isArray(s[f]) && s[f].every((x) => typeof x === 'string'))) return `"${f}" must be a list of text`;
+  return '';
+};
+
+/** A shows file's entries as { all }, or why there are none as { why }. A byte order mark a Windows editor left is not a fault. */
+function readShowsFile(file) {
+  let text;
   try {
-    const shows = JSON.parse(readFileSync(file, 'utf8'));
-    return Array.isArray(shows) ? shows.filter((s) => s && typeof s.id === 'string' && venueKey(s.id) === s.id) : [];
-  } catch {
-    return [];
+    text = readFileSync(file, 'utf8');
+  } catch (err) {
+    return { why: err?.code === 'ENOENT' ? `no file at ${file}` : `cannot read ${file} (${err?.code ?? err?.message})` };
   }
+  let all;
+  try {
+    all = JSON.parse(text.codePointAt(0) === 0xfeff ? text.slice(1) : text);
+  } catch (err) {
+    return { why: `${file} is not JSON (${plain(err.message)})` };
+  }
+  return Array.isArray(all) ? { all } : { why: `${file} is not a list of shows` };
+}
+
+/** Tonight's shows, as the venue team wrote them. A venue nobody listed still gets a room. Never complains: chooseShows says what is wrong. */
+export function loadShows(file) {
+  return (readShowsFile(file).all ?? []).filter((s) => !showFault(s));
+}
+
+/**
+ * The shows the relay starts with: `file` when it holds at least one usable show, else `bundled`, the list that ships
+ * with the relay, and never none. Every way a file can fail is said once on `say`, with the file's name, and so is every
+ * entry dropped and why, so a typo is found in the log and not in the middle of a night. No `file` named is the ordinary
+ * case and is silent.
+ */
+export function chooseShows(file, bundled, say = (line) => console.log(line)) {
+  if (!file) return loadShows(bundled);
+  const read = readShowsFile(file);
+  const kept = [];
+  (read.all ?? []).forEach((s, i) => {
+    const fault = showFault(s);
+    if (fault) say(`shows: entry ${i + 1} of ${file} dropped: ${fault}`);
+    else kept.push(s);
+  });
+  if (kept.length) {
+    say(`shows: ${kept.length} from ${file}`);
+    return kept;
+  }
+  const shipped = loadShows(bundled);
+  say(`shows: ${read.why ?? `${file} has no usable show`}, using the ${shipped.length} that ship with the relay`);
+  return shipped;
 }
 
 /**
@@ -148,12 +214,28 @@ export function readStaffCodes(text) {
  * (docs/superpowers/specs/2026-09-29-staff-push-design.md §2). `pushAllowed` is for tests: the check a push
  * service's address must pass, in place of the push services' own hosts (§3), and `pushEveryMs` the window (§4).
  * `staffCheck` is for tests: what checks a passcode against its entry, in place of relay/staff.js's checkCode.
+ * `appCsp` is which policy the phone app's pages carry: 'full' (APP_POLICY), the default, or 'framing-only'
+ * (FRAMING_ONLY); the staff page carries its own either way, and anything else throws here.
+ * `loadEveryMs` is how often the relay says its load (relay/load.js), while anyone is on it: 0, the default, says
+ * nothing and starts no meter. `loadSay` is where a line goes, the log by default, and `loadMeter` is for tests: the
+ * reader of the process, in place of relay/load.js's createMeter. `handlesMax` is the most handles all its rooms may hold
+ * between them (HANDLES_MAX, in relay/room.js); a test sets it small.
  */
 export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile, maxBands = 5_000, maxRooms = 5_000,
   clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS, graceMs = GRACE_MS, nightTz,
   clientIpHeader, allClipsMax = ALL_CLIPS_MAX, staffCodes = process.env.STAFF_CODES, nightFile, saveEveryMs = 1000,
-  pushKeysFile, pushAllowed = isPushService, pushEveryMs = PUSH_EVERY_MS, staffCheck = checkCode } = {}) {
+  pushKeysFile, pushAllowed = isPushService, pushEveryMs = PUSH_EVERY_MS, staffCheck = checkCode,
+  loadEveryMs = 0, loadSay = (line) => console.log(line), loadMeter, appCsp = 'full', handlesMax = HANDLES_MAX } = {}) {
   const now = () => clock();
+  // The handles every room of this relay holds are one budget (relay/room.js, handleLedger), so a venue of any size cannot
+  // take the machine's memory with it: past it a handle is worked out each time, and is the same.
+  const handles = handleLedger(handlesMax);
+  // A value that is neither throws here, when the relay starts: a typo that quietly served the wrong policy to every phone
+  // is worse than a machine that says why it will not run.
+  if (appCsp !== 'full' && appCsp !== 'framing-only') {
+    throw new TypeError("appCsp (APP_CSP) must be 'full' or 'framing-only', not " + JSON.stringify(appCsp));
+  }
+  const appPolicy = appCsp === 'full' ? APP_POLICY : FRAMING_ONLY;
   // A misspelt zone throws here, when the relay starts, not at its first sweep in the middle of the night.
   nightOf(now(), nightTz);
   // The venues with a staff page (docs/superpowers/specs/2026-09-28-staff-reports-design.md §2). A mistake in
@@ -167,7 +249,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   const saved = readNight();
   const here = fileURLToPath(new URL('..', import.meta.url));
   const dist = root ?? join(here, 'dist');
-  const shows = loadShows(showsFile ?? process.env.SHOWS ?? join(here, 'relay', 'shows.json'));
+  // The file SHOWS names (fly.toml points it at the volume) when it holds a usable show, else the list that ships with
+  // the relay: a bad file is said in the log and never leaves the relay with none (docs/show-night.md).
+  const shows = chooseShows(showsFile ?? process.env.SHOWS, join(here, 'relay', 'shows.json'));
   const showsJson = JSON.stringify(shows);
   // key -> { room, sockets:Set, clips:Map(ref -> {mime, buf, by, slot, at}), left:Map(id -> timer),
   //          heard:Map(id -> when a phone of theirs last spoke), staff:Set of signed-in staff sockets }
@@ -212,7 +296,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
       // sound: each person's sound switch, as their phone last said it. Leaving forgets it; the grace does not.
       // The room reads the relay's clock: a wave's number is the time it was made, so it only goes up.
-      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), now }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(), sound: new Map(), staff: new Set() });
+      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), now, ledger: handles }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(), sound: new Map(), staff: new Set() });
     }
     return rooms.get(key);
   }
@@ -635,11 +719,18 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     answer({ ok: false, why: 'waiting' });
   }
 
+  /** The video held in memory, all rooms together: what the clip caps are held to, and what the load line says. */
+  function clipBytes() {
+    let n = 0;
+    for (const r of rooms.values()) for (const c of r.clips.values()) n += c.buf.length;
+    return n;
+  }
+
   /**
    * One clip per person per slot: 'floor' for everyone, or 'to:<handle>' for a
-   * dance back. A new one replaces the old; past the room's cap the oldest go,
-   * and so do the oldest anywhere past every room's cap together. A floor clip
-   * that goes is taken off the floor rather than left to 404.
+   * dance back. A new one replaces the old; past every room's cap together the
+   * oldest go, in whichever room. A floor clip that goes is taken off the floor
+   * rather than left to 404.
    */
   function keepClip(r, id, mime, data, slot) {
     const buf = Buffer.from(String(data || ''), 'base64');
@@ -652,12 +743,6 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
     };
     for (const [ref, c] of r.clips) if (c.by === id && c.slot === slot) r.clips.delete(ref);
-    let total = [...r.clips.values()].reduce((n, c) => n + c.buf.length, 0) + buf.length;
-    for (const [ref, c] of [...r.clips].sort((a, b) => a[1].at - b[1].at)) {
-      if (total <= ROOM_CLIPS_MAX) break;
-      drop(r, ref, c);
-      total -= c.buf.length;
-    }
     const every = [...rooms.values()].flatMap((room) => [...room.clips].map(([ref, c]) => [room, ref, c]));
     let all = every.reduce((n, [, , c]) => n + c.buf.length, 0) + buf.length;
     for (const [room, ref, c] of every.sort((a, b) => a[2].at - b[2].at)) {
@@ -978,7 +1063,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const hashed = /[/\\]assets[/\\]/.test(file);
     // A page nobody may frame, each under its own full policy, chosen by the file that is served (§4).
     const page = extname(file) === '.html'
-      ? { 'x-frame-options': 'DENY', 'content-security-policy': file === join(dist, 'staff.html') ? STAFF_POLICY : APP_POLICY }
+      ? { 'x-frame-options': 'DENY', 'content-security-policy': file === join(dist, 'staff.html') ? STAFF_POLICY : appPolicy }
       : {};
     res.writeHead(200, {
       'content-type': TYPES[extname(file)] || 'application/octet-stream',
@@ -1103,6 +1188,28 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     for (const r of rooms.values()) if (r.room.nearTick()) push(r);
   }
   const nearly = setInterval(() => tickNear(), NEAR_TICK_MS);
+  // The relay's own load, said every loadEveryMs while anyone is on it (relay/load.js): counts and sizes, no names. The
+  // meter is read when nobody is too, so the first line after a quiet spell covers its own minute, not everything since.
+  const meter = loadEveryMs > 0 ? (loadMeter ?? createMeter()) : null;
+  function reportLoad() {
+    const sample = meter.sample();
+    const venues = new Set();
+    let phones = 0;
+    let staff = 0;
+    let live = 0;
+    for (const r of rooms.values()) {
+      phones += r.sockets.size;
+      staff += r.staff.size;
+      if (r.sockets.size || r.staff.size) venues.add(r.key);
+    }
+    for (const b of bands.values()) {
+      if (!b.ws) continue;
+      live += 1;
+      if (b.key) venues.add(b.key);
+    }
+    if (phones || staff || live) loadSay(formatLoad({ phones, bands: live, staff, venues: venues.size, ...sample, clips: clipBytes() }));
+  }
+  const loading = meter ? setInterval(reportLoad, loadEveryMs) : null;
   // A venue with nobody in it, nobody in its grace window, no staff signed in, no clip still loading
   // and no wristband still worn holds nothing — so it is let go, or a long-lived
   // relay would keep a room object for every venue anyone ever typed.
@@ -1229,7 +1336,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     try {
       built = {
         rooms: saved.rooms.map((e) => ({
-          key: String(e.key), room: createRoom({ spots: spotsFor(e.key), now, restore: e.room }),
+          key: String(e.key), room: createRoom({ spots: spotsFor(e.key), now, restore: e.room, ledger: handles }),
           sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(e.heard), sound: new Map(e.sound), staff: new Set(),
         })),
         bands: saved.bands.map((e) => Object.assign(makeBand(String(e.id), null), {
@@ -1301,6 +1408,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     server.listen(port, host, () => resolve({
       port: server.address().port,
       rooms,
+      /** How many handles the rooms hold between them now (relay/room.js, handleLedger): a count for the tests. */
+      handlesHeld: () => handles.held,
       /** The public key staff devices subscribe with (base64url): the page has it from its sign-in answer. */
       pushKey: pusher.publicKey,
       /** For tests: run the sweep — clips, wristbands, the band-alone hour, 06:00, old attempts — as if the clock read `at`. */
@@ -1313,6 +1422,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       bandCount: () => bands.size,
       /** For tests: how many venue rooms the relay is holding. */
       roomCount: () => rooms.size,
+      /** For tests: the bytes of video held in memory, every room's clips together. */
+      clipBytes,
       /** For tests: the endpoints a venue's staff devices are held for, oldest first, whatever their night. */
       pushedTo: (key) => [...tokens.values()].filter((t) => t.key === key && t.push).sort((a, b) => a.push.at - b.push.at)
         .map((t) => t.push.endpoint),
@@ -1324,6 +1435,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         clearInterval(sweep);
         clearInterval(lights);
         clearInterval(nearly);
+        clearInterval(loading);
+        meter?.stop();
         clearInterval(keeper);
         for (const w of alerts.values()) clearTimeout(w.timer);
         // Written before a socket closes, so a wristband still worn is written worn (§2).
@@ -1346,6 +1459,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === normalize(process.argv
   // The keys staff devices' notifications are signed with: PUSH_KEYS_FILE, on Fly /data/push-keys.json.
   const pushKeysFile = process.env.PUSH_KEYS_FILE || undefined;
   if (!pushKeysFile) console.log('push: keys in memory only');
+  // How often the relay says its load while anyone is on it: LOAD_EVERY_MS milliseconds, a minute when unset or not a
+  // number a timer can count (Node would run a longer one every millisecond), and 0 for none. The first line says what
+  // this machine allows; docs/show-night.md reads the rest.
+  const loadEveryMs = /^\d+$/.test(process.env.LOAD_EVERY_MS ?? '') && Number(process.env.LOAD_EVERY_MS) <= 2 ** 31 - 1
+    ? Number(process.env.LOAD_EVERY_MS) : 60_000;
+  if (loadEveryMs) console.log(startLine());
+  // The phone app's policy: APP_CSP is 'full' (also when unset or empty) or 'framing-only', the rule the live app ran under
+  // before its policy was tried on an iPhone, which fly.toml keeps until it has been. Anything else stops the start.
+  const appCsp = process.env.APP_CSP || 'full';
   const relay = await createRelay({
     // A number, 0 included (any free port); 8790 when unset.
     port: /^\d+$/.test(process.env.PORT ?? '') ? Number(process.env.PORT) : 8790,
@@ -1353,7 +1475,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === normalize(process.argv
     clientIpHeader: process.env.CLIENT_IP_HEADER ? process.env.CLIENT_IP_HEADER.toLowerCase() : undefined,
     nightFile,
     pushKeysFile,
+    loadEveryMs,
+    appCsp,
   });
+  console.log(appCsp === 'full' ? 'app policy: full' : 'app policy: the framing rule only (APP_CSP=framing-only)');
   console.log('ON THE BEAT relay on http://localhost:' + relay.port + '/');
   // Fly stops the machine with SIGINT on a deploy or a restart, and allows 5 s: the night is written before a
   // socket closes, and the process is gone within 3 s whatever the sockets do

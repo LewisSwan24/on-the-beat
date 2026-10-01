@@ -19,6 +19,13 @@ primary_region = "syd"
   NIGHT_FILE = "/data/night.json"
   # The keys staff devices' notifications are signed with, made at the first start and kept on the same volume.
   PUSH_KEYS_FILE = "/data/push-keys.json"
+  # Tonight's shows, when the venue team has put a file there: edit it, restart the machine, done (docs/show-night.md).
+  # No file there is the ordinary case, and the list that ships with the relay stands.
+  SHOWS = "/data/shows.json"
+  # The phone app's Content-Security-Policy is written and proven in headless Chrome and WebKit, but no iPhone has read its
+  # connect-src yet. Until one has, the app keeps the framing rule it has always had, so a deploy can go out without it:
+  # to turn the policy on, delete this line (or write "full") and change tests/deploy.test.js with it.
+  APP_CSP = "framing-only"
 
 # One 1 GB volume, made once: flyctl volumes create night -r syd -s 1 --scheduled-snapshots=false
 # No snapshots: nothing of a night is kept past it, and last night's file is no use tonight.

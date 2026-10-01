@@ -229,6 +229,31 @@ test("every room's clips together stay under the machine's cap: the oldest go fi
   }
 });
 
+test('left to itself the relay holds 40 MB of video at most: the margin a 207 MB Fly machine needs, measured in a cgroup', async () => {
+  // A hundred floor clips of five seconds at 600 kbit/s are 37.5 MB, so 40 MB is a venue of a hundred on the floor and no
+  // more. In a real 207 MB cgroup (scripts/load.mjs --cgroup-mem 207M --clip-kb 375) a hundred phones posting clips reached
+  // 178 MB of memory with a store held to 96 MB and 161 MB with 40: the cap is the margin. Here two venues of twenty phones
+  // each send 1.1 MB, the way a phone with a busy camera might: 44 MB, so the oldest must go, in either room, and what is
+  // held is whole clips under the cap.
+  const relay = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist') });
+  const h = helpers(() => relay.port);
+  try {
+    const clip = 1_100_000;
+    const phones = [];
+    for (let i = 0; i < 40; i += 1) phones.push(await h.phone(i % 2 ? 'cap-left' : 'cap-right'));
+    for (const p of phones) {
+      p.send({ t: 'clip', mime: 'video/webm', data: randomBytes(clip).toString('base64') });
+      await p.until((v) => v.me.clip);
+    }
+    assert.equal(relay.clipBytes(), 36 * clip, 'the thirty-seventh clip made the oldest go, and the next ones the next');
+    assert.ok(relay.clipBytes() <= 40_000_000);
+    h.close(...phones);
+  } finally {
+    h.cleanup();
+    await relay.close();
+  }
+});
+
 test('a wristband pairs by its four letters, then shows what its person is doing', async () => {
   const band = await wristband();
   assert.equal(band.show.kind, 'pairing');

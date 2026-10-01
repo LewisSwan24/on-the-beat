@@ -4,8 +4,8 @@
 // says is only ever the room's to say, live.
 
 // v2: v1 could have kept the staff page as the shell ('/'), since it keeps every page it fetched there.
-const SHELL = 'otb-shell-v2';
-const FONTS = 'otb-fonts-v1';
+// v3: the fonts are files of the page's own now (under /assets/, kept below), and v2's shell still asked Google for them.
+const SHELL = 'otb-shell-v3';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(['/', '/manifest.webmanifest', '/icon-192.png'])).then(() => self.skipWaiting()));
@@ -13,7 +13,7 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((k) => k !== SHELL && k !== FONTS).map((k) => caches.delete(k))))
+    .then((keys) => Promise.all(keys.filter((k) => k !== SHELL).map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 
@@ -24,16 +24,7 @@ self.addEventListener('fetch', (e) => {
   // The staff page is live or nothing, and never the app's shell.
   if (url.origin === location.origin && ['/staff', '/staff/', '/staff.html'].includes(url.pathname)) return;
 
-  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-    e.respondWith(caches.open(FONTS).then(async (c) => {
-      const hit = await c.match(e.request);
-      if (hit) return hit;
-      const res = await fetch(e.request);
-      c.put(e.request, res.clone());
-      return res;
-    }));
-    return;
-  }
+  // Nothing from another host passes through here: the page asks none, and its policy would refuse one.
   if (url.origin !== location.origin) return;
 
   // Built assets carry their hash in the name, so a cached one is never stale.

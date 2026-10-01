@@ -96,7 +96,7 @@ export function Venue({ shows, loading, chosen, onChoose, onNotAtShow, onBack })
                 <span className="body" style={{ fontWeight: 600, letterSpacing: '.01em' }}>{s.act}</span>
                 <span className="small">{s.venue}</span>
               </span>
-              <span className="label tnum" style={{ flex: 'none' }}>{s.typed ? 'here' : 'doors ' + s.doors}</span>
+              <span className="label tnum" style={{ flex: 'none' }}>{s.typed ? 'here' : s.doors ? 'doors ' + s.doors : ''}</span>
             </button>
           ))}
         </div>

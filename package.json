@@ -12,7 +12,9 @@
     "test": "npm run build && node --test",
     "tunnel": "cloudflared tunnel --url http://localhost:8790",
     "icons": "node scripts/icons.mjs",
-    "staff-code": "node scripts/staff-code.mjs"
+    "fonts": "node scripts/fonts.mjs",
+    "staff-code": "node scripts/staff-code.mjs",
+    "preflight": "node scripts/preflight.mjs"
   },
   "dependencies": {
     "jsqr": "file:vendor/jsqr-1.4.0.tgz",

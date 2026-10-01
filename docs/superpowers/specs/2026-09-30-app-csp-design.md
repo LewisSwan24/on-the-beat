@@ -14,11 +14,13 @@ proof. The rollout gate still stands.
   (`jsQR`, `styles`), and `/sw.js`, registered only in a production build over
   https. No inline script in the built page, no `eval`, no `new Function`, no
   worker of its own — checked in the built bundles, not only in `app/`.
-- **Styles:** one built stylesheet, plus two Google Fonts stylesheets the page
-  links (Chewy, Material Symbols). React sets element styles through the CSSOM,
+- **Styles:** one built stylesheet. React sets element styles through the CSSOM,
   which no policy gates; nothing writes a `<style>` at runtime.
-- **Fonts:** the files those stylesheets name, from `fonts.gstatic.com`. No
-  font or `data:` URL is inlined in the built CSS.
+- **Fonts:** two woff2 files in `/assets/` (Chewy, and Material Symbols cut to the
+  icons the code draws), declared by `@font-face` in that stylesheet. No font or
+  `data:` URL is inlined in the built CSS (`vite.config.js` keeps it so).
+  *Amended 1 Oct 2026:* this was two Google Fonts stylesheets and the files they
+  name from `fonts.gstatic.com` when the policy was written; see `scripts/fonts.mjs`.
 - **Images:** its own icons and manifest. `data:` stays allowed as in the staff
   policy, since Vite may inline a small image into a future build.
 - **Media — the one way the app is wider than the staff page:** a recorded
@@ -37,8 +39,8 @@ proof. The rollout gate still stands.
 
 ## The policy (`APP_POLICY` in `relay/server.js`)
 
-    default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com;
-    font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self' blob:;
+    default-src 'self'; script-src 'self'; style-src 'self';
+    font-src 'self'; img-src 'self' data:; media-src 'self' blob:;
     connect-src 'self' ws: wss:; worker-src 'self'; manifest-src 'self';
     base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'
 
@@ -60,14 +62,44 @@ clips and API answers carry no policy, as before, and `X-Frame-Options: DENY`,
   `connect-src 'self' ws: wss:`. This narrows the Safari risk; it does not
   replace the phone.
 - **Not yet on the live machine.** Pushing this does not redeploy Fly. The
-  policy goes live with the next `flyctl deploy`, and that deploy waits until
-  Safari on a real iPhone has been seen to hold `connect-src 'self' ws: wss:`
-  and open its socket — an iPhone has never run the app. Until then the live
-  phone app keeps the framing rule only, exactly as README's *What is not
-  done* says.
+  policy goes live when Safari on a real iPhone has been seen to hold
+  `connect-src 'self' ws: wss:` and open its socket — an iPhone has never run
+  the app — and `fly.toml` lets it out (*Rollout switch*, below). Until then
+  the live phone app keeps the framing rule only, exactly as README's *What is
+  not done* says.
+
+## Rollout switch
+
+*Added 1 Oct 2026.* Until then the only way to keep the live app on the framing
+rule was not to deploy, which made every other change wait on an iPhone. The
+relay now reads `APP_CSP` at start, and `createRelay` takes it as `appCsp`:
+
+| Value | The phone app's pages carry |
+| --- | --- |
+| unset, empty or `full` | `APP_POLICY`, in full (a laptop, the tests, the tunnel the iPhone is tried over) |
+| `framing-only` | `frame-ancestors 'none'` alone (`FRAMING_ONLY`), what Fly has always served |
+| anything else | nothing: the relay refuses to start and names the two values |
+
+`X-Frame-Options: DENY` is the same either way, the staff page carries its own
+full policy either way (it has run under it since 29 Sep), and files that are not
+pages carry no policy, as before. The start of the log says which is in force,
+`app policy: full` or `app policy: the framing rule only (APP_CSP=framing-only)`,
+and `npm run preflight` reads what the live relay actually sends, noting the
+framing rule as held on purpose.
+
+`fly.toml` says `APP_CSP = "framing-only"`, and `tests/deploy.test.js` pins the
+line. The try on an iPhone needs no deploy (`npm start`, `npm run tunnel`). The
+day it has passed, the policy goes out by deleting the line (or writing
+`"full"`), changing that test with it, and deploying; turning it back off is the
+same edit the other way. A typo stops the relay at start rather than falling back
+quietly: a wrong policy served to every phone is a thing nobody would be told of.
 
 ## Tests
 
 `tests/staff.test.js`, "every response carries the security headers…": both
 pages now assert their full policy, the app's including `media-src 'self'
 blob:` and no `unsafe-` anywhere; non-pages assert they carry no policy.
+`tests/app-csp.test.js` holds the switch: the default and `full`, `framing-only`
+(the staff page untouched), a refused value, and the same read from the
+environment of a relay started as `node relay/server.js`, whose page is
+fetched to prove the value reaches the headers.

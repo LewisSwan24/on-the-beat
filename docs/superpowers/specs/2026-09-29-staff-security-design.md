@@ -173,11 +173,16 @@ resistance*.
   get it:
 
   ```
-  default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com;
-  font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' ws: wss:;
+  default-src 'self'; script-src 'self'; style-src 'self';
+  font-src 'self'; img-src 'self' data:; connect-src 'self' ws: wss:;
   worker-src 'self'; manifest-src 'self'; base-uri 'none'; object-src 'none';
   form-action 'self'; frame-ancestors 'none'
   ```
+
+  *Amended 1 Oct 2026:* `style-src` and `font-src` were `https://fonts.googleapis.com`
+  and `https://fonts.gstatic.com` when this was written, for Chewy. The fonts are
+  files of the page's own now (`app/fonts/`, `scripts/fonts.mjs`), so neither
+  names a host, and a staff device's address and browser are no longer told to Google.
 
   It can be this tight because the page has no inline script or style. Its
   React styles are set through the DOM, which a policy does not block. `ws:`

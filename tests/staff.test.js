@@ -476,8 +476,8 @@ test('every response carries the security headers, every page is unframeable, an
     const policy = headers.get('content-security-policy');
     assert.equal(headers.get('x-frame-options'), 'DENY', path);
     for (const directive of [
-      "default-src 'self'", "script-src 'self'", "style-src 'self' https://fonts.googleapis.com",
-      "font-src https://fonts.gstatic.com", "img-src 'self' data:", "media-src 'self' blob:",
+      "default-src 'self'", "script-src 'self'", "style-src 'self'",
+      "font-src 'self'", "img-src 'self' data:", "media-src 'self' blob:",
       "connect-src 'self' ws: wss:", "worker-src 'self'", "manifest-src 'self'",
       "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'",
     ]) {

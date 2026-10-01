@@ -26,6 +26,8 @@ npm test             # build, then every test
 npm run dev          # Vite on :5178 for working on the app (run `npm run relay` beside it)
 npm run tunnel       # an https address for real phones (cloudflared must be installed)
 npm run staff-code   # one venue's staff passcode, as a line for STAFF_CODES (see The staff page)
+npm run preflight    # is a relay ready for doors? read-only checks; takes another address too
+npm run fonts        # after drawing a new icon: fetch the icon font again, cut to the icons the code draws
 ```
 
 **The night ends at 06:00 at the venue.** `NIGHT_TZ=Australia/Brisbane npm start`
@@ -84,6 +86,20 @@ flyctl deploy --ha=false --remote-only   # built on Fly's builder; the one machi
   `PUSH_KEYS_FILE=/data/push-keys.json`: the keys staff devices'
   notifications are signed with, made at the first start and kept on the
   volume, so a deploy leaves every device's notifications on.
+- **The phone app's policy has a switch.** `APP_CSP` is `full` (the default,
+  also when unset or empty) or `framing-only`, the rule the live app has always
+  run under. `fly.toml` says `framing-only`, so a deploy of main does not carry
+  the app's Content-Security-Policy until an iPhone has tried it (*What is not
+  done*); any other value stops the relay starting, and the first lines of its
+  log say `app policy: …`. The staff page's policy is not in the switch.
+- **The relay says its own load.** Its log (`flyctl logs -a on-the-beat`)
+  carries `load:` lines: one at start, with the ceiling V8 puts on the
+  process's heap and the memory the machine has, and one a minute while
+  anyone is on it — phones, worn wristbands and staff devices counted and
+  never named, then cpu, how late the event loop ran, rss and heap. An empty
+  relay says nothing. `LOAD_EVERY_MS` sets the minute (0 turns it off);
+  `docs/show-night.md` says how to read the lines, and `scripts/load.mjs`
+  reads the same ones from the relay it starts.
 
 **Showing it with one phone.** `node scripts/crowd.mjs [venue] [how many]`
 puts a few demo people in a venue: they show blue, pick tracks, wave back at
@@ -95,9 +111,18 @@ them.
 **Running a real show night.** `docs/show-night.md` is the operator's
 one-pager: what to carry, the relay health checks before doors, wristband
 triage during the night, marker placement, and what a restart costs
-mid-show. `node scripts/load.mjs` re-measures how many people one machine
-holds — a local-only rig of simulated phones and paired bands on the real
-protocols, never pointed at Fly (*What is not done* has the numbers).
+mid-show. `npm run preflight` is the part of its *Before doors* that a
+computer can see, in about two seconds and read-only: it opens the app and
+the staff page, reads the shows, joins and leaves a throwaway venue, checks
+that a page from another site is turned away from the socket, and reads the
+relay's certificate the way a wristband does. It exits 1 if anything fails
+(a note is not a failure), and never touches a pairing or a sign-in.
+`docs/rehearsal-night.md` is the run-sheet for the first night with people:
+every item in *What is not done* that waits on a hand, an ear, an eye or a
+real phone, in the order the day runs, each with its pass line and the bullet
+that records it. `node scripts/load.mjs` re-measures how many people one
+machine holds — a local-only rig of simulated phones and paired bands on the
+real protocols, never pointed at Fly (*What is not done* has the numbers).
 `scripts/venue-walk.py` makes the venue walk data instead of impressions:
 run with PlatformIO's python (the one that has pyserial), it types `near`
 at the walking band's console every few seconds, records what each listen
@@ -162,8 +187,10 @@ never becomes a match.
     minutes, so a locked screen does not cost them their place.
   - Clips are kept in memory, one on the floor per person, for an hour —
     the canvas says "it loops on the floor for an hour", and it does. Every
-    room's clips together stay under 96 MB, what a small always-on machine
-    can hold: past that the oldest go first, in whichever room they are.
+    room's clips together stay under 40 MB, about a hundred floor clips of
+    five seconds, which is what the Fly machine's 207 MB leaves room for
+    (*What is not done*, first bullet): past that the oldest go first, in
+    whichever room they are.
     Each is served only to someone whose own view shows it (*Abuse
     resistance*, below).
   - Reports go to the venue's own staff page, `/staff`, live, and to its
@@ -174,7 +201,11 @@ never becomes a match.
     (RFC 8291); and requests only to the push services' own hosts.
   - `relay/shows.json` is tonight's shows: times, quiet corners to meet at,
     and the set list. A venue nobody listed still gets a room, named by what
-    was typed.
+    was typed. `SHOWS` names a file to use instead (fly.toml sets
+    `/data/shows.json`, on the volume), read at start, so the shows change
+    with a restart and not a deploy (`docs/show-night.md`). A file that is
+    missing or bad leaves this list, and the log says which; a bad entry is
+    dropped and named, and never leaves the relay with no shows.
 - **`app/`** — React, built by Vite into `dist/`, installable as a PWA.
   - `lib/net.js`: on every join the phone says again what it is (name, armed
     card, NOT NOW, pick), because the relay may have restarted without its
@@ -197,6 +228,18 @@ never becomes a match.
   - `public/sw.js`: keeps the shell so the app opens in a venue with no
     signal. It never keeps the socket, the shows, the clips or the staff
     page.
+  - `fonts/`: Chewy and the icon font, files of the page's own (licences in
+    `fonts/LICENSE.md`). Nothing is asked of Google, on a first visit or ever:
+    a venue's network is the one thing nobody controls, and an icon is a word
+    until its font is in. The icon font is cut to the icons the code draws,
+    33 of them in 5.8 KB where the whole set was 324 KB. `npm run fonts`
+    (`scripts/fonts.mjs`) fetches both again from Google Fonts after an icon is
+    added, and `tests/fonts.test.js` fails the suite on an icon drawn that the
+    font lacks, on a form of icon the scan cannot read, and on a font file that
+    is not the one `fonts/fonts.json` lists. The build never inlines a font
+    (`vite.config.js`: a `data:` URL is refused under `font-src 'self'`, and a
+    subset of a handful of icons would be small enough to be inlined), which a
+    test proves by building a tiny one with the real config.
 - **`firmware/`** — the wristband itself, an M5StickC Plus or a StickS3 on a
   strap, built with PlatformIO. See The wristband's firmware, below.
 
@@ -859,6 +902,42 @@ was red-teamed and hardened. A red/blue pass found and closed:
   at 20 a second. A phone or a wristband says about one every two seconds
   and a reconnect about a dozen at once; a socket past its budget is closed
   as `too fast` (4003) before its frame is read. The second review found it.
+- **A venue with no ceiling.** Nothing limits how many people a venue holds:
+  `join` is open, a venue's Wi-Fi puts a whole crowd behind one address (so a
+  limit per address would turn real people away), and the only bound is Fly's
+  2,500 connections. A room costs the square of its people, so one client
+  holding a thousand sockets in one venue pins the CPU (a full round of views
+  took about 4 s at 1000 people on a laptop core). **That is not fixed**, and
+  the machine is not meant for it: about 100 people a venue is what the door
+  is planned around (*What is not done*, first bullet). What the third review
+  (1 Oct 2026, the code since 29 Sep) did fix is that the handle memo had made
+  a room's memory square as well, at about 62 bytes a pair: 58 MB at 1000
+  people and 151 MB at 1500, against the 207 MB the Fly machine gives its
+  process, so a flood that used to stall the relay could now kill it. A
+  relay's rooms now share one budget of 400,000 held pairs (about 25 MB), and a
+  pair past it is worked out each time, as it was before any were held and to
+  the same handle. `tests/room-handles.test.js` and
+  `tests/relay-handles.test.js`.
+- **A shows file typed wrong.** Tonight's shows can come from a file on the
+  volume, and a show whose act is an object where text belongs would have
+  blanked the app for every phone, since React cannot draw one. A show whose
+  act, venue or times are not text, or whose set list or quiet corners are not
+  a list of text, is dropped and named in the log, and the rest stand; only
+  the `id` is required. A show with no `doors` no longer reads "doors
+  undefined" on the picker.
+- **Video that fills the machine.** Every room's clips together were held to
+  96 MB, and nobody had measured that against the machine, because the
+  capacity rig sent no clips. Once it did (1 Oct 2026, in a 207 MB Linux
+  cgroup), a hundred phones posting a clip every 8-20 s took the relay to
+  178 MB of memory, a store near its cap included. The store is now held to
+  40 MB, and the same hundred phones read 158-161 MB with it full. The relay's
+  load line says the video it holds (`clips 38.1 MB`), so a night's log shows
+  the store. **Not fixed, and not a new kind of hole:** one socket may still
+  send clips as fast as its frame budget lets any message through (40 at
+  once, 20 a second, each up to 1.2 MB), which costs the relay each clip's
+  decoding and a push to the room, as a stream of picks does; the store
+  itself cannot pass its cap. `tests/server.test.js` holds the cap, with
+  `tests/relay-load.test.js` for the figure in the load line.
 - **A socket that changes who it is.** A socket that had joined could join
   again as someone else, or at another venue, and the person it had stood
   for stayed in the room with no phone, no grace and no wristband, for as
@@ -875,9 +954,9 @@ was red-teamed and hardened. A red/blue pass found and closed:
   for a year (Fly's proxy says which; not for subdomains, no preload).
   Every page says `X-Frame-Options: DENY` and `frame-ancestors 'none'`, so no
   other site can frame it and steal a tap. The staff page also carries a
-  full Content-Security-Policy: its own scripts, styles, worker, manifest
-  and socket, fonts from Google, nothing inline, no plugin, no `<base>`, no
-  form posted elsewhere. It has no inline script or style to allow, and
+  full Content-Security-Policy: its own scripts, styles, fonts, worker,
+  manifest and socket, nothing inline, no plugin, no `<base>`, no form posted
+  elsewhere. It has no inline script or style to allow, and
   headless Chrome signs in and lists under it with nothing in the console.
   The phone app carries one of the same shape (`APP_POLICY`,
   `docs/superpowers/specs/2026-09-30-app-csp-design.md`), written against
@@ -888,8 +967,9 @@ was red-teamed and hardened. A red/blue pass found and closed:
   show, a socket round trip, a blob in a `<video>` — with no refusal in the
   console, and headless WebKit, the engine family Safari reads
   `connect-src` with, opened it with an empty console and a socket join
-  answered. The live machine still serves the framing rule only, until
-  Safari's reading of `connect-src` has been tried on a real iPhone
+  answered. The live machine still serves the framing rule only, and
+  `fly.toml` holds it there (`APP_CSP = "framing-only"`) until Safari's
+  reading of `connect-src` has been tried on a real iPhone
   (*What is not done*).
 - **Other sites' pages driving the socket.** The socket used to open for
   any page's script, so a page a stranger made could send every visitor's
@@ -1000,22 +1080,48 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   its venue's room, and so last night's matches, in memory and in the file,
   until it is switched off. A phone that used a tunnel address starts over at
   the fixed one: a browser keeps the app's storage per address.
-  **How many one machine holds** was measured on 29 Sep 2026 with
-  `scripts/load.mjs` — a local-only rig that fills a venue with simulated
-  phones and paired wristbands speaking the real protocols (join, arm, pick,
-  wave, like, keep, ping, and a band's heard report every 5 s), never
-  touching Fly. The relay's cost grows with the square of a venue's
-  population, since every push works out each person's own view of everyone:
-  a keen room (a wave every 6-14 s a person) cost ~10% of a laptop core
-  (Ryzen 7 5800H) at 50 people, ~40% at 100 and ~93% at 150, and a calm room
-  (a wave a minute or two each) was about five times cheaper. Memory is the
-  harder wall on the small machine: 223 MB at 100 keen people, 278 MB at
-  150, 441 MB at 500 calm ones, against the Fly machine's 256 MB. So
-  **about 100 people a venue on the Fly machine** is the number to plan the
-  door around; past a ceiling the night keeps running, only slower — at 300
-  keen people a wave took 0.57 s to come back instead of 0.15 s, and nobody
-  was dropped. `docs/show-night.md` carries this to the door, with the
-  health checks, band triage and what a restart costs mid-show.
+  **How many one machine holds** was measured with `scripts/load.mjs` — a
+  local-only rig that fills a venue with simulated phones and paired
+  wristbands speaking the real protocols (join, arm, pick, wave, like, keep,
+  ping, and a band's heard report every 5 s), never touching Fly. The relay's
+  cost grows with the square of a venue's population, since every push works
+  out each person's own view of everyone. On a laptop core (Ryzen 7 5800H,
+  1 Oct 2026) a keen room (a wave every 6-14 s a person) took 16% of the core
+  at 100 people, 34% at 150 and 78% at 200, and pinned it at 250 (89%, the
+  event loop 725 ms late at p99); a calm room (a wave a minute or two each)
+  is about five times cheaper. Until that day about a third of the relay's
+  time went on hashing the same handles again on every push; the room now
+  remembers them (the same day before: 59% at 100, 94% at 150).
+  **Memory is not the wall for the people alone**: in a real 256 MB Linux
+  cgroup (WSL2) Node picked a 259 MB heap limit by itself and held 250 keen
+  people at 127 MB rss and 500 calm ones at 182 MB, none killed. Video is
+  another matter, and that run had none: in a 207 MB cgroup a hundred phones
+  each posting a 375 KB clip every 8-20 s (`--clip-kb`) read 178 MB with the
+  clip store at its old 96 MB cap and 158-161 MB with the 40 MB it has now,
+  and two hundred and fifty of them (a saturated relay, not a plausible
+  crowd) read 232 MB and 209 MB. The cgroup killed none of them, but a Fly VM
+  shares its 207 MB with everything on it, so that margin is the thin one.
+  `node scripts/load.mjs --cgroup-mem 207M` repeats it, in WSL.
+  **The CPU is, and on Fly it is a
+  quota**: a shared-cpu-1x machine runs at 6.25% of a core (5 ms of every 80)
+  once its burst balance, 500 s at most, is spent. Held to that in the
+  cgroup for a minute or two, the relay still paired every band and dropped
+  nobody, but its event loop ran about 0.2 s late at p99 with 50 keen people,
+  about a second late with 100 and two with 150. So **about 100 people a venue
+  on the Fly machine** is still the number to plan the door around, with the
+  quota as its caveat: a keen room of 100 would empty a full balance in about
+  an hour on these figures. `docs/show-night.md` carries the numbers, the
+  arithmetic, the health checks, band triage and what a restart costs
+  mid-show.
+  **Every one of those figures is a laptop's, or a laptop's Linux.** Fly's
+  vCPU is not that core, the cgroup ran Node 22 where Fly runs 24, and the
+  rig's people are not a crowd. The relay says its own load in its log
+  (*Always on*). Its start line on Fly, 1 Oct 2026, read `heap limit 259 MB on
+  a machine with 207 MB`: the VM gives the process 207 of its 256 MB, so 500
+  calm people (182 MB in the cgroup) would be close to the wall there, and
+  100 to 250 are not. Whether the quota bites is still unseen: no night with
+  people has run on it, and the lines to watch are a `cpu` stuck near 6%
+  beside seconds of loop lag.
 - **Who is near has not met a crowd.** On 27 Sep 2026 it ran on both real
   bands through the Fly relay, each paired to a stand-in phone on SAY HI with
   a third phone that had no band. Each band joined the Wi-Fi under an address
@@ -1134,36 +1240,48 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   turned away. A real camera against a real screen, and Chrome on Android's own
   detector, are the next check.
 - **The staff page has not met a venue.** It has run on a laptop, in two
-  tabs beside a phone in the same browser. A notification has reached
-  Chrome on that laptop through Google's push service: Chrome's own records
-  show the push received and decrypted, and *New report · The Roundhouse,
-  Camden* displayed. No phone has had one yet, and no iPhone ever has. On
-  that laptop's Chrome a page cannot see the notifications it shows, so an
-  open staff page does not clear them there; Android is untried. One
-  passcode a venue is shared by its whole team; changing it, or making it
-  again, is a secret set and a restart, which ends every sign-in made under
-  the old one.
+  tabs beside a phone in the same browser, and on the owner's own Android
+  phone. A notification has reached Chrome on that laptop through Google's
+  push service: Chrome's own records show the push received and decrypted,
+  and *New report · The Roundhouse, Camden* displayed. On 30 Sep 2026, with
+  `roundhouse-bruno-mars`'s passcode live on Fly, that phone signed in,
+  NOTIFY THIS DEVICE turned notifications on, and the relay's log counted
+  the push `1 sent, 0 gone, 0 failed`. On the owner's home network the
+  locked screen stayed dark, because Google's last hop to the phone is
+  blocked there; with the phone's VPN on and the staff page closed, the next
+  report's notification arrived as designed. A venue's own network with no
+  VPN is the check that is left, and no iPhone ever has had one. On that
+  laptop's Chrome a page cannot see the notifications it shows, so an open
+  staff page does not clear them there; whether it does on Android was not
+  looked at. One passcode a venue is shared by its whole team; changing it,
+  or making it again, is a secret set and a restart, which ends every
+  sign-in made under the old one.
 - **The phone app's Content-Security-Policy is written and locally proven,
   not yet live.** The staff page has run under its policy since 29 Sep 2026.
   The app's (`APP_POLICY` in `relay/server.js`, spec
   `docs/superpowers/specs/2026-09-30-app-csp-design.md`) was drafted on
   30 Sep against the built app's real inventory — its own scripts, styles,
-  worker, manifest and socket, fonts from Google, clips as `blob:` and
-  `/clip/` media, and no camera allowance needed — and headless Chrome ran
-  the whole first-run walk under it with nothing refused. Headless WebKit,
+  fonts (Google's until 1 Oct 2026, its own files since), worker, manifest and
+  socket, clips as `blob:` and `/clip/` media, and no camera allowance
+  needed — and headless Chrome ran the whole first-run walk under it with
+  nothing refused. Headless WebKit,
   the engine family Safari reads `connect-src` with, opened the same page
   under it too, console empty, a socket join answered one frame each way;
   that narrows the Safari risk but the real-phone gate stands. Pushing it
-  does not redeploy Fly: the live phone app keeps the framing rule only
-  until a deploy that waits on Safari's reading of
-  `connect-src 'self' ws: wss:` tried on a real phone, which no iPhone has
-  ever run.
+  does not redeploy Fly, and a deploy no longer waits on it: `fly.toml` holds
+  the live phone app to the framing rule only (`APP_CSP = "framing-only"`,
+  read by the relay at start) until Safari's reading of
+  `connect-src 'self' ws: wss:` has been tried on a real phone, which no
+  iPhone has ever run. That try needs no deploy (`npm start`, `npm run
+  tunnel`), and turning the policy on is deleting that line and the test that
+  pins it (`docs/rehearsal-night.md`, step 3).
   **Left as they are** (staff review, 29 Sep 2026):
-  the staff page asks Google for its font, which tells Google a staff
-  device's address and browser; `no staff page` and `wrong code` tell a
-  guesser which venues have one; scrypt's cost stays at 16 MiB a check for a
-  256 MB machine; and a passcode holder can push the 1,000 oldest sign-ins
-  out of the table by signing in a thousand times.
+  `no staff page` and `wrong code` tell a guesser which venues have one;
+  scrypt's cost stays at 16 MiB a check for a 256 MB machine; and a passcode
+  holder can push the 1,000 oldest sign-ins out of the table by signing in a
+  thousand times. A fourth, that the staff page asked Google for its font and
+  so told Google a staff device's address and browser, was closed on 1 Oct
+  2026: both pages carry their fonts themselves now (*How it is built*).
 - **Waves have run on the real bands from their consoles, not yet by hand.**
   On 26 Sep 2026, through the Fly relay, a stand-in phone paired the StickC
   Plus and a scripted one the StickS3, each saying YES only once the band's
