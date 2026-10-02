@@ -3,6 +3,7 @@
 
 const SAY = {
   'clip refused': "that didn't go. they may have left, or gone quiet.",
+  'clip too fast': 'one at a time. give it a few seconds before the next clip.',
   'report refused': 'too many reports just now. please tell a member of staff.',
 };
 

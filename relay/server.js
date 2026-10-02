@@ -54,7 +54,15 @@ const NEAR_TICK_MS = 5000;            // how often each room works out who is ne
 const PUSH_GAP_MS = 100;              // a room's views go out at most this often: a burst of changes is one push
 const FRAMES_AT_ONCE = 40;            // frames one socket may send at once: far past a reconnect's burst
 const FRAMES_A_SECOND = 20;           // and the rate it earns them back; a phone or a band says one every two seconds
+// Nothing a phone or a band says comes near this size but a clip, so a frame this big is charged to a budget of its own
+// as it arrives, before it is parsed: 20 clips a second from one socket was 24 MB a second to parse, decode and push.
+const BIG_FRAME = 64_000;
+const CLIPS_AT_ONCE = 3;              // big frames one socket may send at once: a phone records five seconds a clip
+const CLIP_EVERY_MS = 3000;           // and the pace it earns one back at
 const STAFF_TOKENS_MAX = 1000;        // staff sign-ins kept for tonight; past it the oldest is forgotten
+// A venue's share of them: its passcode holder signing in over and over forgets that venue's oldest, never another's.
+// Fifty devices a venue can hold a notification subscription (PUSH_SUBS_MAX), so this leaves room for as many again.
+const STAFF_TOKENS_PER_VENUE = 100;
 const PUSH_SUBS_MAX = 50;             // staff devices a venue sends notifications to; past it the oldest is forgotten
 const CODE_MAX = 200;                 // the longest passcode a staff sign-in may carry
 const CHECKS_AT_ONCE = 8;             // passcode checks running at once: libuv's pool has four threads, so a queue is only ever a guesser's
@@ -206,6 +214,10 @@ export function readStaffCodes(text) {
  * owner, and `graceMs` how long a person with no phone and no live wristband
  * stays. `nightTz` is the venue's time zone, an IANA name, whose 06:00 ends
  * the night; the machine's own by default.
+ * `clipEveryMs` is how often a socket earns back one of its three big (clip-sized) frames; CLIP_EVERY_MS, a test sets it.
+ * `lightsEveryMs` is how often every wristband's face is redrawn (1000); a test stretches it to see what a change sends at once.
+ * `staffTokensMax` and `staffTokensPerVenue` are how many staff sign-ins the relay keeps in all and for one venue
+ * (STAFF_TOKENS_MAX, STAFF_TOKENS_PER_VENUE); the oldest goes first, a test sets them small.
  * `staffCodes` is STAFF_CODES (readStaffCodes()): the venues with a staff page, and their passcodes' entries.
  * `nightFile` is where the night is kept across a restart, or none: in memory only
  * (docs/superpowers/specs/2026-09-29-restart-persistence-design.md). `saveEveryMs` is how often it is written,
@@ -223,7 +235,7 @@ export function readStaffCodes(text) {
  */
 export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile, maxBands = 5_000, maxRooms = 5_000,
   clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS, graceMs = GRACE_MS, nightTz,
-  clientIpHeader, allClipsMax = ALL_CLIPS_MAX, staffCodes = process.env.STAFF_CODES, nightFile, saveEveryMs = 1000,
+  clientIpHeader, allClipsMax = ALL_CLIPS_MAX, clipEveryMs = CLIP_EVERY_MS, lightsEveryMs = 1000, staffTokensMax = STAFF_TOKENS_MAX, staffTokensPerVenue = STAFF_TOKENS_PER_VENUE, staffCodes = process.env.STAFF_CODES, nightFile, saveEveryMs = 1000,
   pushKeysFile, pushAllowed = isPushService, pushEveryMs = PUSH_EVERY_MS, staffCheck = checkCode,
   loadEveryMs = 0, loadSay = (line) => console.log(line), loadMeter, appCsp = 'full', handlesMax = HANDLES_MAX } = {}) {
   const now = () => clock();
@@ -794,7 +806,10 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const token = randomBytes(16).toString('hex');
     const night = nightOf(now(), nightTz);
     tokens.set(tokenHashOf(token), { key, night, entry: printOf(key) });
-    if (tokens.size > STAFF_TOKENS_MAX) tokens.delete(tokens.keys().next().value);
+    // This venue's own first (oldest first, the new one last), so a flood of sign-ins here cannot reach another venue's.
+    const here = [...tokens].filter(([, t]) => t.key === key);
+    for (const [hash] of here.slice(0, Math.max(0, here.length - staffTokensPerVenue))) tokens.delete(hash);
+    if (tokens.size > staffTokensMax) tokens.delete(tokens.keys().next().value);
     signIn(ws, key, token, night);
   }
 
@@ -1123,6 +1138,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // Its frame budget, on the real clock: FRAMES_AT_ONCE, earned back at FRAMES_A_SECOND.
     ws.frames = FRAMES_AT_ONCE;
     ws.framesAt = Date.now();
+    ws.clips = CLIPS_AT_ONCE;
+    ws.clipsAt = ws.framesAt;
     ws.on('pong', () => { ws.alive = true; });
     // An oversized or broken frame ends this socket, never the process.
     ws.on('error', () => ws.terminate());
@@ -1133,6 +1150,12 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       // Far faster than any phone or wristband: closed before its frame is even read.
       if (ws.frames < 1) { ws.close(4003, 'too fast'); return; }
       ws.frames -= 1;
+      if (data.length >= BIG_FRAME) {
+        ws.clips = Math.min(CLIPS_AT_ONCE, ws.clips + (t - ws.clipsAt) / clipEveryMs);
+        ws.clipsAt = t;
+        if (ws.clips < 1) { ws.send(JSON.stringify({ t: 'error', why: 'clip too fast' })); return; }
+        ws.clips -= 1;
+      }
       let m;
       try { m = JSON.parse(String(data)); } catch { return; }
       if (m && typeof m.t === 'string') handle(ws, m);
@@ -1182,7 +1205,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     for (const b of [...bands.values()]) if (b.pending && at >= b.pending.until) dropPending(b, 'timeout');
     for (const b of bands.values()) showBand(b, at);
   }
-  const lights = setInterval(() => tickBands(), 1000);
+  const lights = setInterval(() => tickBands(), lightsEveryMs);
   // Who is near whom, worked out in each room; only the views that changed are sent (push).
   function tickNear() {
     for (const r of rooms.values()) if (r.room.nearTick()) push(r);
@@ -1242,6 +1265,17 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         const heard = r.heard.get(me) ?? 0;
         if (at - heard >= bandAloneMs || night(heard) !== night(at)) leaveRoom(r, me);
       }
+    }
+    // A wristband still worn when the night ends, with no phone of its person's here and none heard since, goes back to
+    // four letters, as one waiting for its owner does. Otherwise it stays paired to last night's person for as long as it
+    // is on, and keeps their room (matches, blocks, NOT NOWs) open in memory and in the night file: the room goes below.
+    for (const b of [...bands.values()]) {
+      if (!b.ws || !b.person || b.waiting) continue;
+      const r = rooms.get(b.key);
+      if (r && phoneOf(r, b.person)) continue;
+      const heard = r?.heard.get(b.person);
+      if (heard === undefined || night(heard) === night(at)) continue;
+      unpairBand(b);
     }
     for (const [addr, list] of tries) {
       const left = recent(list, at);

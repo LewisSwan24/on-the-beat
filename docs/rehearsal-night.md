@@ -97,7 +97,9 @@ a minute or two before a phone looks the address up.
 
 ### 4. Deploy main, then the venue's shows and passcode
 
-The owner's call, between nights: `flyctl deploy --ha=false --remote-only`
+The owner's call, between nights: `npm run image-check` first (it rehearses
+the image build without Docker and fails on a mistake a deploy would only show
+once it had started), then `flyctl deploy --ha=false --remote-only`
 ships everything on main since the last deploy (README, *Run it*): the shows
 override, the relay's own load lines, the pages' own fonts, and the app's
 policy only once `fly.toml` no longer holds it back (step 3). The override

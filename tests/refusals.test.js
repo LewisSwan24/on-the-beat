@@ -9,6 +9,7 @@ import { refusalWords } from '../app/lib/refusals.js';
 test('the phone has words for the refusals it speaks, and none for the rest', () => {
   assert.equal(refusalWords({ t: 'error', why: 'clip refused' }), "that didn't go. they may have left, or gone quiet.");
   assert.equal(refusalWords({ t: 'error', why: 'report refused' }), 'too many reports just now. please tell a member of staff.');
+  assert.equal(refusalWords({ t: 'error', why: 'clip too fast' }), 'one at a time. give it a few seconds before the next clip.');
   for (const m of [{ t: 'error', why: 'bad join' }, { t: 'error', why: 'constructor' }, { t: 'error', why: '__proto__' },
     { t: 'view' }, { t: 'refused', why: 'report refused' }, null, undefined]) {
     assert.equal(refusalWords(m), null, JSON.stringify(m));

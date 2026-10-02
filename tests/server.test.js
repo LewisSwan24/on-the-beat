@@ -254,6 +254,90 @@ test('left to itself the relay holds 40 MB of video at most: the margin a 207 MB
   }
 });
 
+// One socket used to be able to send a clip frame (up to 1.2 MB) as fast as its frame budget let any message through, 20 a
+// second: 24 MB a second to parse, decode and push (README, abuse resistance, the video bullet). Nothing but a clip comes
+// near 64 KB, so a frame that big is charged to a budget of its own as it arrives, before it is parsed: three at once,
+// then one back every `clipEveryMs`. A phone records five seconds a clip, so it never meets the limit.
+const bigClip = (n) => ({ t: 'clip', mime: 'video/webm', data: randomBytes(n).toString('base64') });
+
+test('a socket may send three big clips at once, and the fourth is turned away unread and unkept', async () => {
+  const slow = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist'), clipEveryMs: 600_000 });
+  const h = helpers(() => slow.port);
+  try {
+    const ana = await h.phone('clip-pace');
+    const ben = await h.phone('clip-pace');
+    for (let i = 0; i < 3; i += 1) ana.send(bigClip(100_000));
+    await ana.until((v, p) => p.sent.length === 3);
+    assert.equal(slow.clipBytes(), 100_000, 'a person has one clip on the floor: the third replaced the first two');
+    ana.send(bigClip(90_000));
+    await ana.until((v, p) => p.errors.includes('clip too fast'));
+    assert.equal(slow.clipBytes(), 100_000, 'the fourth was not kept, or it would have replaced the third');
+    assert.equal(ana.sent.length, 3, 'and it was not answered as sent');
+    assert.equal(ana.ws.readyState, WebSocket.OPEN, 'it is turned away, not cut off');
+    // The room goes on, and so does the other phone, whose own budget is full.
+    ben.send(bigClip(100_000));
+    await ben.until((v, p) => p.sent.length === 1);
+    h.close(ana, ben);
+  } finally {
+    h.cleanup();
+    await slow.close();
+  }
+});
+
+test('the clip budget earns one back every clipEveryMs', async () => {
+  const quick = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist'), clipEveryMs: 400 });
+  const h = helpers(() => quick.port);
+  try {
+    const ana = await h.phone('clip-refill');
+    // A socket idle for longer than the pace is still only ever three ahead, not more for every moment it sat there.
+    await pause(450);
+    for (let i = 0; i < 4; i += 1) ana.send(bigClip(100_000));
+    await ana.until((v, p) => p.errors.includes('clip too fast') && p.sent.length === 3);
+    await pause(500);
+    ana.send(bigClip(100_000));
+    await ana.until((v, p) => p.sent.length === 4);
+    assert.deepEqual(ana.errors, ['clip too fast'], 'one refusal in all');
+    h.close(ana);
+  } finally {
+    h.cleanup();
+    await quick.close();
+  }
+});
+
+test('a small clip, and anything else a phone says, is outside the clip budget', async () => {
+  const slow = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist'), clipEveryMs: 600_000 });
+  const h = helpers(() => slow.port);
+  try {
+    const ana = await h.phone('clip-small');
+    for (let i = 0; i < 10; i += 1) ana.send({ t: 'clip', mime: 'video/webm', data: randomBytes(2048).toString('base64') });
+    await ana.until((v, p) => p.sent.length === 10);
+    assert.deepEqual(ana.errors, []);
+    h.close(ana);
+  } finally {
+    h.cleanup();
+    await slow.close();
+  }
+});
+
+test('a big frame is charged as it arrives, so one that is not even JSON spends the budget too', async () => {
+  const slow = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist'), clipEveryMs: 600_000 });
+  const h = helpers(() => slow.port);
+  try {
+    const eve = await h.phone('clip-junk');
+    // Unparseable, so nothing is said back while the budget lasts; the fourth is answered, which only a charge made
+    // before the parse can do.
+    for (let i = 0; i < 3; i += 1) eve.ws.send('x'.repeat(100_000));
+    await pause(100);
+    assert.deepEqual(eve.errors, []);
+    eve.ws.send('x'.repeat(100_000));
+    await eve.until((v, p) => p.errors.includes('clip too fast'));
+    h.close(eve);
+  } finally {
+    h.cleanup();
+    await slow.close();
+  }
+});
+
 test('a wristband pairs by its four letters, then shows what its person is doing', async () => {
   const band = await wristband();
   assert.equal(band.show.kind, 'pairing');

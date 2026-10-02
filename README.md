@@ -10,8 +10,8 @@ the other's first name and where to meet. It is built from the Claude Design
 canvas `On The Beat.dc.html`; the canvas is the design, this is the working
 thing.
 
-**This repository is personal**, and deliberately separate from the DECO3500
-team repository (`cimi2232/DECO3500`, which is public). Nothing here is pushed
+**This repository is one person's working build**, and deliberately separate
+from the DECO3500 team repository (`cimi2232/DECO3500`). Nothing here is pushed
 there: a `pre-push` hook refuses any remote under the team account. Git does not
 clone hooks, so the copy that matters is tracked at `tools/hooks/pre-push`;
 after a fresh clone, reinstall it with `cp tools/hooks/pre-push .git/hooks/pre-push`.
@@ -27,6 +27,7 @@ npm run dev          # Vite on :5178 for working on the app (run `npm run relay`
 npm run tunnel       # an https address for real phones (cloudflared must be installed)
 npm run staff-code   # one venue's staff passcode, as a line for STAFF_CODES (see The staff page)
 npm run preflight    # is a relay ready for doors? read-only checks; takes another address too
+npm run image-check  # before a deploy: will the Docker image build and its relay start? no Docker needed
 npm run fonts        # after drawing a new icon: fetch the icon font again, cut to the icons the code draws
 ```
 
@@ -55,6 +56,18 @@ laptop: a phone opens the address, and a wristband is told it once with
 flyctl auth login                        # once, in your own terminal
 flyctl deploy --ha=false --remote-only   # built on Fly's builder; the one machine restarts on it
 ```
+
+Run `npm run image-check` first (about four seconds, no Docker, nothing on Fly
+touched). It builds the image's two trees from the Dockerfile's own `COPY`
+lines and `.dockerignore`'s own list, in a temporary folder, runs `vite build`
+in the first, checks it makes the same files as the repository's own build,
+starts the relay from the second (only the production dependencies, `fly.toml`'s
+`[env]` and nothing else from your shell) and runs `npm run preflight`'s checks
+against it. It catches what a deploy only tells you after it has started: a
+folder `.dockerignore` stops letting through, a relay file that imports
+something the runtime stage does not copy, a variable `fly.toml` sets that the
+relay no longer reads, a `package.json` the lock file disagrees with. It cannot
+see `npm ci` itself, the base image, `setpriv` or the volume's ownership.
 
 - **Exactly one machine, and one volume.** Every room lives in the relay's
   memory, so a second machine would split phones from their wristbands.
@@ -503,7 +516,10 @@ that was taken.
   so the phone can stay locked. With no phone and no live wristband, the
   two-minute grace applies as before. Once they are out, the wrist says
   `OPEN YOUR PHONE` / `TO COME BACK` on a press, and a hold is kept until they
-  are back.
+  are back. At 06:00 a wristband still worn, whose person's phone is not
+  connected and was last heard before it, goes back to four letters, so it
+  does not carry last night's person into the next night; the room it was
+  keeping open can then go.
 - **After a relay restart** the wristband comes back with its secret and goes
   straight back to its person: the relay carried its record across (*Always
   on*). A relay that comes back without its night — no file, or one another
@@ -932,11 +948,17 @@ was red-teamed and hardened. A red/blue pass found and closed:
   178 MB of memory, a store near its cap included. The store is now held to
   40 MB, and the same hundred phones read 158-161 MB with it full. The relay's
   load line says the video it holds (`clips 38.1 MB`), so a night's log shows
-  the store. **Not fixed, and not a new kind of hole:** one socket may still
-  send clips as fast as its frame budget lets any message through (40 at
-  once, 20 a second, each up to 1.2 MB), which costs the relay each clip's
-  decoding and a push to the room, as a stream of picks does; the store
-  itself cannot pass its cap. `tests/server.test.js` holds the cap, with
+  the store. One socket could still send clips as fast as its frame budget
+  let any message through (40 at once, 20 a second, each up to 1.2 MB: 24 MB
+  a second to parse, decode and push), though the store itself could not pass
+  its cap. Since 2 Oct 2026 a frame of 64 KB or more, which nothing but a
+  clip comes near, is charged as it arrives, before it is parsed, to a
+  budget of its own: three at once, then one more every 3 s. One
+  over is answered `clip too fast` (the phone says so) and is neither read
+  nor kept, and the socket stays open. A phone records five seconds a clip,
+  so it never meets the limit; a clip under 64 KB, about a second of video,
+  is outside it and costs what a pick does. The budget is per socket, as the
+  frame budget is. `tests/server.test.js` holds the cap and the budget, with
   `tests/relay-load.test.js` for the figure in the load line.
 - **A socket that changes who it is.** A socket that had joined could join
   again as someone else, or at another venue, and the person it had stood
@@ -1076,10 +1098,11 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   file on the machine's own volume, but it is still one small machine: more
   people than it holds needs more than one, and one volume means a failed
   drive takes the relay down until a new volume is made (*Always on*). Clips
-  are not carried across a restart. A wristband still worn past 06:00 keeps
-  its venue's room, and so last night's matches, in memory and in the file,
-  until it is switched off. A phone that used a tunnel address starts over at
-  the fixed one: a browser keeps the app's storage per address.
+  are not carried across a restart. A phone left connected past 06:00 still
+  keeps its venue's room, and so last night's matches, until it closes: only
+  a wristband's hold on a room ends with the night. A phone that used a
+  tunnel address starts over at the fixed one: a browser keeps the app's
+  storage per address.
   **How many one machine holds** was measured with `scripts/load.mjs` — a
   local-only rig that fills a venue with simulated phones and paired
   wristbands speaking the real protocols (join, arm, pick, wave, like, keep,
@@ -1276,10 +1299,13 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   tunnel`), and turning the policy on is deleting that line and the test that
   pins it (`docs/rehearsal-night.md`, step 3).
   **Left as they are** (staff review, 29 Sep 2026):
-  `no staff page` and `wrong code` tell a guesser which venues have one;
-  scrypt's cost stays at 16 MiB a check for a 256 MB machine; and a passcode
-  holder can push the 1,000 oldest sign-ins out of the table by signing in a
-  thousand times. A fourth, that the staff page asked Google for its font and
+  `no staff page` and `wrong code` tell a guesser which venues have one; and
+  scrypt's cost stays at 16 MiB a check for a 256 MB machine. A third, that a
+  passcode holder could push the 1,000 oldest sign-ins out of the table by
+  signing in a thousand times, and with them other venues' staff and their
+  notifications, was closed on 2 Oct 2026: a venue has a share of 100 of its
+  own, and a flood of sign-ins there forgets that venue's oldest and no other
+  venue's (`tests/staff.test.js`). A fourth, that the staff page asked Google for its font and
   so told Google a staff device's address and browser, was closed on 1 Oct
   2026: both pages carry their fonts themselves now (*How it is built*).
 - **Waves have run on the real bands from their consoles, not yet by hand.**
@@ -1314,3 +1340,11 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   MediaRecorder path and sent it; a second phone found it on the floor and
   loaded a valid WebM (148 KB). A real phone camera — and Safari's MP4
   recorder — is the next check.
+
+## License
+
+The code and documents in this repository are under the MIT License (`LICENSE`).
+What came from elsewhere keeps its own: the two fonts in `app/fonts/` (notices
+in `app/fonts/LICENSE.md`) and the `jsqr` tarball in `vendor/` (Apache-2.0, its
+own `LICENSE` is inside the tarball). The design the app is built from, the
+Claude Design canvas, is not in this repository.

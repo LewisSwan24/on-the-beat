@@ -179,6 +179,69 @@ test('a wristband waiting for its owner gets fresh letters at 06:00', async () =
   close(band);
 });
 
+// A wristband worn through 06:00 with its phone long gone used to stay paired to last night's person for as long as it was
+// on, and so keep last night's room (its matches, blocks and NOT NOWs) open in memory and in the night file. At the end of
+// the night it goes back to four letters, as a wristband waiting for its owner does, and the room can go.
+test('a wristband still worn after 06:00 with its phone gone since the night goes back to four letters, and its room goes', async () => {
+  let t = new Date(2026, 8, 25, 5, 45).getTime();
+  const relay = await relayWith({ clock: () => t, graceMs: 100, lightsEveryMs: 600_000 });
+  const { band, ana, ben } = await pairedWithWatcher('six-worn');
+  close(ana, ben);
+  await pause(300);   // ben has no band, so his grace is over; ana is held by the wristband alone
+  relay.expire(new Date(2026, 8, 25, 5, 59).getTime());
+  await pause(50);
+  assert.notEqual(band.show.kind, 'pairing', 'not before six');
+  assert.equal(relay.roomCount(), 1);
+  t = new Date(2026, 8, 25, 6, 1).getTime();
+  relay.expire(t);
+  // Told at once, not by the next tick of the second-by-second redraw.
+  await band.until((s) => s.kind === 'pairing', 250);
+  assert.equal(relay.roomCount(), 0, 'nothing of last night is kept open by a wristband');
+  // And it is anyone's again: a new person at the same venue pairs it with the new letters.
+  const cai = await phone('six-worn');
+  await pairBand(cai, band);
+  close(cai, band);
+});
+
+test('a wristband whose phone is still connected at 06:00 stays paired, however long since that phone spoke', async () => {
+  let t = new Date(2026, 8, 25, 5, 45).getTime();
+  const relay = await relayWith({ clock: () => t });
+  const { band, ana, ben } = await pairedWithWatcher('six-phone');
+  t = new Date(2026, 8, 25, 6, 1).getTime();
+  relay.expire(t);   // ana's socket is open and has said nothing since 05:45
+  await pause(150);
+  assert.notEqual(band.show.kind, 'pairing');
+  assert.equal(relay.roomCount(), 1);
+  close(ana, ben, band);
+});
+
+test('a wristband that dropped a minute before 06:00 is not forgotten at 06:00: only one still worn goes back to letters', async () => {
+  let t = new Date(2026, 8, 25, 5, 45).getTime();
+  const relay = await relayWith({ clock: () => t });
+  const { band, ana, ben } = await pairedWithWatcher('six-dropped');
+  close(ana, ben);
+  await pause(100);
+  t = new Date(2026, 8, 25, 5, 59).getTime();
+  band.ws.close();
+  await pause(100);
+  relay.expire(new Date(2026, 8, 25, 6, 1).getTime());
+  assert.equal(relay.bandCount(), 1, 'its record is kept for the hour it is allowed, as before');
+});
+
+test('a wristband worn on with its phone gone stays paired to its person for the rest of the same night', async () => {
+  let t = new Date(2026, 8, 24, 21, 0).getTime();
+  const relay = await relayWith({ clock: () => t, graceMs: 100 });
+  const { band, ana, ben } = await pairedWithWatcher('same-night');
+  close(ana, ben);
+  await pause(300);
+  t = new Date(2026, 8, 25, 3, 0).getTime();   // six hours on, and still the night of the 24th
+  relay.expire(t);
+  await pause(150);
+  assert.notEqual(band.show.kind, 'pairing');
+  assert.equal(relay.roomCount(), 1, 'its room stays: a person coming back the same night finds their matches');
+  close(band);
+});
+
 // ---------- joining: quiet, and NOT NOW remembered ----------
 
 test('a join with quiet makes a new person invisible; for someone already here it is ignored', async () => {
