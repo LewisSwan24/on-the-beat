@@ -191,7 +191,9 @@ never becomes a match.
   to that file so a restart carries it on (*Always on*, above); without it,
   stop the relay and the night is gone.
   - After a change the relay pushes each phone its own `viewFor()`, at
-    most every 100 ms a room, so a burst of changes is one push.
+    most every 100 ms a room, so a burst of changes is one push. A room
+    whose pushes cost more waits four times what they cost (never past 2 s),
+    so pushing takes a quarter of the relay's time at most.
   - What each wristband heard of the others and of the markers is kept
     30 s, in memory, and never leaves the relay; every five seconds each
     room works out who is near whom and who is in which area, and pushes
@@ -1115,6 +1117,11 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   is about five times cheaper. Until that day about a third of the relay's
   time went on hashing the same handles again on every push; the room now
   remembers them (the same day before: 59% at 100, 94% at 150).
+  On 3 Oct 2026 the gap between a room's pushes began to follow what they
+  cost (above): the same rig at 250 keen people, 30 s measured, went from
+  95% of the core, loop lag p99 352 ms and a wave seen again after ~203 ms
+  to 30%, 154 ms and ~380 ms, and was no longer saturated. A room of 100
+  pushes as often as before. One run each, on the laptop.
   **Memory is not the wall for the people alone**: in a real 256 MB Linux
   cgroup (WSL2) Node picked a 259 MB heap limit by itself and held 250 keen
   people at 127 MB rss and 500 calm ones at 182 MB, none killed. Video is

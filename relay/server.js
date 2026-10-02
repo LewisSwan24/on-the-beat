@@ -52,6 +52,8 @@ const AIR = /^[a-f0-9]{12}$/;         // a wristband's radio: its Wi-Fi MAC, new
 const HEARD_MAX = 16;                 // the most bands one report may name
 const NEAR_TICK_MS = 5000;            // how often each room works out who is near whom
 const PUSH_GAP_MS = 100;              // a room's views go out at most this often: a burst of changes is one push
+const PUSH_SLACK = 4;                 // and a room waits this many times what its pushes cost, so pushing is a quarter of the relay's time at most
+const PUSH_GAP_MAX_MS = 2000;         // however much a push costs, a room's views are never held longer than this
 const FRAMES_AT_ONCE = 40;            // frames one socket may send at once: far past a reconnect's burst
 const FRAMES_A_SECOND = 20;           // and the rate it earns them back; a phone or a band says one every two seconds
 // Nothing a phone or a band says comes near this size but a clip, so a frame this big is charged to a budget of its own
@@ -215,6 +217,8 @@ export function readStaffCodes(text) {
  * stays. `nightTz` is the venue's time zone, an IANA name, whose 06:00 ends
  * the night; the machine's own by default.
  * `clipEveryMs` is how often a socket earns back one of its three big (clip-sized) frames; CLIP_EVERY_MS, a test sets it.
+ * `pushSlack` is how many times a room's push cost it waits before the next (PUSH_SLACK), and `pushClock` reads the milliseconds
+ * a push is timed by (performance.now()); a test moves them.
  * `lightsEveryMs` is how often every wristband's face is redrawn (1000); a test stretches it to see what a change sends at once.
  * `staffTokensMax` and `staffTokensPerVenue` are how many staff sign-ins the relay keeps in all and for one venue
  * (STAFF_TOKENS_MAX, STAFF_TOKENS_PER_VENUE); the oldest goes first, a test sets them small.
@@ -235,7 +239,7 @@ export function readStaffCodes(text) {
  */
 export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile, maxBands = 5_000, maxRooms = 5_000,
   clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS, graceMs = GRACE_MS, nightTz,
-  clientIpHeader, allClipsMax = ALL_CLIPS_MAX, clipEveryMs = CLIP_EVERY_MS, lightsEveryMs = 1000, staffTokensMax = STAFF_TOKENS_MAX, staffTokensPerVenue = STAFF_TOKENS_PER_VENUE, staffCodes = process.env.STAFF_CODES, nightFile, saveEveryMs = 1000,
+  clientIpHeader, allClipsMax = ALL_CLIPS_MAX, clipEveryMs = CLIP_EVERY_MS, lightsEveryMs = 1000, pushSlack = PUSH_SLACK, pushClock = () => performance.now(), staffTokensMax = STAFF_TOKENS_MAX, staffTokensPerVenue = STAFF_TOKENS_PER_VENUE, staffCodes = process.env.STAFF_CODES, nightFile, saveEveryMs = 1000,
   pushKeysFile, pushAllowed = isPushService, pushEveryMs = PUSH_EVERY_MS, staffCheck = checkCode,
   loadEveryMs = 0, loadSay = (line) => console.log(line), loadMeter, appCsp = 'full', handlesMax = HANDLES_MAX } = {}) {
   const now = () => clock();
@@ -317,14 +321,22 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
    * Every change in a room ends here. Working out a view is a pass over the room for each of its phones, so
    * one push per change let one socket's burst of changes stall the whole relay. Now a room's views go out
    * at most every PUSH_GAP_MS, on the real clock, and the push that goes carries every change before it.
+   * The pass grows with the square of a room's people, so a room that is slow to push waits longer: pushSlack times what
+   * its pushes have lately cost (the last one and the average before it each count half), up to PUSH_GAP_MAX_MS. A crowd's
+   * views then come later and the relay keeps time for pings, joins and pairings, which a fixed gap let the pushes take.
    */
   function push(r) {
     if (r.due || closing) return;
+    const gap = Math.min(PUSH_GAP_MAX_MS, Math.max(PUSH_GAP_MS, (r.pushCost ?? 0) * pushSlack));
     r.due = setTimeout(() => {
       r.due = null;
       r.pushedAt = Date.now();
-      if (!closing) pushNow(r);
-    }, Math.max(0, (r.pushedAt ?? 0) + PUSH_GAP_MS - Date.now()));
+      if (closing) return;
+      const began = pushClock();
+      pushNow(r);
+      const spent = pushClock() - began;
+      r.pushCost = r.pushCost === undefined ? spent : (r.pushCost + spent) / 2;
+    }, Math.max(0, (r.pushedAt ?? 0) + gap - Date.now()));
   }
 
   function pushNow(r) {
