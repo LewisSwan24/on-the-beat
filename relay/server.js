@@ -215,6 +215,7 @@ export function readStaffCodes(text) {
  * stays. `nightTz` is the venue's time zone, an IANA name, whose 06:00 ends
  * the night; the machine's own by default.
  * `clipEveryMs` is how often a socket earns back one of its three big (clip-sized) frames; CLIP_EVERY_MS, a test sets it.
+ * `lightsEveryMs` is how often every wristband's face is redrawn (1000); a test stretches it to see what a change sends at once.
  * `staffTokensMax` and `staffTokensPerVenue` are how many staff sign-ins the relay keeps in all and for one venue
  * (STAFF_TOKENS_MAX, STAFF_TOKENS_PER_VENUE); the oldest goes first, a test sets them small.
  * `staffCodes` is STAFF_CODES (readStaffCodes()): the venues with a staff page, and their passcodes' entries.
@@ -234,7 +235,7 @@ export function readStaffCodes(text) {
  */
 export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile, maxBands = 5_000, maxRooms = 5_000,
   clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS, graceMs = GRACE_MS, nightTz,
-  clientIpHeader, allClipsMax = ALL_CLIPS_MAX, clipEveryMs = CLIP_EVERY_MS, staffTokensMax = STAFF_TOKENS_MAX, staffTokensPerVenue = STAFF_TOKENS_PER_VENUE, staffCodes = process.env.STAFF_CODES, nightFile, saveEveryMs = 1000,
+  clientIpHeader, allClipsMax = ALL_CLIPS_MAX, clipEveryMs = CLIP_EVERY_MS, lightsEveryMs = 1000, staffTokensMax = STAFF_TOKENS_MAX, staffTokensPerVenue = STAFF_TOKENS_PER_VENUE, staffCodes = process.env.STAFF_CODES, nightFile, saveEveryMs = 1000,
   pushKeysFile, pushAllowed = isPushService, pushEveryMs = PUSH_EVERY_MS, staffCheck = checkCode,
   loadEveryMs = 0, loadSay = (line) => console.log(line), loadMeter, appCsp = 'full', handlesMax = HANDLES_MAX } = {}) {
   const now = () => clock();
@@ -1204,7 +1205,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     for (const b of [...bands.values()]) if (b.pending && at >= b.pending.until) dropPending(b, 'timeout');
     for (const b of bands.values()) showBand(b, at);
   }
-  const lights = setInterval(() => tickBands(), 1000);
+  const lights = setInterval(() => tickBands(), lightsEveryMs);
   // Who is near whom, worked out in each room; only the views that changed are sent (push).
   function tickNear() {
     for (const r of rooms.values()) if (r.room.nearTick()) push(r);
@@ -1274,7 +1275,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       if (r && phoneOf(r, b.person)) continue;
       const heard = r?.heard.get(b.person);
       if (heard === undefined || night(heard) === night(at)) continue;
-      freshLetters(b);
+      unpairBand(b);
     }
     for (const [addr, list] of tries) {
       const left = recent(list, at);

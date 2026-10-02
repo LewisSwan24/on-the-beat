@@ -184,7 +184,7 @@ test('a wristband waiting for its owner gets fresh letters at 06:00', async () =
 // the night it goes back to four letters, as a wristband waiting for its owner does, and the room can go.
 test('a wristband still worn after 06:00 with its phone gone since the night goes back to four letters, and its room goes', async () => {
   let t = new Date(2026, 8, 25, 5, 45).getTime();
-  const relay = await relayWith({ clock: () => t, graceMs: 100 });
+  const relay = await relayWith({ clock: () => t, graceMs: 100, lightsEveryMs: 600_000 });
   const { band, ana, ben } = await pairedWithWatcher('six-worn');
   close(ana, ben);
   await pause(300);   // ben has no band, so his grace is over; ana is held by the wristband alone
@@ -194,7 +194,8 @@ test('a wristband still worn after 06:00 with its phone gone since the night goe
   assert.equal(relay.roomCount(), 1);
   t = new Date(2026, 8, 25, 6, 1).getTime();
   relay.expire(t);
-  await band.until((s) => s.kind === 'pairing');
+  // Told at once, not by the next tick of the second-by-second redraw.
+  await band.until((s) => s.kind === 'pairing', 250);
   assert.equal(relay.roomCount(), 0, 'nothing of last night is kept open by a wristband');
   // And it is anyone's again: a new person at the same venue pairs it with the new letters.
   const cai = await phone('six-worn');

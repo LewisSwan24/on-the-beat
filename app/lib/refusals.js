@@ -4,7 +4,7 @@
 const SAY = {
   'clip refused': "that didn't go. they may have left, or gone quiet.",
   'clip too fast': 'one at a time. give it a few seconds before the next clip.',
-  'report refused':'too many reports just now. please tell a member of staff.',
+  'report refused': 'too many reports just now. please tell a member of staff.',
 };
 
 /** The words for a relay refusal (`{t:'error', why}`), or null when the phone says nothing for it. */
