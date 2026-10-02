@@ -50,10 +50,13 @@ after(async () => {
 });
 
 let addresses = 0;
-/** A relay of its own, on a clock the test moves, where two venues have a staff page. `staffCheck` replaces the passcode check. */
-async function start({ staffCheck } = {}) {
+/**
+ * A relay of its own, on a clock the test moves, where two venues have a staff page. `staffCheck` replaces the passcode check;
+ * anything else in `more` goes to createRelay.
+ */
+async function start({ staffCheck, ...more } = {}) {
   const clock = { t: EIGHT_PM };
-  const relay = await createRelay({ port: 0, host: '127.0.0.1', root, clock: () => clock.t, nightTz: TZ, staffCodes: CODES, ...(staffCheck ? { staffCheck } : {}) });
+  const relay = await createRelay({ port: 0, host: '127.0.0.1', root, clock: () => clock.t, nightTz: TZ, staffCodes: CODES, ...(staffCheck ? { staffCheck } : {}), ...more });
   const h = helpers(() => relay.port);
   running.push({ relay, h });
 
@@ -184,6 +187,37 @@ test('a token signs in again after a reconnect, only at its own venue; a made-up
   assert.equal((await elsewhere.signIn({ venue: 'staff-other', token })).why, 'expired');
   assert.equal((await elsewhere.signIn({ venue: 'staff-venue', token: randomBytes(16).toString('hex') })).why, 'expired');
   assert.equal((await elsewhere.signIn({ venue: 'staff-venue', token: 42 })).why, 'bad staff', 'neither a passcode nor a token');
+});
+
+// The table of sign-ins is one for the whole relay, 1,000 of them. A passcode holder who signed in a thousand times
+// used to push every other venue's staff out of it, and their notifications with them (staff review, 29 Sep 2026).
+// A venue now has a share of its own, so it can only ever forget its own.
+test("signing in over and over at one venue forgets that venue's oldest sign-ins and no other venue's", async () => {
+  const { staff } = await start({ staffCheck: async () => true, staffTokensPerVenue: 3, staffTokensMax: 4 });
+  const signIn = async (venue) => {
+    const a = await (await staff()).signIn({ venue, code: 'whatever the check says' });
+    assert.equal(a.ok, true, JSON.stringify(a));
+    return a.token;
+  };
+  const valid = async (venue, token) => (await (await staff()).signIn({ venue, token })).ok === true;
+  const other = await signIn('staff-other');
+  const mine = [];
+  for (let i = 0; i < 5; i += 1) mine.push(await signIn('staff-venue'));
+  assert.equal(await valid('staff-other', other), true, "the other venue's sign-in is still good");
+  assert.deepEqual(await Promise.all(mine.map((t) => valid('staff-venue', t))), [false, false, true, true, true],
+    'the two oldest of its own went, the newest three stay');
+});
+
+test('the table as a whole still holds only so many sign-ins, the oldest of all going first', async () => {
+  const { staff } = await start({ staffCheck: async () => true, staffTokensMax: 3, staffTokensPerVenue: 100 });
+  const tokens = [];
+  for (const venue of ['staff-venue', 'staff-other', 'staff-venue', 'staff-other']) {
+    const a = await (await staff()).signIn({ venue, code: 'whatever the check says' });
+    tokens.push([venue, a.token]);
+  }
+  const results = [];
+  for (const [venue, token] of tokens) results.push((await (await staff()).signIn({ venue, token })).ok === true);
+  assert.deepEqual(results, [false, true, true, true]);
 });
 
 test('a phone or a wristband cannot sign in as staff, and staff cannot act as either', async () => {
