@@ -29,6 +29,7 @@ npm run staff-code   # one venue's staff passcode, as a line for STAFF_CODES (se
 npm run preflight    # is a relay ready for doors? read-only checks; takes another address too
 npm run image-check  # before a deploy: will the Docker image build and its relay start? no Docker needed
 npm run fonts        # after drawing a new icon: fetch the icon font again, cut to the icons the code draws
+npm run mutate -- list.json   # break a guard and see its test go red; puts every file back and proves it byte for byte
 ```
 
 **The night ends at 06:00 at the venue.** `NIGHT_TZ=Australia/Brisbane npm start`
