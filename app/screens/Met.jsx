@@ -64,7 +64,17 @@ export function Match({ match, number, onMyWay, onNotThis, onPick }) {
 }
 
 /** S11 — the person you met: found, and kept, only if you both say so. */
-export function Mate({ match, number, onBack, onMore, onFound, onKeep, onTonight }) {
+/** SAVE TO CONTACTS: the card is made on the phone and handed to it; nothing is sent. */
+function SaveCard({ onSave, label }) {
+  return (
+    <button type="button" className="micro" aria-label={label} onClick={onSave}
+      style={{ color: 'var(--ok)', minHeight: 44, padding: '0 4px', alignSelf: 'center', whiteSpace: 'nowrap' }}>
+      SAVE TO CONTACTS
+    </button>
+  );
+}
+
+export function Mate({ match, number, onBack, onMore, onFound, onKeep, onTonight, onSave }) {
   const name = matchName(match);
   const hue = HUE[match.intent] || HUE.hi;
   return (
@@ -109,6 +119,7 @@ export function Mate({ match, number, onBack, onMore, onFound, onKeep, onTonight
             <span className="micro" style={{ color: 'var(--ok)' }}>you both kept it</span>
             <span className="v">{match.contact}</span>
           </span>
+          <SaveCard onSave={onSave} label={'Save ' + name + ' to your contacts'} />
         </div>
       ) : match.kept ? (
         <div className="small" style={{ marginTop: 10 }}>kept on your side. they won't know unless they keep it too.</div>
@@ -128,7 +139,7 @@ const matchLine = (m) => {
 };
 
 /** S12 — tonight, as this phone remembers it. */
-export function Tonight({ show, phase, night, live, kept, name, onBack, onKeep, onOpen, onName }) {
+export function Tonight({ show, phase, night, live, kept, name, onBack, onKeep, onOpen, onName, onSave }) {
   const pi = Math.max(0, PHASES.indexOf(phase));
   const stored = Object.values(night?.matches || {});
   const items = [
@@ -179,7 +190,8 @@ export function Tonight({ show, phase, night, live, kept, name, onBack, onKeep, 
             <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 2 }}>
               {live.length === 0 ? <span className="small" style={{ paddingTop: 8 }}>nobody to keep tonight — that's fine too.</span> : null}
               {live.map((m) => (
-                <button key={m.id} type="button" className="keeprow" aria-pressed={!!m.kept} onClick={() => onKeep(m, !m.kept)}>
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button type="button" className="keeprow" style={{ flex: 1, minWidth: 0 }} aria-pressed={!!m.kept} onClick={() => onKeep(m, !m.kept)}>
                   <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: (HUE[m.intent] || HUE.hi).c }} />
                   <span style={{ flex: 1, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                     <span className="body">{matchName(m)}</span>
@@ -187,6 +199,8 @@ export function Tonight({ show, phase, night, live, kept, name, onBack, onKeep, 
                   </span>
                   <span className="micro" style={{ color: m.kept ? 'var(--ok)' : 'var(--text-3)' }}>{m.keptByBoth ? 'BOTH KEPT' : m.kept ? 'KEPT' : 'KEEP'}</span>
                 </button>
+                {m.keptByBoth && m.contact ? <SaveCard onSave={() => onSave(m)} label={'Save ' + matchName(m) + ' to your contacts'} /> : null}
+                </div>
               ))}
             </div>
           </div>
@@ -216,6 +230,7 @@ export function Tonight({ show, phase, night, live, kept, name, onBack, onKeep, 
                 <span className="body">{k.name || 'someone'}</span>
                 <span className="small" style={{ color: 'var(--ok)', overflowWrap: 'anywhere', userSelect: 'all' }}>{k.contact}</span>
                 <span className="small">{k.night}{k.venue ? ' · ' + k.venue : ''}</span>
+                {k.contact ? <span style={{ alignSelf: 'flex-start' }}><SaveCard onSave={() => onSave(k)} label={'Save ' + (k.name || 'them') + ' to your contacts'} /></span> : null}
               </div>
             ))}
           </div>

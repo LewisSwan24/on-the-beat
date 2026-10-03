@@ -725,6 +725,14 @@ read back from the picture with jsQR, the scanner the app uses.
   but someone has to be named when two people both say yes. A contact is
   asked for only the first time you keep someone, and only shared if they
   keep you too.
+- **A contact both kept can be saved to the phone's own contacts.** The
+  canvas shows it and stops there. The owner chose on 3 Oct 2026 a SAVE TO
+  CONTACTS button wherever a contact both people kept is shown: on S11, in
+  the AFTER list and under *kept from other nights*. The card (vCard 3.0,
+  `app/lib/vcard.js`) is made on the phone from what it already holds and
+  goes to the share sheet where the browser can share a file, or downloads
+  otherwise; nothing is sent. A number goes in as a number, an email or a
+  web address as itself, and a handle in the note with where they met.
 - **Venue distances are gone.** The canvas shows "40 m" beside each show;
   that needs the phone's location, and promise 1 says nobody sees where you
   are. The list shows doors times instead.

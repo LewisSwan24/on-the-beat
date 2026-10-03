@@ -7,6 +7,7 @@ import { meetingOn, newlyFound } from './lib/found.js';
 import { connect } from './lib/net.js';
 import { phaseLine, phaseOf } from './lib/phase.js';
 import { refusalWords } from './lib/refusals.js';
+import { saveCard } from './lib/vcard.js';
 import * as store from './lib/store.js';
 import { WAVES_HOW, buzzes, newWaves } from './lib/waved.js';
 import { Bar, Home } from './screens/Home.jsx';
@@ -482,6 +483,12 @@ export default function App() {
     ],
   });
 
+  // A kept person as a card for the phone's own contacts, made here and sent nowhere.
+  const saveContact = (k) => saveCard(k).then((how) => {
+    if (how === 'saved') say('saved as a contact card. open it to add them.');
+  }).catch(() => say("couldn't make the card. their contact is still here."));
+  const tonightCard = (m) => ({ name: m.name, contact: m.contact, venue: show?.venue || '', night: store.tonightKey() });
+
   const keep = (m, on) => {
     if (on && !s.contact) {
       setSheet({
@@ -699,12 +706,14 @@ export default function App() {
       body = match ? (
         <Mate match={match} number={paired && meetingOn(match, now.getTime()) ? match.number : null}
           onBack={back} onFound={() => sayFound(match)} onKeep={(on) => keep(match, on)} onTonight={() => go('tonight')}
+          onSave={() => saveContact(tonightCard(match))}
           onMore={() => personSheet(match.id, matchName(match))} />
       ) : null;
       break;
     case 'tonight':
       body = <Tonight show={show} phase={phase} night={night} live={view.matches} kept={s.kept} name={s.name}
-        onBack={back} onKeep={keep} onOpen={(m) => { setMatchId(m.id); go('mate'); }} onName={() => go('name')} />;
+        onBack={back} onKeep={keep} onOpen={(m) => { setMatchId(m.id); go('mate'); }} onName={() => go('name')}
+        onSave={(m) => saveContact(m.night ? m : tonightCard(m))} />;
       break;
     case 'quiet':
       body = <Quiet paired={paired} onBackOn={backOn} onBlock={quietBlock} onReport={quietReport} onLeft={leftVenue} />;
