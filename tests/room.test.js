@@ -503,10 +503,45 @@ test("two people's revs start far apart, so a rev chosen from one never names th
   assert.notEqual(a, b);
 });
 
+// ---------- the opener: FIRST SONG?'s answer, once the venue's staff name it ----------
+
+test('the opener, once named, is in every view; cut to a track\'s length, and an empty one takes it back', () => {
+  let t = 1000;
+  const room = createRoom({ now: () => t, salt: 'o' });
+  room.join('ana');
+  room.join('ben');
+  assert.equal(room.viewFor('ana').opener, null);
+  assert.equal(room.setOpener('  Treasure  '), true);
+  assert.deepEqual(room.viewFor('ana').opener, { track: 'Treasure', at: 1000 });
+  assert.deepEqual(room.viewFor('ben').opener, { track: 'Treasure', at: 1000 });
+  t = 2000;
+  assert.equal(room.setOpener('Treasure'), false, 'the same again is no change');
+  assert.equal(room.viewFor('ana').opener.at, 1000, 'and keeps when it was named');
+  assert.equal(room.setOpener('x'.repeat(100)), true);
+  assert.equal(room.viewFor('ana').opener.track.length, 60);
+  assert.equal(room.setOpener(''), true);
+  assert.equal(room.viewFor('ana').opener, null);
+  assert.equal(room.setOpener(null), false, 'nothing to take back');
+  assert.equal(room.openerAt(), null);
+  room.setOpener('Grenade');
+  assert.equal(room.openerAt(), 2000);
+});
+
 // ---------- restart spec §1: a room carried across a restart ----------
 
 /** A room as a restart brings it back: its dump, through JSON, made again on the same clock. */
 const carried = (room, now) => createRoom({ now, restore: JSON.parse(JSON.stringify(room.dump())) });
+
+test('the opener is carried across a restart, and a dump from before there was one has none', () => {
+  const now = () => 5000;
+  const room = createRoom({ now });
+  room.join('ana');
+  room.setOpener('24K Magic');
+  assert.deepEqual(carried(room, now).viewFor('ana').opener, { track: '24K Magic', at: 5000 });
+  const old = JSON.parse(JSON.stringify(room.dump()));
+  delete old.opener;
+  assert.equal(createRoom({ now, restore: old }).viewFor('ana').opener, null);
+});
 
 test('a room carried across a restart shows everyone what it did, and goes on from where it was', () => {
   let t = Date.UTC(2026, 8, 29, 11, 0);

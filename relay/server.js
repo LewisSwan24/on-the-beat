@@ -355,6 +355,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     }
     for (const b of bands.values()) if (b.key === r.key || b.pending?.key === r.key) showBand(b);
     reportsTo(r);
+    openerTo(r);
   }
 
   /** The venue's reports, to its signed-in staff sockets that do not have this list yet. */
@@ -833,6 +834,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     r.staff.add(ws);
     ws.send(JSON.stringify({ t: 'staff', ok: true, venue: key, token, push: pusher.publicKey }));
     reportsTo(r, new Set([ws]));
+    openerTo(r, new Set([ws]));
   }
 
   /** A staff socket marks a report of its own venue handled, or opens it again: every staff screen there sees it. */
@@ -841,6 +843,20 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const r = rooms.get(ws.staff.key);
     // Only while signed in there: a socket signed out at 06:00 may still be closing.
     if (r?.staff.has(ws) && r.room.markHandled(m.id, m.on)) push(r);
+  }
+
+  /** A staff socket names its venue's opener, or takes it back with an empty one: every phone there sees it. */
+  function openerBy(ws, m) {
+    if (typeof m.track !== 'string') return;
+    const r = rooms.get(ws.staff.key);
+    if (r?.staff.has(ws) && r.room.setOpener(m.track)) push(r);
+  }
+
+  /** The venue's opener, to its signed-in staff sockets that have not been told it yet. */
+  function openerTo(r, sockets = r.staff) {
+    if (!sockets.size) return;
+    const text = JSON.stringify({ t: 'opener', opener: r.room.opener() });
+    for (const ws of sockets) if (text !== ws.lastOpener) { ws.lastOpener = text; ws.send(text); }
   }
 
   // ---------- staff devices' notifications (docs/superpowers/specs/2026-09-29-staff-push-design.md §3) ----------
@@ -926,10 +942,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // A phone of theirs was heard: any message, pings included (rule 2).
     if (ws.r && ws.me) ws.r.heard.set(ws.me, now());
     if (m.t === 'ping') { ws.send('{"t":"pong"}'); return; }
-    // A signed-in staff socket only marks reports, hands over its device's subscription, or signs out: what a
-    // phone or a wristband would say is ignored.
+    // A signed-in staff socket only marks reports, names the opener, hands over its device's subscription, or signs
+    // out: what a phone or a wristband would say is ignored.
     if (ws.staff) {
       if (m.t === 'handled') handledBy(ws, m);
+      if (m.t === 'opener') openerBy(ws, m);
       if (m.t === 'push') pushFrom(ws, m);
       if (m.t === 'signout') signOutFrom(ws);
       return;
@@ -1316,6 +1333,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         ws.close(4004, 'expired');
       }
       if (r.room.forgetReports((t) => night(t) !== tonight)) push(r);
+      // Last night's opener is not tonight's answer.
+      const named = r.room.openerAt();
+      if (named !== null && night(named) !== tonight && r.room.setOpener('')) push(r);
     }
     for (const r of [...rooms.values()]) gcRoom(r);
   }

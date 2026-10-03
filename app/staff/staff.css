@@ -17,5 +17,10 @@ html, body { background: var(--ink-0); }
 .staff-report.done { border-color: var(--line-2); opacity: .55; }
 .staff-report .btn-s { align-self: flex-start; }
 .staff-line { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.staff-opener { border: 1.5px solid var(--song); border-radius: 20px; background: var(--ink-2); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.staff-opener .staff-form { margin-top: 4px; }
+.staff-opener .staff-form > .btn-s { align-self: flex-start; }
+.staff-tracks { display: flex; flex-wrap: wrap; gap: 6px; }
+.staff-tracks .btn-s[aria-pressed="true"] { border-color: var(--song); color: var(--song); }
 .staff-time { font: var(--num); color: var(--text-2); }
 .staff-why { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

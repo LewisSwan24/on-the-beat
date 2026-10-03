@@ -58,6 +58,46 @@ function registerWorker() {
   })));
 }
 
+/**
+ * FIRST SONG?'s answer: when the headline's first song starts, staff name it and every phone at the venue sees it,
+ * with whether its person called it. A set-list track or typed words fill the field; nothing goes until NAME IT.
+ */
+function OpenerPanel({ opener, setlist, onName }) {
+  const [text, setText] = useState('');
+  const tracks = Array.isArray(setlist) ? setlist : [];
+  const name = (e) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    onName(text.trim());
+    setText('');
+  };
+  return (
+    <section className="staff-opener" aria-label="First song">
+      <div className="label">First song</div>
+      {opener ? (
+        <div className="staff-line" style={{ justifyContent: 'space-between' }}>
+          <span className="body">Named: <strong>{opener.track}</strong> <span className="small">at {timeOf(opener.at)}</span></span>
+          <button type="button" className="btn-s" onClick={() => onName('')}>TAKE BACK</button>
+        </div>
+      ) : (
+        <p className="small">When the headline's first song starts, name it here. Every phone at the venue sees the answer.</p>
+      )}
+      <form className="staff-form" onSubmit={name}>
+        {tracks.length ? (
+          <div className="staff-tracks">
+            {tracks.map((t) => (
+              <button key={t} type="button" className="btn-s" aria-pressed={text === t} onClick={() => setText(t)}>{t}</button>
+            ))}
+          </div>
+        ) : null}
+        <input className="staff-input" value={text} onChange={(e) => setText(e.target.value.slice(0, 60))}
+          placeholder="or type the track" aria-label="The first song" autoComplete="off" />
+        <button type="submit" className="btn-s" disabled={!text.trim()}>{opener ? 'NAME IT INSTEAD' : 'NAME IT'}</button>
+      </form>
+    </section>
+  );
+}
+
 export default function Staff() {
   const [shows, setShows] = useState([]);
   const [session, setSession] = useState(readSession);
@@ -67,6 +107,7 @@ export default function Staff() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('connecting');
   const [reports, setReports] = useState(null);
+  const [opener, setOpener] = useState(undefined);   // FIRST SONG?'s answer as the relay holds it: undefined until told
   const [flash, setFlash] = useState(0);
   const [hearing, setHearing] = useState(false);
   const [notify, setNotify] = useState(() => startState({
@@ -121,6 +162,10 @@ export default function Staff() {
       // Taken: the sign-in is kept on the device until 06:00, so a tap on a notification finds it signed in.
       if (m.ok && sessionRef.current) writeSession(sessionRef.current, true);
       setNotify(m.ok ? 'on' : 'refused');
+      return;
+    }
+    if (m.t === 'opener') {
+      setOpener(m.opener && typeof m.opener.track === 'string' ? m.opener : null);
       return;
     }
     if (m.t === 'reports' && Array.isArray(m.reports)) {
@@ -255,6 +300,10 @@ export default function Staff() {
           <button type="button" className="btn-s staff-notify" onClick={notifyThis} disabled={!reg || !pushKey}>{NOTIFY_WORDS.off}</button>
         ) : <p className="staff-note small">{NOTIFY_WORDS[notify]}</p>}
         {!hearing ? <p className="staff-note small">Tap anywhere to hear new reports.</p> : null}
+        {opener !== undefined ? (
+          <OpenerPanel opener={opener} setlist={shows.find((x) => x.id === session.venue)?.setlist}
+            onName={(track) => line.current?.send({ t: 'opener', track })} />
+        ) : null}
         {reports && !reports.length ? <p className="staff-note small">No reports tonight.</p> : null}
         {reports ? ordered(reports).map((r) => (
           <article key={r.id} className={'staff-report' + (r.handledAt ? ' done' : '')}>

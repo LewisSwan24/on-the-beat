@@ -119,6 +119,8 @@ export function createRoom({
   // come back as they left. Outlives leave(), as blocks do.
   const tombs = new Map();
   const reports = [];         // oldest first: { id, at, from, about, aboutBand, fromBand, why, handledAt }
+  // FIRST SONG?'s answer, as the venue's staff named it: { track, at }, or null until they do. Everyone sees it.
+  let opener = null;
   let nextReport = 1;
   let nextMatch = 1;
   // Near: what each person's wristband heard, never shown to anyone. 'a>b' -> [{ at, rssi }], a's band
@@ -145,6 +147,9 @@ export function createRoom({
     reports.push(...restore.reports);
     nextReport = restore.nextReport;
     nextMatch = restore.nextMatch;
+    // A file from before there was an opener has none.
+    const o = restore.opener;
+    if (o && typeof o.track === 'string' && o.track && Number.isFinite(o.at)) opener = { track: clip(o.track, TRACK_MAX), at: o.at };
   }
 
   // A handle is a function of the salt and the two ids alone, and a push asks for P*P of them (every person's view of
@@ -267,6 +272,14 @@ export function createRoom({
     if (m.t === 'invisible') setInvisible(id, m.on, 'phone');
     else arm(id, m.intent, 'phone');
     return null;
+  }
+
+  /** The venue's staff name the opener, or take it back with an empty one. True when that changed it. */
+  function setOpener(track) {
+    const t = clip(track, TRACK_MAX);
+    if ((opener?.track || '') === t) return false;
+    opener = t ? { track: t, at: now() } : null;
+    return true;
   }
 
   function pick(id, track) {
@@ -621,6 +634,8 @@ export function createRoom({
       wall: others.filter((p) => p.pick).map((p) => ({
         ...row(p), pick: p.pick, liked: likes.has(id + '>' + p.id),
       })),
+      // And, once the venue's staff name it, the answer: the same for everyone.
+      opener: opener ? { ...opener } : null,
       // LET'S DANCE!: five seconds each. One sent straight to you comes first, and says so.
       floor: others.flatMap((p) => {
         const toYou = dances.get(p.id + '>' + id);
@@ -662,11 +677,16 @@ export function createRoom({
       reports: reports.slice(),
       nextReport,
       nextMatch,
+      opener,
     };
   }
 
   return {
-    join, leave, setProfile, arm, setInvisible, fromPhone, pick, postClip,
+    join, leave, setProfile, arm, setInvisible, fromPhone, pick, postClip, setOpener,
+    /** The opener as staff named it ({ track, at }), or null. */
+    opener: () => (opener ? { ...opener } : null),
+    /** When the opener was named, or null: the relay lets it go when its night ends. */
+    openerAt: () => opener?.at ?? null,
     wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, found, heard, nearTick, viewFor, dump,
     /** How many handles the room holds now (a count for the tests, so the ones of people who left are seen to go). */
     handlesHeld: () => { let n = 0; for (const row of handles.values()) n += row.size; return n; },    /** For the relay: who is here, so it knows whose view to push. */

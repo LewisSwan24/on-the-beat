@@ -733,6 +733,18 @@ read back from the picture with jsQR, the scanner the app uses.
   goes to the share sheet where the browser can share a file, or downloads
   otherwise; nothing is sent. A number goes in as a number, an email or a
   web address as itself, and a handle in the note with where they met.
+- **FIRST SONG? gets its answer.** The canvas asks for a pick and never says
+  what opened. The owner chose on 3 Oct 2026 that the venue's staff name it:
+  the staff page has a *First song* panel with the night's setlist as chips,
+  *NAME IT*, and *TAKE BACK* for a mistake. Every phone at the venue then
+  shows `THE OPENER WAS` above its own pick, *You called it.* or *Not this
+  time.*, and how many here called it, never who; the wall marks a matching
+  pick `CALLED IT`, which is no more than the pick on that row already says.
+  A pick matches whatever its case, accents, punctuation or spacing
+  (`app/lib/opener.js`), and is held as it was when the answer came, so
+  changing it afterwards calls nothing. Tonight keeps one line for it. Only a
+  signed-in staff page can name it; a restart keeps it, and 06:00 takes it
+  back with the night.
 - **Venue distances are gone.** The canvas shows "40 m" beside each show;
   that needs the phone's location, and promise 1 says nobody sees where you
   are. The list shows doors times instead.

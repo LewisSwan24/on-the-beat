@@ -63,12 +63,13 @@ async function start({ staffCheck, ...more } = {}) {
   /** A staff page's socket: each answer to a sign-in, each list it is sent, and how it closed. */
   async function staff({ ip = '203.0.113.' + (1 + (addresses++ % 199)) } = {}) {
     const ws = new WebSocket('ws://127.0.0.1:' + relay.port + WS_PATH, { headers: { 'cf-connecting-ip': ip } });
-    const s = { ws, answers: [], lists: [], closed: null, waiters: [] };
+    const s = { ws, answers: [], lists: [], openers: [], closed: null, waiters: [] };
     const wake = () => { s.waiters = s.waiters.filter((w) => !w()); };
     ws.on('message', (d) => {
       const m = JSON.parse(String(d));
       if (m.t === 'staff') s.answers.push(m);
       if (m.t === 'reports') s.lists.push(m.reports);
+      if (m.t === 'opener') s.openers.push(m.opener);
       wake();
     });
     ws.on('close', (code) => { s.closed = code; wake(); });
@@ -351,6 +352,44 @@ test('two staff screens see one mark; a mark is for its own venue only, and only
   one.send({ t: 'handled', id: 'r1', on: false });
   await two.until(() => two.list()[0].handledAt === 0);
   assert.deepEqual(other.list(), [], 'the other venue saw nothing');
+});
+
+test('staff name the opener and every phone at their venue sees it; nobody else can name it', async () => {
+  const { phone, signedIn } = await start();
+  const one = await signedIn();
+  const two = await signedIn();
+  const other = await signedIn('staff-other', 'test-passcode-2');
+  await one.until(() => one.openers.length === 1);
+  assert.equal(one.openers[0], null, 'told at sign-in that there is none yet');
+  const ana = await phone('staff-venue');
+  const eve = await phone('staff-other');
+  ana.send({ t: 'opener', track: 'Treasure' });   // a phone cannot
+  other.send({ t: 'opener', track: 'Grenade' });  // staff at another venue name only their own
+  one.send({ t: 'opener', track: 5 });            // only a string
+  await eve.until((v) => v.opener?.track === 'Grenade');
+  await pause(200);
+  assert.equal(ana.view.opener, null);
+  one.send({ t: 'opener', track: '  Locked Out of Heaven  ' });
+  await ana.until((v) => v.opener?.track === 'Locked Out of Heaven');
+  assert.equal(ana.view.opener.at, EIGHT_PM);
+  assert.equal(eve.view.opener.track, 'Grenade', 'the other venue keeps its own');
+  await two.until(() => two.openers.at(-1)?.track === 'Locked Out of Heaven');
+  const later = await signedIn();
+  await later.until(() => later.openers.at(-1)?.track === 'Locked Out of Heaven');
+  one.send({ t: 'opener', track: '' });
+  await ana.until((v) => v.opener === null);
+  await two.until(() => two.openers.at(-1) === null);
+});
+
+test('the opener is for its night: 06:00 takes it back', async () => {
+  const { relay, clock, phone, signedIn } = await start();
+  const one = await signedIn();
+  const ana = await phone('staff-venue');
+  one.send({ t: 'opener', track: 'Treasure' });
+  await ana.until((v) => v.opener?.track === 'Treasure');
+  clock.t = NEXT_MORNING;
+  relay.expire(clock.t);
+  await ana.until((v) => v.opener === null);
 });
 
 test('a venue with a staff page keeps tonight\'s reports with nobody in it, till 06:00; another venue does not', async () => {

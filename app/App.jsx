@@ -5,6 +5,7 @@ import { battery, buzz, toBase64 } from './lib/device.js';
 import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
 import { meetingOn, newlyFound } from './lib/found.js';
 import { connect } from './lib/net.js';
+import { openerArrived, openerNews } from './lib/opener.js';
 import { phaseLine, phaseOf } from './lib/phase.js';
 import { refusalWords } from './lib/refusals.js';
 import { saveCard } from './lib/vcard.js';
@@ -298,6 +299,17 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
   useEffect(() => { wavesSeen.current = null; }, [night?.me]);
+
+  // FIRST SONG?'s answer, once the venue's staff name it: told once, kept on Tonight, against the pick held when it came.
+  useEffect(() => {
+    const step = openerArrived(night?.state || {}, view, pick);
+    if (!step) return;
+    setNightState(step.patch);
+    update((prev) => store.setEvent(prev, 'opener', step.event, view.opener?.at));
+    if (step.say) say(step.say);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.opener?.track, view.opener?.at, !!view.me, night?.me]);
+  const opener = openerNews(view.opener, night?.state?.openerPick ?? pick, view.wall);
 
   // Found by both, news to this phone: a buzz, unless a live wristband plays it instead (found §1). The record
   // keeps foundAt (noteMatch, above), so a reload buzzes for nothing already found.
@@ -686,7 +698,7 @@ export default function App() {
       break;
     case 'pick': body = <Pick show={show} text={pickText} setText={setPickText} onBack={back} />; break;
     case 'wall':
-      body = <Wall wall={view.wall} pick={pick} onBack={back} onChange={() => { setPickText(pick); go('pick'); }}
+      body = <Wall wall={view.wall} pick={pick} opener={opener} onBack={back} onChange={() => { setPickText(pick); go('pick'); }}
         onLike={(handle, on) => net.current?.send({ t: on ? 'like' : 'unlike', handle })} onMore={personSheet} />;
       break;
     case 'match':
