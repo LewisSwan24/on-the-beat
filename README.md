@@ -1311,8 +1311,15 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   face hold went NOT NOW and a side hold came back. With the phone locked for
   over two minutes, SAY HI chosen on the band reached the other person's
   WHO'S NEAR, and the phone woke with it still armed and no toast saying a tap
-  failed — but its socket stayed open all the while, so a band holding its
-  person with the phone truly gone is still untried. After a relay restart
+  failed — but its socket stayed open all the while. On 4 Oct 2026 the
+  phone was truly gone: the StickC Plus, paired through the Fly relay to a
+  stand-in on SAY HI, had that phone's tab closed outright, and a second
+  person with no band, watching from the same venue, still saw them on SAY
+  HI three minutes later, past the two-minute grace. From the wrist alone,
+  FIRST SONG? took them off that list and SAY HI put them back under the same
+  handle; a face hold hid them and a press onto a card then a side hold
+  showed them again. The band-alone hour itself was not waited out. The
+  phone, opened again, found the card the wrist had chosen. After a relay restart
   the band waited with `OPEN YOUR PHONE` until the phone claimed it back
   without letters, and when the laptop's own internet dropped for 80 s both
   bands found the relay again by themselves. Two wrists met: both showed
