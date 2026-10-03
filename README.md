@@ -302,6 +302,23 @@ Every report reaches the venue's own team at `/staff`
   sees them; at 06:00 they go. A restart or a deploy keeps them, and keeps
   every staff page signed in, unless its venue's passcode entry changed: the
   page signs back in with its token.
+- **Telling everyone here.** *SEND TO EVERY PHONE* puts one line, at most
+  140 characters, on every phone at the venue: a toast and a buzz, a
+  `FROM THE VENUE` banner on the cards screen until that person puts it away,
+  and a line on their Tonight. Only the latest stands; *TAKE DOWN* removes it.
+  A new one goes at most every 20 seconds a venue, since each one reaches
+  every phone there, and the page says how long to wait.
+- **Moving the times.** *Show times* holds the night's five times. A row's
+  −5 and +5 move it and every time after it, as a late start does; a time can
+  also be typed. Nothing goes until *SAVE TIMES*, and the relay takes only five
+  clock times in the night's order. Every phone's phase bar and countdown
+  follow at once, with a toast saying what moved, and the venue list shows the
+  moved times to anyone choosing a show. *BACK AS LISTED* undoes it.
+- **What staff say lasts the night.** The first song, a notice and moved
+  times stay with nobody in the venue yet, so times moved before doors are
+  there when they open; a restart keeps them; 06:00 takes all of them back. A
+  staff screen signed out at 06:00 cannot say anything more, even in the
+  moment before its socket closes.
 
 To give a venue its page, make its line and set it on the relay:
 
@@ -745,6 +762,12 @@ read back from the picture with jsQR, the scanner the app uses.
   changing it afterwards calls nothing. Tonight keeps one line for it. Only a
   signed-in staff page can name it; a restart keeps it, and 06:00 takes it
   back with the night.
+- **The venue can tell everyone something, and move the times.** The canvas's
+  times are the show's as listed, and nothing reaches every phone at once. The
+  owner chose on 3 Oct 2026 that a signed-in staff page can send a notice to
+  every phone at its venue and move the night's times (see "The staff page").
+  A notice is the venue's own words, the same for everyone, and says nothing
+  about anyone in the room.
 - **Venue distances are gone.** The canvas shows "40 m" beside each show;
   that needs the phone's location, and promise 1 says nobody sees where you
   are. The list shows doors times instead.

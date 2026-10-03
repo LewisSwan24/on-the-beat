@@ -6,6 +6,7 @@ import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
 import { meetingOn, newlyFound } from './lib/found.js';
 import { connect } from './lib/net.js';
 import { openerArrived, openerNews } from './lib/opener.js';
+import { noticeArrived, showWith, timesArrived } from './lib/venue.js';
 import { phaseLine, phaseOf } from './lib/phase.js';
 import { refusalWords } from './lib/refusals.js';
 import { saveCard } from './lib/vcard.js';
@@ -66,12 +67,14 @@ function ReportForm({ onSend }) {
 export default function App() {
   const [s, update] = useStore();
   const night = store.tonight(s);
-  const show = night?.show || null;
+  const listed = night?.show || null;
 
   const [screen, setScreen] = useState('splash');
   const [stack, setStack] = useState([]);
   const [shows, setShows] = useState(null);
   const [view, setView] = useState(EMPTY);
+  // The show as tonight runs it: its times as the venue's staff moved them, if they did.
+  const show = showWith(listed, view.times);
   const [status, setStatus] = useState('connecting');
   const [sheet, setSheet] = useState(null);
   const [toast, setToast] = useState(null);
@@ -310,6 +313,25 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.opener?.track, view.opener?.at, !!view.me, night?.me]);
   const opener = openerNews(view.opener, night?.state?.openerPick ?? pick, view.wall);
+
+  // What the venue's staff tell everyone: a notice, told once and kept on Tonight, and the times when they move them.
+  useEffect(() => {
+    const step = noticeArrived(night?.state || {}, view);
+    if (!step) return;
+    setNightState(step.patch);
+    update((prev) => store.addEvent(prev, 'notice', step.event, view.notice.at));
+    say(step.say);
+    buzz([60, 80, 60]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.notice?.at, !!view.me, night?.me]);
+  useEffect(() => {
+    const step = timesArrived(night?.state || {}, view, listed);
+    if (!step) return;
+    setNightState(step.patch);
+    if (step.say) say(step.say);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.times?.at, !!view.me, night?.me]);
+  const notice = view.notice && night?.state?.noticeHidden !== view.notice.at ? view.notice : null;
 
   // Found by both, news to this phone: a buzz, unless a live wristband plays it instead (found §1). The record
   // keeps foundAt (noteMatch, above), so a reload buzzes for nothing already found.
@@ -684,6 +706,7 @@ export default function App() {
       break;
     case 'home':
       body = <Home show={show} phase={phase} line={line} armed={invisible ? null : armed} ci={ci} setCi={setCi}
+        notice={notice} onHideNotice={() => setNightState({ noticeHidden: notice.at })}
         band={bandShown} onBand={() => (paired ? bandSheet() : go('pair'))}
         onArm={(id) => arm(armed === id ? null : id)} onOpen={(id) => go(({ hi: 'beacon', song: 'pick', dance: 'camera' })[id])} onHow={howSheet} />;
       break;

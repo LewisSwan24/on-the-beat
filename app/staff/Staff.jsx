@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { connectStaff } from './line.js';
 import { REFUSED, freshIds, openCount, ordered, timeOf, titleFor, whereLine, whoLine } from './list.js';
 import { NOTICE_TAG, NOTIFY_WORDS, fromB64u, sameKey, startState } from './notify.js';
+import { fiveOf, inOrder, shiftFrom } from '../lib/venue.js';
 
 const SESSION = 'otb:staff';   // { venue, token }: in sessionStorage, or in localStorage once notifications are on
 const storage = (name) => { try { return window[name] ?? null; } catch { return null; } };
@@ -98,6 +99,95 @@ function OpenerPanel({ opener, setlist, onName }) {
   );
 }
 
+const NOTICE_MAX = 140;
+
+/**
+ * A notice to every phone at the venue: a toast on each, a line on its Home screen until put away, and a line on its
+ * Tonight. Only the latest stands; a new one goes at most every 20 seconds, and taking one down never waits.
+ */
+function NoticePanel({ notice, wait, onSend }) {
+  const [text, setText] = useState('');
+  const sent = useRef(null);
+  // The field empties once the relay has the words: a notice sent too soon keeps them for another try.
+  useEffect(() => {
+    if (notice && notice.text === sent.current) { setText(''); sent.current = null; }
+  }, [notice]);
+  const send = (e) => {
+    e.preventDefault();
+    const t = text.replace(/\s+/g, ' ').trim();
+    if (!t) return;
+    sent.current = t;
+    onSend(t);
+  };
+  return (
+    <section className="staff-opener staff-notice" aria-label="Notice">
+      <div className="label">Tell everyone here</div>
+      {notice ? (
+        <div className="staff-line" style={{ justifyContent: 'space-between' }}>
+          <span className="body">On every phone: <strong>{notice.text}</strong> <span className="small">since {timeOf(notice.at)}</span></span>
+          <button type="button" className="btn-s" onClick={() => onSend('')}>TAKE DOWN</button>
+        </div>
+      ) : (
+        <p className="small">A short line every phone at the venue sees: a delay, a closed exit, the last train.</p>
+      )}
+      <form className="staff-form" onSubmit={send}>
+        <input className="staff-input" value={text} onChange={(e) => setText(e.target.value.slice(0, NOTICE_MAX))}
+          placeholder="Headline is 20 minutes late" aria-label="The notice" autoComplete="off" />
+        <div className="staff-line" style={{ justifyContent: 'space-between' }}>
+          <button type="submit" className="btn-s" disabled={!text.trim()}>{notice ? 'SEND INSTEAD' : 'SEND TO EVERY PHONE'}</button>
+          <span className="small tnum" aria-hidden="true">{text.length}/{NOTICE_MAX}</span>
+        </div>
+        {wait ? <p className="small staff-error" role="alert">One went out just now. Try again in {wait} s.</p> : null}
+      </form>
+    </section>
+  );
+}
+
+const TIME_NAMES = { doors: 'Doors', support: 'Support', break: 'Break', headline: 'Headline', end: 'End' };
+
+/**
+ * Tonight's times, moved: every phone's phase bar and countdowns follow. A row's −5 and +5 move it and everything after
+ * it, as a late start does; nothing goes until SAVE TIMES, and BACK AS LISTED undoes all of it.
+ */
+function TimesPanel({ times, listed, onSet }) {
+  const now = times ? fiveOf(times) : fiveOf(listed);
+  const [draft, setDraft] = useState(null);
+  const shown = draft || now;
+  const changed = Object.keys(TIME_NAMES).some((k) => shown[k] !== now[k]);
+  const ok = inOrder(shown);
+  const save = (e) => {
+    e.preventDefault();
+    if (!changed || !ok) return;
+    onSet(shown);
+    setDraft(null);
+  };
+  return (
+    <section className="staff-opener staff-times" aria-label="Show times">
+      <div className="label">Show times</div>
+      <p className="small">{times ? 'Moved at ' + timeOf(times.at) + '. Every phone shows these.' : 'As listed. Move them if the night runs late.'}</p>
+      <form className="staff-form" onSubmit={save}>
+        {Object.entries(TIME_NAMES).map(([k, name]) => (
+          <div key={k} className="staff-time-row">
+            <label className="body" htmlFor={'time-' + k}>{name}</label>
+            <input id={'time-' + k} className="staff-input tnum" type="time" value={shown[k]} required
+              onChange={(e) => setDraft({ ...shown, [k]: e.target.value })} />
+            <button type="button" className="btn-s" aria-label={name + ' and after, 5 minutes earlier'}
+              onClick={() => setDraft(shiftFrom(shown, k, -5))}>−5</button>
+            <button type="button" className="btn-s" aria-label={name + ' and after, 5 minutes later'}
+              onClick={() => setDraft(shiftFrom(shown, k, 5))}>+5</button>
+          </div>
+        ))}
+        {!ok ? <p className="small staff-error" role="alert">Each time has to come after the one above it.</p> : null}
+        <div className="staff-line">
+          <button type="submit" className="btn-s" disabled={!changed || !ok}>SAVE TIMES</button>
+          {draft ? <button type="button" className="btn-s" onClick={() => setDraft(null)}>UNDO</button> : null}
+          {times && !draft ? <button type="button" className="btn-s" onClick={() => onSet(null)}>BACK AS LISTED</button> : null}
+        </div>
+      </form>
+    </section>
+  );
+}
+
 export default function Staff() {
   const [shows, setShows] = useState([]);
   const [session, setSession] = useState(readSession);
@@ -108,6 +198,9 @@ export default function Staff() {
   const [status, setStatus] = useState('connecting');
   const [reports, setReports] = useState(null);
   const [opener, setOpener] = useState(undefined);   // FIRST SONG?'s answer as the relay holds it: undefined until told
+  const [notice, setNotice] = useState(undefined);   // the notice standing, as the relay holds it: undefined until told
+  const [noticeWait, setNoticeWait] = useState(0);   // seconds before a new one may go, once one was sent too soon
+  const [times, setTimes] = useState(undefined);     // tonight's times as moved, null as listed: undefined until told
   const [flash, setFlash] = useState(0);
   const [hearing, setHearing] = useState(false);
   const [notify, setNotify] = useState(() => startState({
@@ -122,13 +215,14 @@ export default function Staff() {
   const seen = useRef(null);    // the ids of the last list, or null before the first
   const audio = useRef(null);
 
-  useEffect(() => {
+  const loadShows = useCallback(() => {
     fetch('/api/shows').then((r) => r.json()).then((list) => {
       const all = Array.isArray(list) ? list : [];
       setShows(all);
       setVenue((v) => v || all[0]?.id || '');
     }).catch(() => {});
   }, []);
+  useEffect(loadShows, [loadShows]);
 
   // On screen, the list is in front of them: this device's report notifications go.
   const clearNotices = useCallback(() => {
@@ -166,6 +260,17 @@ export default function Staff() {
     }
     if (m.t === 'opener') {
       setOpener(m.opener && typeof m.opener.track === 'string' ? m.opener : null);
+      return;
+    }
+    if (m.t === 'notice') {
+      setNotice(m.notice && typeof m.notice.text === 'string' ? m.notice : null);
+      setNoticeWait(Number.isInteger(m.wait) && m.wait > 0 ? m.wait : 0);
+      return;
+    }
+    if (m.t === 'times') {
+      setTimes(m.times && typeof m.times === 'object' ? m.times : null);
+      // The venue list names moved times, so once they are back as listed it is asked again for the listed ones.
+      if (!m.times) loadShows();
       return;
     }
     if (m.t === 'reports' && Array.isArray(m.reports)) {
@@ -300,6 +405,14 @@ export default function Staff() {
           <button type="button" className="btn-s staff-notify" onClick={notifyThis} disabled={!reg || !pushKey}>{NOTIFY_WORDS.off}</button>
         ) : <p className="staff-note small">{NOTIFY_WORDS[notify]}</p>}
         {!hearing ? <p className="staff-note small">Tap anywhere to hear new reports.</p> : null}
+        {notice !== undefined ? (
+          <NoticePanel notice={notice} wait={noticeWait}
+            onSend={(text) => { setNoticeWait(0); line.current?.send({ t: 'notice', text }); }} />
+        ) : null}
+        {times !== undefined ? (
+          <TimesPanel key={times?.at ?? 'listed'} times={times} listed={shows.find((x) => x.id === session.venue)}
+            onSet={(next) => line.current?.send({ t: 'times', times: next })} />
+        ) : null}
         {opener !== undefined ? (
           <OpenerPanel opener={opener} setlist={shows.find((x) => x.id === session.venue)?.setlist}
             onName={(track) => line.current?.send({ t: 'opener', track })} />

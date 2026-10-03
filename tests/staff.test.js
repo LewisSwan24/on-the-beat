@@ -63,13 +63,15 @@ async function start({ staffCheck, ...more } = {}) {
   /** A staff page's socket: each answer to a sign-in, each list it is sent, and how it closed. */
   async function staff({ ip = '203.0.113.' + (1 + (addresses++ % 199)) } = {}) {
     const ws = new WebSocket('ws://127.0.0.1:' + relay.port + WS_PATH, { headers: { 'cf-connecting-ip': ip } });
-    const s = { ws, answers: [], lists: [], openers: [], closed: null, waiters: [] };
+    const s = { ws, answers: [], lists: [], openers: [], notices: [], waits: [], times: [], closed: null, waiters: [] };
     const wake = () => { s.waiters = s.waiters.filter((w) => !w()); };
     ws.on('message', (d) => {
       const m = JSON.parse(String(d));
       if (m.t === 'staff') s.answers.push(m);
       if (m.t === 'reports') s.lists.push(m.reports);
       if (m.t === 'opener') s.openers.push(m.opener);
+      if (m.t === 'notice') (m.wait ? s.waits : s.notices).push(m.wait ? m : m.notice);
+      if (m.t === 'times') s.times.push(m.times);
       wake();
     });
     ws.on('close', (code) => { s.closed = code; wake(); });
@@ -379,6 +381,102 @@ test('staff name the opener and every phone at their venue sees it; nobody else 
   one.send({ t: 'opener', track: '' });
   await ana.until((v) => v.opener === null);
   await two.until(() => two.openers.at(-1) === null);
+});
+
+test('staff send every phone at their venue a notice, a new one at most every 20 s; nobody else can', async () => {
+  const { clock, phone, signedIn } = await start();
+  const one = await signedIn();
+  const two = await signedIn();
+  const other = await signedIn('staff-other', 'test-passcode-2');
+  await one.until(() => one.notices.length === 1);
+  assert.equal(one.notices[0], null, 'told at sign-in that there is none');
+  const ana = await phone('staff-venue');
+  const eve = await phone('staff-other');
+  ana.send({ t: 'notice', text: 'free drinks at the bar' });   // a phone cannot
+  other.send({ t: 'notice', text: 'Doors close at 22:00' });    // staff elsewhere tell only their own
+  one.send({ t: 'notice', text: { text: 'x' } });               // only a string
+  await eve.until((v) => v.notice?.text === 'Doors close at 22:00');
+  await pause(200);
+  assert.equal(ana.view.notice, null);
+  one.send({ t: 'notice', text: 'Headline is 20 minutes late' });
+  await ana.until((v) => v.notice?.text === 'Headline is 20 minutes late');
+  assert.equal(ana.view.notice.at, EIGHT_PM);
+  await two.until(() => two.notices.at(-1)?.text === 'Headline is 20 minutes late');
+  clock.t = EIGHT_PM + 19_000;
+  two.send({ t: 'notice', text: 'Exit is on the left' });       // too soon after the last, from any staff screen there
+  await two.until(() => two.waits.length === 1);
+  assert.deepEqual(two.waits[0], { t: 'notice', notice: { text: 'Headline is 20 minutes late', at: EIGHT_PM }, wait: 1 });
+  assert.equal(ana.view.notice.text, 'Headline is 20 minutes late');
+  one.send({ t: 'notice', text: '' });                          // taking it down never waits
+  await ana.until((v) => v.notice === null);
+  clock.t = EIGHT_PM + 20_000;
+  two.send({ t: 'notice', text: 'Exit is on the left' });
+  await ana.until((v) => v.notice?.text === 'Exit is on the left');
+  const later = await signedIn();
+  await later.until(() => later.notices.at(-1)?.text === 'Exit is on the left');
+});
+
+test('staff move the times and every phone, and the venue list, follow; only five in order are taken', async () => {
+  const showsFile = join(base, 'times-shows.json');
+  writeFileSync(showsFile, JSON.stringify([{ id: 'staff-venue', venue: 'Test Hall', act: 'TEST ACT', doors: '19:00', support: '20:00', break: '20:45', headline: '21:30', end: '23:00' }]));
+  const { relay, phone, signedIn } = await start({ shows: showsFile });
+  const one = await signedIn();
+  await one.until(() => one.times.length === 1);
+  assert.equal(one.times[0], null);
+  const ana = await phone('staff-venue');
+  const five = { doors: '19:00', support: '20:15', break: '21:00', headline: '21:50', end: '23:30' };
+  ana.send({ t: 'times', times: five });                          // a phone cannot
+  one.send({ t: 'times', times: { ...five, support: '18:00' } }); // out of order
+  one.send({ t: 'times', times: [five] });
+  await pause(200);
+  assert.equal(ana.view.times, null);
+  const listed = async () => (await (await fetch('http://127.0.0.1:' + relay.port + '/api/shows')).json()).find((x) => x.id === 'staff-venue');
+  const before = await listed();
+  one.send({ t: 'times', times: five });
+  await ana.until((v) => v.times?.headline === '21:50');
+  assert.deepEqual(ana.view.times, { ...five, at: EIGHT_PM });
+  await one.until(() => one.times.at(-1)?.headline === '21:50');
+  const moved = await listed();
+  assert.deepEqual(moved, { ...before, ...five }, 'the venue list names the moved times, and nothing else changes');
+  one.send({ t: 'times', times: null });
+  await ana.until((v) => v.times === null);
+  assert.deepEqual(await listed(), before);
+});
+
+test('what staff said for a night lasts with nobody there, and 06:00 takes all of it back', async () => {
+  const { relay, clock, phone, signedIn } = await start();
+  const one = await signedIn();
+  one.send({ t: 'opener', track: 'Treasure' });
+  one.send({ t: 'notice', text: 'Doors at 19:30 tonight' });
+  one.send({ t: 'times', times: { doors: '19:30', support: '20:15', break: '21:00', headline: '21:50', end: '23:30' } });
+  await one.until(() => one.times.at(-1) && one.notices.at(-1) && one.openers.at(-1));
+  one.ws.close();
+  await one.until(() => one.closed !== null);
+  await pause(100);
+  relay.expire(clock.t);                                          // set before doors, with nobody in yet
+  const ana = await phone('staff-venue');
+  await ana.until((v) => v.times?.doors === '19:30' && v.notice && v.opener);
+  clock.t = NEXT_MORNING;
+  relay.expire(clock.t);
+  await ana.until((v) => v.times === null && v.notice === null && v.opener === null);
+});
+
+test('a staff screen signed out at 06:00 says nothing more to its venue, even before its socket has closed', async () => {
+  const { relay, clock, phone, signedIn } = await start();
+  const one = await signedIn();
+  // The moment it is told, while the relay is still closing it: what it says then must not reach a phone.
+  one.ws.on('message', (d) => {
+    if (JSON.parse(String(d)).why !== 'expired') return;
+    one.send({ t: 'notice', text: 'still here' });
+    one.send({ t: 'times', times: { doors: '19:30', support: '20:15', break: '21:00', headline: '21:50', end: '23:30' } });
+    one.send({ t: 'opener', track: 'Treasure' });
+  });
+  clock.t = NEXT_MORNING;
+  const ana = await phone('staff-venue');
+  relay.expire(clock.t);
+  await one.until(() => one.closed !== null);
+  await pause(300);
+  assert.deepEqual([ana.view.notice, ana.view.times, ana.view.opener], [null, null, null]);
 });
 
 test('the opener is for its night: 06:00 takes it back', async () => {

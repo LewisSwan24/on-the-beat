@@ -66,6 +66,7 @@ const STAFF_TOKENS_MAX = 1000;        // staff sign-ins kept for tonight; past i
 // Fifty devices a venue can hold a notification subscription (PUSH_SUBS_MAX), so this leaves room for as many again.
 const STAFF_TOKENS_PER_VENUE = 100;
 const PUSH_SUBS_MAX = 50;             // staff devices a venue sends notifications to; past it the oldest is forgotten
+const NOTICE_GAP_MS = 20_000;         // a venue's staff may send its phones a new notice at most this often
 const CODE_MAX = 200;                 // the longest passcode a staff sign-in may carry
 const CHECKS_AT_ONCE = 8;             // passcode checks running at once: libuv's pool has four threads, so a queue is only ever a guesser's
 const REPORT_WINDOW_MS = 3_600_000;   // the window reports are counted in
@@ -269,6 +270,18 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   // the relay: a bad file is said in the log and never leaves the relay with none (docs/show-night.md).
   const shows = chooseShows(showsFile ?? process.env.SHOWS, join(here, 'relay', 'shows.json'));
   const showsJson = JSON.stringify(shows);
+  // The venue list as phones are given it: a venue whose staff moved tonight's times lists them as moved.
+  const showsNow = () => {
+    let moved = false;
+    const list = shows.map((s) => {
+      const t = rooms.get(s.id)?.room.times();
+      if (!t) return s;
+      moved = true;
+      const { at: _, ...five } = t;
+      return { ...s, ...five };
+    });
+    return moved ? JSON.stringify(list) : showsJson;
+  };
   // key -> { room, sockets:Set, clips:Map(ref -> {mime, buf, by, slot, at}), left:Map(id -> timer),
   //          heard:Map(id -> when a phone of theirs last spoke), staff:Set of signed-in staff sockets }
   const rooms = new Map();
@@ -355,7 +368,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     }
     for (const b of bands.values()) if (b.key === r.key || b.pending?.key === r.key) showBand(b);
     reportsTo(r);
-    openerTo(r);
+    saidTo(r);
   }
 
   /** The venue's reports, to its signed-in staff sockets that do not have this list yet. */
@@ -834,7 +847,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     r.staff.add(ws);
     ws.send(JSON.stringify({ t: 'staff', ok: true, venue: key, token, push: pusher.publicKey }));
     reportsTo(r, new Set([ws]));
-    openerTo(r, new Set([ws]));
+    saidTo(r, new Set([ws]));
   }
 
   /** A staff socket marks a report of its own venue handled, or opens it again: every staff screen there sees it. */
@@ -852,11 +865,44 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (r?.staff.has(ws) && r.room.setOpener(m.track)) push(r);
   }
 
-  /** The venue's opener, to its signed-in staff sockets that have not been told it yet. */
-  function openerTo(r, sockets = r.staff) {
+  /**
+   * A staff socket sends every phone at its venue a notice, or takes it down with an empty one. A new one goes at most
+   * every NOTICE_GAP_MS a venue, since each is a toast on every phone there; it is told how long to wait.
+   */
+  function noticeBy(ws, m) {
+    if (typeof m.text !== 'string') return;
+    const r = rooms.get(ws.staff.key);
+    if (!r?.staff.has(ws)) return;
+    const wait = (r.noticeAt ?? -Infinity) + NOTICE_GAP_MS - now();
+    if (m.text.trim() && wait > 0) {
+      ws.send(JSON.stringify({ t: 'notice', notice: r.room.notice(), wait: Math.ceil(wait / 1000) }));
+      return;
+    }
+    if (!r.room.setNotice(m.text)) return;
+    if (r.room.notice()) r.noticeAt = now();
+    push(r);
+  }
+
+  /**
+   * A staff socket moves its venue's times, or puts them back as listed with null: every phone there follows. The room
+   * takes only five clock times in the night's order, so anything else a socket sends changes nothing.
+   */
+  function timesBy(ws, m) {
+    const r = rooms.get(ws.staff.key);
+    if (r?.staff.has(ws) && r.room.setTimes(m.times)) push(r);
+  }
+
+  /** What staff said for the venue (its opener, notice and times), to its signed-in staff sockets not yet told it. */
+  function saidTo(r, sockets = r.staff) {
     if (!sockets.size) return;
-    const text = JSON.stringify({ t: 'opener', opener: r.room.opener() });
-    for (const ws of sockets) if (text !== ws.lastOpener) { ws.lastOpener = text; ws.send(text); }
+    const said = { opener: r.room.opener(), notice: r.room.notice(), times: r.room.times() };
+    for (const [t, value] of Object.entries(said)) {
+      const text = JSON.stringify({ t, [t]: value });
+      for (const ws of sockets) {
+        ws.said ??= {};
+        if (text !== ws.said[t]) { ws.said[t] = text; ws.send(text); }
+      }
+    }
   }
 
   // ---------- staff devices' notifications (docs/superpowers/specs/2026-09-29-staff-push-design.md §3) ----------
@@ -942,11 +988,13 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // A phone of theirs was heard: any message, pings included (rule 2).
     if (ws.r && ws.me) ws.r.heard.set(ws.me, now());
     if (m.t === 'ping') { ws.send('{"t":"pong"}'); return; }
-    // A signed-in staff socket only marks reports, names the opener, hands over its device's subscription, or signs
-    // out: what a phone or a wristband would say is ignored.
+    // A signed-in staff socket only marks reports, names the opener, sends a notice, moves the times, hands over its
+    // device's subscription, or signs out: what a phone or a wristband would say is ignored.
     if (ws.staff) {
       if (m.t === 'handled') handledBy(ws, m);
       if (m.t === 'opener') openerBy(ws, m);
+      if (m.t === 'notice') noticeBy(ws, m);
+      if (m.t === 'times') timesBy(ws, m);
       if (m.t === 'push') pushFrom(ws, m);
       if (m.t === 'signout') signOutFrom(ws);
       return;
@@ -1125,7 +1173,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim() === 'https') res.setHeader('strict-transport-security', 'max-age=31536000');
     const url = req.url || '/';
     if (url === '/api/shows') {
-      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' }).end(showsJson);
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' }).end(showsNow());
     } else if (url.startsWith('/clip/')) serveClip(req, res, url);
     else serveStatic(res, url);
   });
@@ -1269,6 +1317,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (r.sockets.size || r.left.size || r.clips.size || r.staff.size) return;
     // A venue with a staff page keeps tonight's reports for its team once everyone has gone; 06:00 clears them.
     if (staffEntries.has(r.key) && r.room.hasReports()) return;
+    // And what its staff said for tonight, so times moved before doors are there when the doors open.
+    if (r.room.opener() || r.room.notice() || r.room.times()) return;
     for (const b of bands.values()) if (b.key === r.key && b.ws) return;
     rooms.delete(r.key);
   }
@@ -1333,9 +1383,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         ws.close(4004, 'expired');
       }
       if (r.room.forgetReports((t) => night(t) !== tonight)) push(r);
-      // Last night's opener is not tonight's answer.
-      const named = r.room.openerAt();
-      if (named !== null && night(named) !== tonight && r.room.setOpener('')) push(r);
+      // What staff said for last night (its opener, a notice, moved times) is not tonight's.
+      if (r.room.letGo((t) => night(t) !== tonight)) push(r);
     }
     for (const r of [...rooms.values()]) gcRoom(r);
   }

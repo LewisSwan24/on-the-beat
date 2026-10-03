@@ -24,3 +24,7 @@ html, body { background: var(--ink-0); }
 .staff-tracks .btn-s[aria-pressed="true"] { border-color: var(--song); color: var(--song); }
 .staff-time { font: var(--num); color: var(--text-2); }
 .staff-why { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.staff-notice { border-color: var(--warn); }
+.staff-times { border-color: var(--line-2); }
+.staff-time-row { display: grid; grid-template-columns: 5.5em minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+.staff-time-row .staff-input { height: 44px; }
