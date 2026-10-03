@@ -66,11 +66,19 @@ function registerWorker() {
  */
 function OpenerPanel({ opener, setlist, onName }) {
   const [text, setText] = useState('');
+  // Naming it reaches every phone, and every wristband whose person called it sounds and flashes; taking it back
+  // cannot unring that. So a name is asked about once, as closing a card is, and a change to the text is a new question.
+  const [asking, setAsking] = useState(null);
+  useEffect(() => setAsking(null), [opener?.at]);
   const tracks = Array.isArray(setlist) ? setlist : [];
-  const name = (e) => {
+  const choose = (t) => { setText(t); setAsking(null); };
+  const ask = (e) => {
     e.preventDefault();
-    if (!text.trim()) return;
-    onName(text.trim());
+    if (text.trim()) setAsking(text.trim());
+  };
+  const name = () => {
+    onName(asking);
+    setAsking(null);
     setText('');
   };
   return (
@@ -85,17 +93,25 @@ function OpenerPanel({ opener, setlist, onName }) {
       ) : (
         <p className="small">When the headline's first song starts, name it here. Every phone at the venue sees the answer.</p>
       )}
-      <form className="staff-form" onSubmit={name}>
+      <form className="staff-form" onSubmit={ask}>
         {tracks.length ? (
           <div className="staff-tracks">
             {tracks.map((t) => (
-              <button key={t} type="button" className="btn-s" aria-pressed={text === t} onClick={() => setText(t)}>{t}</button>
+              <button key={t} type="button" className="btn-s" aria-pressed={text === t} onClick={() => choose(t)}>{t}</button>
             ))}
           </div>
         ) : null}
-        <input className="staff-input" value={text} onChange={(e) => setText(e.target.value.slice(0, 60))}
+        <input className="staff-input" value={text} onChange={(e) => choose(e.target.value.slice(0, 60))}
           placeholder="or type the track" aria-label="The first song" autoComplete="off" />
-        <button type="submit" className="btn-s" disabled={!text.trim()}>{opener ? 'NAME IT INSTEAD' : 'NAME IT'}</button>
+        {asking ? (
+          <span className="staff-line" role="group" aria-label={'Name ' + asking + ' as the first song?'}>
+            <span className="small">Every phone sees <strong>{asking}</strong>, and the wristbands of whoever called it go off.</span>
+            <button type="button" className="btn-s" onClick={name}>SAY IT</button>
+            <button type="button" className="btn-s" onClick={() => setAsking(null)}>NOT YET</button>
+          </span>
+        ) : (
+          <button type="submit" className="btn-s" disabled={!text.trim()}>{opener ? 'NAME IT INSTEAD' : 'NAME IT'}</button>
+        )}
       </form>
     </section>
   );

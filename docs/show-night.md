@@ -428,6 +428,22 @@ cards* on the staff page, **CLOSE**, then **CLOSE IT**.
 Closed cards last the night, a restart included, and go at 06:00 with the
 rest of what staff said.
 
+## During the night — naming the first song
+
+When the headliner's first song starts: *First song* on the staff page, tap
+the track (or type it), **NAME IT**, then **SAY IT**.
+
+- Wait until it is recognisable. The moment **SAY IT** goes, every phone
+  shows the answer and every band whose person called it plays a sound and
+  flashes for a minute. **TAKE BACK** clears the answer from phones and
+  bands, but cannot unplay a sound that has already gone.
+- **NOT YET**, or changing the track, drops the question; nothing is sent.
+- A misspelling is fine: picks match whatever their case, accents and
+  punctuation, and **NAME IT INSTEAD** with a better spelling does not tell
+  anyone a second time.
+
+The answer lasts the night, a restart included, and goes at 06:00.
+
 ## If the relay must restart mid-show
 
 `flyctl machine restart -a on-the-beat` (or a deploy, which *Before doors*
