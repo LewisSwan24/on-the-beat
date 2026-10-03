@@ -464,6 +464,15 @@ that was taken.
   minute; the phone buzzes only when no live wristband plays it. Refused or
   out of reach, the band says `NOT SENT`. Never said by both, the number goes
   at fifteen minutes, and nothing says why.
+- **The first song, called, on the wrist.** When the venue's staff name the
+  opener, the band of everyone whose pick it was plays a `calledit` chirp and
+  flashes FIRST SONG's yellow three times, once a naming, whatever its face
+  shows but NOT NOW; a band out of reach then plays it when it is back within
+  a minute. A band whose person missed is told nothing, so no band ever says
+  what anyone else picked, nor that they missed. The relay matches a pick as
+  the phone does, whatever its case, accents or punctuation. This has run in
+  the band's logic, JS and C++ alike, and in both firmware builds, not yet on
+  a real band.
 - **Who is near comes from the wristbands.** While a band is on the relay,
   paired and not in NOT NOW, it beacons four bytes by ESP-NOW twice a second,
   under an address it makes up at every boot, and for one second in every ten

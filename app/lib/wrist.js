@@ -28,6 +28,10 @@
 // it only once both have said it; until then the face says FOUND: WAITING.
 // Found by both, both bands play the found chirp and flash the meeting's card
 // three times, once for each number.
+//
+// Once the venue's staff name the opener, a band whose person called it plays
+// the called-it chirp and flashes FIRST SONG's colour three times, once for
+// each naming. A band whose person did not call it is not told anything.
 
 import { bandIdOf } from './sha256.js';
 
@@ -76,6 +80,7 @@ export const SOUNDS = {
   warn: [[880, 150], [698, 150], [880, 150], [698, 150]],
   hello: [[1568, 60], [2093, 120]],
   found: [[1568, 70], [2093, 70], [2637, 70], [0, 40], [2637, 70], [3136, 220]],
+  calledit: [[2093, 90], [0, 50], [2093, 90], [0, 50], [2637, 90], [3136, 230]],
 };
 
 /**
@@ -90,6 +95,7 @@ export const FLASHES = {
   check: { colour: 'white', count: 2, on: 150, off: 100 },
   wave: { colour: 'hi', count: 3, on: 500, off: 500 },
   found: { colour: 'card', count: 3, on: 200, off: 150 },
+  calledit: { colour: 'song', count: 3, on: 200, off: 150 },
 };
 
 /**
@@ -126,6 +132,12 @@ function readFound(s) {
   const f = s.found && typeof s.found === 'object' ? s.found : {};
   const card = typeof f.intent === 'string' && Object.hasOwn(CARD_WORDS, f.intent) ? f.intent : '';
   return { n: Number.isInteger(f.n) ? f.n : 0, intent: card };
+}
+
+/** A show's calledIt, as band_logic.h readFrame() reads it: when the opener its person called was named, or 0. */
+function readCalledIt(s) {
+  const c = s.calledIt && typeof s.calledIt === 'object' ? s.calledIt : {};
+  return Number.isInteger(c.n) ? c.n : 0;
 }
 
 const lit = (s) => LIT.includes(s.kind) && !!CARD_WORDS[s.intent];
@@ -168,6 +180,8 @@ export function createWrist({ key }) {
   let waveOwed = false;
   // Found by both (found §2): the number last played for, until a show about the person names none.
   let foundPlayed = 0;
+  // The opener its person called (FIRST SONG?): when the naming last played for was, until a show about them names none.
+  let calledItPlayed = 0;
   // Rule 5: the letters and the waiting face sleep. Until when they are lit, which letters lit them, when
   // waiting began, and until when a press says where to go.
   let litUntil = 0;
@@ -550,6 +564,7 @@ export function createWrist({ key }) {
     show = readShow(m.show);
     waves = readWaves(m.show);
     const found = readFound(m.show);
+    const calledIt = readCalledIt(m.show);
     // A FACE hold on the check ends with that check: letting go, or holding on, does nothing more.
     if (awayKey && (show.kind !== 'check' || show.big !== was?.big)) { awayKey = false; k1.fired = true; }
     // Reactions come from changes; a show that differs only in `sound` is no change.
@@ -616,6 +631,11 @@ export function createWrist({ key }) {
       foundPlayed = found.n;
       react('found', 'found', 1, found.intent);
     } else if (!found.n && personal()) foundPlayed = 0;
+    // The opener its person called: once a naming, in FIRST SONG's colour. Past CALLED_SHOW_MS a show names none.
+    if (calledIt && calledIt !== calledItPlayed) {
+      calledItPlayed = calledIt;
+      react('calledit', 'calledit', 1);
+    } else if (!calledIt && personal()) calledItPlayed = 0;
     // After a meeting's jingle. A wave call already under way takes the new wave in; the open wave face counts it.
     if (newer && !waveCalling() && mode !== 'waves') callWave();
   }

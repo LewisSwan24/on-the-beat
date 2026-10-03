@@ -13,7 +13,12 @@
 export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 export const MEET_MS = 15 * 60_000;   // the number shows while the two of you find each other
 export const FOUND_SHOW_MS = 60_000;  // found by both: a band still plays it this long, if it was out of reach
+export const CALLED_SHOW_MS = 60_000; // the opener named: a band whose person called it still plays it this long
 export const DIM_AT = 15;             // percent; at or below it the light drops to half
+
+/** A track as the words that make it the song, as the phone matches it (app/lib/opener.js trackKey()). */
+export const trackKey = (t) => String(t ?? '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
+  .replace(/['’`]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 const short = (s, n) => {
   const t = String(s || '').trim();
@@ -55,6 +60,10 @@ const short = (s, n) => {
  * Found by both, it is gone, and for FOUND_SHOW_MS every show about its person
  * but NOT NOW names it (`found`), so the band plays it once, even one that was
  * out of reach at the moment.
+ *
+ * Once the venue's staff name the opener (FIRST SONG?'s answer), for CALLED_SHOW_MS every show about a person whose
+ * pick it was, but NOT NOW, says so (`calledIt`, with when it was named), so their band plays it once. A person who did
+ * not call it is shown nothing: the band never says what anyone else picked, nor that they missed.
  */
 export function bandShow({ view = null, battery = null, code = null, check = null, waiting = false, testUntil = 0, sound = null, waves = [], now = Date.now() }) {
   if (check) return { kind: 'check', big: String(check) };
@@ -71,16 +80,20 @@ export function bandShow({ view = null, battery = null, code = null, check = nul
   const done = view.matches
     .filter((m) => m.foundAt && now - m.foundAt < FOUND_SHOW_MS)
     .sort((a, b) => b.foundAt - a.foundAt)[0];
-  const found = done ? { found: { n: done.number, intent: done.intent } } : {};
+  // What the band plays once, whatever it shows: found by both, and the opener its person called.
+  const plays = done ? { found: { n: done.number, intent: done.intent } } : {};
+  const op = view.opener;
+  const mine = trackKey(view.me.pick);
+  if (op?.track && now - op.at < CALLED_SHOW_MS && mine && mine === trackKey(op.track)) plays.calledIt = { n: op.at };
   const meet = view.matches
     .filter((m) => now - m.at < MEET_MS && !m.foundAt)
     .sort((a, b) => b.at - a.at)[0];
-  if (meet) return { kind: 'meet', intent: meet.intent, big: String(meet.number), small: meet.found ? 'FOUND: WAITING' : 'MEET', dim, ...about, ...waved, ...found };
+  if (meet) return { kind: 'meet', intent: meet.intent, big: String(meet.number), small: meet.found ? 'FOUND: WAITING' : 'MEET', dim, ...about, ...waved, ...plays };
   switch (view.me.armed) {
-    case 'hi': return { kind: 'hi', intent: 'hi', big: 'HI :)', small: 'blue means hello', dim, ...about, ...waved, ...found };
-    case 'song': return { kind: 'song', intent: 'song', big: 'FIRST SONG?', small: short(view.me.pick, 16), dim, ...about, ...found };
-    case 'dance': return { kind: 'dance', intent: 'dance', big: "LET'S DANCE!", small: '', dim, ...about, ...found };
-    default: return { kind: 'off', battery, ...about, ...found };
+    case 'hi': return { kind: 'hi', intent: 'hi', big: 'HI :)', small: 'blue means hello', dim, ...about, ...waved, ...plays };
+    case 'song': return { kind: 'song', intent: 'song', big: 'FIRST SONG?', small: short(view.me.pick, 16), dim, ...about, ...plays };
+    case 'dance': return { kind: 'dance', intent: 'dance', big: "LET'S DANCE!", small: '', dim, ...about, ...plays };
+    default: return { kind: 'off', battery, ...about, ...plays };
   }
 }
 

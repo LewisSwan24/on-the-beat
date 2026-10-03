@@ -1433,6 +1433,33 @@
         { "at": "2000", "show": "HI", "rev": 3, "with": { "found": 27 } },
         { "at": "3000", "show": "HI", "rev": 3, "with": { "found": { "n": 27, "intent": "red" } }, "sounds": ["found"], "face": { "big": "", "field": "white", "light": "LIGHT_FULL" } }
       ]
+    },
+    {
+      "name": "the opener its person called plays calledit and flashes FIRST SONG's colour three times, 200 on and 150 off; the same naming again, after a reconnect too, plays nothing; a new naming plays again",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "SONG", "rev": 3 },
+        { "at": "1000", "show": "SONG", "rev": 3, "with": { "calledIt": { "n": 1791000000000 } }, "sounds": ["calledit"], "face": { "big": "", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "1199", "face": { "big": "", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "1200", "face": { "big": "FIRST SONG?", "light": "LIGHT_OFF" } },
+        { "at": "1350", "face": { "big": "", "field": "song", "light": "LIGHT_FULL" } },
+        { "at": "2000", "show": "SONG", "rev": 4, "with": { "calledIt": { "n": 1791000000000 } } },
+        { "at": "3000", "link": "down" },
+        { "at": "4000", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "4100", "show": "SONG", "rev": 4, "with": { "calledIt": { "n": 1791000000000 } } },
+        { "at": "5000", "show": "SONG", "rev": 4 },
+        { "at": "6000", "show": "SONG", "rev": 4, "with": { "calledIt": { "n": 1791000090000 } }, "sounds": ["calledit"] }
+      ]
+    },
+    {
+      "name": "a calledIt without a whole number plays nothing, and under NOT NOW nothing plays",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "SONG", "rev": 3, "with": { "calledIt": { "n": "1791000000000" } } },
+        { "at": "1000", "show": "SONG", "rev": 3, "with": { "calledIt": 1791000000000 } },
+        { "at": "2000", "show": "SONG", "rev": 3, "with": { "calledIt": { "n": 1.5 } } },
+        { "at": "3000", "show": "QUIET", "rev": 4, "with": { "calledIt": { "n": 1791000000000 } } }
+      ]
     }
   ]
 }

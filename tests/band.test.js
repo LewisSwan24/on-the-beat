@@ -3,7 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CODE_LETTERS, FOUND_SHOW_MS, MEET_MS, bandShow, cleanCode, newCode } from '../relay/band.js';
+import { CALLED_SHOW_MS, CODE_LETTERS, FOUND_SHOW_MS, MEET_MS, bandShow, cleanCode, newCode, trackKey } from '../relay/band.js';
+import { trackKey as phoneTrackKey } from '../app/lib/opener.js';
 
 const T = Date.UTC(2026, 8, 23, 11, 0);
 const view = (me = {}, matches = []) => ({ me: { armed: null, invisible: false, pick: null, ...me }, matches });
@@ -174,5 +175,33 @@ test('the longest show the relay can make fits the band, however many wait', () 
   for (const s of shows) {
     const bytes = Buffer.byteLength(JSON.stringify({ t: 'show', show: s }));
     assert.ok(bytes <= size, `${bytes} bytes over ${size}: ${JSON.stringify(s).slice(0, 60)}`);
+  }
+});
+
+// ---------- the opener its person called (FIRST SONG?'s answer) ----------
+
+test('the opener named: for CALLED_SHOW_MS every show about a person who called it says so, and nobody else is told', () => {
+  const opener = { track: 'Locked Out of Heaven', at: T };
+  const at = (me, now, more = {}) => bandShow({ view: { ...view(me), opener, ...more }, now });
+  for (const me of [{ armed: 'song', pick: 'locked out of heaven!' }, { armed: 'hi', pick: 'Locked  Out of Heaven' }, { pick: 'LOCKED OUT OF HEAVEN' }]) {
+    assert.deepEqual(at(me, T).calledIt, { n: T }, JSON.stringify(me));
+    assert.deepEqual(at(me, T + CALLED_SHOW_MS - 1).calledIt, { n: T });
+    assert.equal('calledIt' in at(me, T + CALLED_SHOW_MS), false, 'a minute on, no more');
+  }
+  const meet = at({ armed: 'hi', pick: 'Locked Out of Heaven' }, T + 1000, { matches: [{ id: 'm1', intent: 'hi', number: 27, at: T }] });
+  assert.deepEqual([meet.kind, meet.calledIt], ['meet', { n: T }], 'a meeting on the face still plays it');
+  for (const me of [{ armed: 'song', pick: 'Grenade' }, { armed: 'song', pick: null }, { armed: 'song', pick: '' }]) {
+    assert.equal('calledIt' in at(me, T), false, 'missed, or no pick: nothing, ' + JSON.stringify(me));
+  }
+  assert.equal('calledIt' in at({ armed: 'song', pick: 'Locked Out of Heaven', invisible: true }, T), false, 'NOT NOW is black');
+  assert.equal('calledIt' in bandShow({ view: { ...view({ pick: 'x' }), opener: null }, now: T }), false, 'nothing named');
+  assert.equal('calledIt' in bandShow({ view: { ...view({ pick: '' }), opener: { track: '', at: T } }, now: T }), false, 'nothing is not a match');
+  assert.equal('calledIt' in bandShow({ view: { ...view({ pick: '???' }), opener: { track: '!!!', at: T } }, now: T }), false, 'nor are two picks with no words');
+});
+
+test("the relay matches a pick as the phone does, so the band and the phone never disagree on who called it", () => {
+  const apostrophe = String.fromCodePoint(0x2019);
+  for (const t of ['Beyonc' + String.fromCodePoint(0xe9), "That's What I Like", 'That' + apostrophe + 's What I Like', '  24K   Magic!! ', 'Just-the-Way You Are', '', null, 'Ünïcödé — Song']) {
+    assert.equal(trackKey(t), phoneTrackKey(t), JSON.stringify(t));
   }
 });
