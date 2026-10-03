@@ -740,7 +740,22 @@ test('closed cards are carried across a restart and go when the night ends; a du
 // ---------- restart spec §1: a room carried across a restart ----------
 
 /** A room as a restart brings it back: its dump, through JSON, made again on the same clock. */
-const carried = (room, now) => createRoom({ now, restore: JSON.parse(JSON.stringify(room.dump())) });
+const carried = (room, now, clipKept) => createRoom({ now, clipKept, restore: JSON.parse(JSON.stringify(room.dump())) });
+
+test('a room carried across a restart with its videos keeps each clip whose video came back, and only those', () => {
+  const room = createRoom();
+  for (const id of ['ana', 'ben', 'cai']) room.join(id);
+  room.postClip('ana', 'clip-of-ana');
+  room.postClip('cai', 'clip-of-cai');
+  const toAna = room.viewFor('ben').floor.find((c) => c.ref === 'clip-of-ana').handle;
+  room.danceBack('ben', toAna, 'clip-of-ben');
+  assert.deepEqual(room.viewFor('ana').floor.map((c) => [c.ref, c.toYou]).sort(), [['clip-of-ben', true], ['clip-of-cai', false]]);
+  const again = carried(room, Date.now, (ref) => ref !== 'clip-of-cai');   // cai's video was lost
+  assert.equal(again.viewFor('ana').me.clip, 'clip-of-ana', 'her own clip is still hers');
+  assert.deepEqual(again.viewFor('ana').floor.map((c) => [c.ref, c.toYou]), [['clip-of-ben', true]], "Ben's dance to her, and not cai's lost clip");
+  assert.equal(again.viewFor('cai').me.clip, null);
+  assert.deepEqual(again.viewFor('ben').floor.map((c) => c.ref), ['clip-of-ana'], 'the floor as it was, less what was lost');
+});
 
 test('the opener is carried across a restart, and a dump from before there was one has none', () => {
   const now = () => 5000;
@@ -813,15 +828,14 @@ test('a room carried across a restart shows everyone what it did, and goes on fr
   assert.equal(again.viewFor('cai').me.rev, room.viewFor('cai').me.rev, "Cai's rev goes on from his tomb");
 });
 
-test('a room carried across a restart drops every clip, and a dance back sent before it still makes the match', () => {
+test('a room carried across a restart without its videos drops every clip, and a dance back sent before it still makes the match', () => {
   const room = createRoom();
   for (const id of ['ana', 'ben']) room.join(id);
   room.pick('ben', 'Treasure');
   room.postClip('ana', 'clip-of-ana');
   const [onFloor] = room.viewFor('ben').floor;              // Ana dancing, on Ben's floor
   assert.equal(room.danceBack('ben', onFloor.handle, 'clip-of-ben'), null, 'a yes, not returned yet');
-  assert.equal(JSON.stringify(room.dump()).includes('clip-of'), false, 'no clip ref is written');
-  const again = carried(room, Date.now);
+  const again = carried(room, Date.now);   // the relay found none of their videos
   assert.equal(again.viewFor('ana').me.clip, null, 'her own clip is gone');
   assert.deepEqual(again.viewFor('ana').floor, [], "Ben's dance to her went with its clip");
   const [ben] = again.viewFor('ana').wall;                   // Ben, by his answer

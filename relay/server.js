@@ -22,7 +22,7 @@ import { createMeter, formatLoad, startLine } from './load.js';
 import { nightOf } from './night.js';
 import { originAllowed } from './origin.js';
 import { checkCode, entryPrint, isEntry } from './staff.js';
-import { openNight } from './store.js';
+import { openClips, openNight } from './store.js';
 import { createPusher, isPushService, loadKeys, subscriptionOf } from './push.js';
 
 export const WS_PATH = '/api/ws';
@@ -263,6 +263,14 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   const printOf = (key) => (staffEntries.has(key) ? entryPrint(staffEntries.get(key)) : null);
   // The night's file, if it has one (docs/superpowers/specs/2026-09-29-restart-persistence-design.md §2).
   const store = nightFile ? openNight(nightFile) : null;
+  // Tonight's clips, one file each in a folder beside it: night.json's are in night-clips/.
+  const disk = store ? openClips(nightFile.replace(/\.json$/, '') + '-clips') : null;
+  if (store && !disk) console.log('clips: in memory only (no folder beside the night file)');
+  /** A room's clips: kept on disk as they come, and taken off it as they go, whichever way they go. */
+  class Clips extends Map {
+    set(ref, c) { super.set(ref, c); disk?.write(ref, c.buf); return this; }
+    delete(ref) { const had = super.delete(ref); if (had) disk?.remove(ref); return had; }
+  }
   const saved = readNight();
   const here = fileURLToPath(new URL('..', import.meta.url));
   const dist = root ?? join(here, 'dist');
@@ -325,7 +333,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
       // sound: each person's sound switch, as their phone last said it. Leaving forgets it; the grace does not.
       // The room reads the relay's clock: a wave's number is the time it was made, so it only goes up.
-      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), now, ledger: handles }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(), sound: new Map(), staff: new Set() });
+      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), now, ledger: handles }), sockets: new Set(), clips: new Clips(), left: new Map(), heard: new Map(), sound: new Map(), staff: new Set() });
     }
     return rooms.get(key);
   }
@@ -1428,7 +1436,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   function dumpNight() {
     return {
       staffKey: staffKey.toString('hex'),
-      rooms: [...rooms.values()].map((r) => ({ key: r.key, room: r.room.dump(), heard: [...r.heard], sound: [...r.sound] })),
+      rooms: [...rooms.values()].map((r) => ({
+        key: r.key, room: r.room.dump(), heard: [...r.heard], sound: [...r.sound],
+        // The video is in its own file; what the night needs to serve it again is here.
+        clips: [...r.clips].map(([ref, c]) => [ref, { mime: c.mime, by: c.by, slot: c.slot, at: c.at }]),
+      })),
       bands: [...bands.values()].filter((b) => b.person || b.waiting).map((b) => ({
         id: b.id, old: b.old, key: b.key, person: b.person, secretHash: b.secretHash, everWs: b.everWs, live: !!b.ws,
         goneAt: b.goneAt, claimedAt: b.claimedAt, waiting: b.waiting, waitingAt: b.waitingAt, quiet: b.quiet, battery: b.battery,
@@ -1474,6 +1486,42 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   }
 
   /**
+   * Each saved room's clips whose video is on disk whole, within the hour and the caps, as a Clips for that room. A clip
+   * whose file is missing, cut short or too big comes back as no clip at all; past every room's cap together, the oldest
+   * stay behind. Nothing here writes: the files are already there.
+   */
+  function clipsBack(saved) {
+    const all = saved.flatMap((e, i) => (Array.isArray(e.clips) ? e.clips : []).flatMap((pair) => {
+      const [ref, c] = Array.isArray(pair) ? pair : [];
+      if (!disk || typeof ref !== 'string' || !/^[a-f0-9]{24}$/.test(ref) || !c || typeof c.by !== 'string') return [];
+      if (!/^video\/(webm|mp4)$/.test(c.mime) || !(c.slot === 'floor' || /^to:./.test(c.slot))) return [];
+      if (!Number.isFinite(c.at) || now() - c.at >= CLIP_TTL_MS) return [];
+      let buf = null;
+      try { buf = disk.read(ref); } catch { /* unreadable is as good as gone */ }
+      return buf?.length && buf.length <= CLIP_MAX ? [[i, ref, { mime: c.mime, buf, by: c.by, slot: c.slot, at: c.at }]] : [];
+    }));
+    const each = saved.map(() => new Clips());
+    let bytes = 0;
+    for (const [i, ref, c] of all.sort((a, b) => b[2].at - a[2].at)) {
+      if (bytes + c.buf.length > allClipsMax) continue;
+      bytes += c.buf.length;
+      Map.prototype.set.call(each[i], ref, c);   // already on disk: not written again
+    }
+    return each;
+  }
+
+  /** At start: every file in the clips folder that no clip carried on is using, from a stop cut short or another night. */
+  function clearClips() {
+    if (!disk) return;
+    const using = new Set([...rooms.values()].flatMap((r) => [...r.clips.keys()]));
+    try {
+      for (const name of disk.names()) if (!using.has(name)) disk.removeName(name);
+    } catch (e) {
+      console.log('clips: cannot clear the folder (' + (e.code || e.name) + ')');   // never a reason not to start
+    }
+  }
+
+  /**
    * The night read at start (§2), built whole and only then taken: a file that fails half way leaves nothing
    * behind. No socket is open yet, so everyone starts the usual grace from now, and a wristband that was worn
    * counts as gone from now: it could not reach a relay that was not there.
@@ -1482,10 +1530,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     let built;
     let ended = 0;   // sign-ins made under another entry than their venue's now, or under none on record (§1)
     try {
+      const back = clipsBack(saved.rooms);
       built = {
-        rooms: saved.rooms.map((e) => ({
-          key: String(e.key), room: createRoom({ spots: spotsFor(e.key), now, restore: e.room, ledger: handles }),
-          sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(e.heard), sound: new Map(e.sound), staff: new Set(),
+        rooms: saved.rooms.map((e, i) => ({
+          key: String(e.key), room: createRoom({ spots: spotsFor(e.key), now, restore: e.room, ledger: handles, clipKept: (ref) => back[i].has(ref) }),
+          sockets: new Set(), clips: back[i], left: new Map(), heard: new Map(e.heard), sound: new Map(e.sound), staff: new Set(),
         })),
         bands: saved.bands.map((e) => Object.assign(makeBand(String(e.id), null), {
           old: !!e.old, key: e.key, person: e.person, secretHash: e.secretHash, everWs: !!e.everWs,
@@ -1551,6 +1600,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   const keeper = store ? setInterval(() => save(), saveEveryMs) : null;
 
   if (saved) restoreNight(saved);
+  clearClips();
 
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({
@@ -1594,7 +1644,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
           clearTimeout(r.due);
         }
         for (const ws of wss.clients) ws.terminate();
-        wss.close(() => server.close(() => done()));
+        // A clip still being written lands before the relay is called closed: the next start looks for it.
+        wss.close(() => server.close(() => Promise.resolve(disk?.settled()).finally(() => done())));
       }),
     }));
   });

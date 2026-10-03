@@ -6,6 +6,12 @@ with him question by question the same day: keep everything but the clips
 change (「A · volume + 一秒内写盘」), then the design in two rounds, both
 approved as presented.
 
+Amended 4 Oct 2026, on the owner's pick to keep clips too: each clip's video is
+now a file of its own in a folder beside the night's (`night-clips/`), written
+as it comes and removed as it goes, and the night file carries the refs
+(`clips` per room, `clip` on each person, `danceClips` in the room). What is
+said below about clips not being kept is the design as it was on 29 Sep.
+
 ## What is true today
 
 Checked on 29 Sep 2026, in the code:

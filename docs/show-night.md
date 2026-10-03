@@ -449,8 +449,9 @@ The answer lasts the night, a restart included, and goes at 06:00.
 `flyctl machine restart -a on-the-beat` (or a deploy, which *Before doors*
 ruled out): ~5-60 s down, then **the night carries on** — people keep their
 rooms, cards, handles, blocks and matches; staff stay signed in with
-tonight's reports; a wristband goes straight back to its person. Lost: the
-clips on LET'S DANCE!, and any pairing still waiting for its YES. Bands
+tonight's reports; a wristband goes straight back to its person; the clips
+on LET'S DANCE! come back from `/data/night-clips/`. Lost: a clip sent in
+the last moment before the stop, and any pairing still waiting for its YES. Bands
 reconnect by themselves; phones reconnect on the next look. The log says
 `night: carried on from /data/night.json — …` with the counts.
 

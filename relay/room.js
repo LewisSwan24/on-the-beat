@@ -137,6 +137,9 @@ export function createRoom({
   // A room's dump() from before a restart: the room comes back as it was
   // (docs/superpowers/specs/2026-09-29-restart-persistence-design.md §1).
   restore = null,
+  // Which of the restored dump's clip refs came back with their video: the others restore as no clip, as every one did
+  // before clips were kept across a restart.
+  clipKept = () => false,
   // The budget of held handles this room spends from (handleLedger): a relay gives all its rooms the one, and a room made
   // alone gets its own.
   ledger = handleLedger(),
@@ -180,13 +183,18 @@ export function createRoom({
 
   if (restore) {
     if (!Number.isInteger(restore.nextReport) || !Number.isInteger(restore.nextMatch)) throw new TypeError('not a room dump');
-    for (const p of restore.people) people.set(p.id, { ...p, clip: null });
+    const kept = (ref) => (typeof ref === 'string' && clipKept(ref) ? ref : null);
+    // A floor clip comes back only if its video did.
+    const floorOf = (c) => (c && kept(c.ref) && Number.isFinite(c.at) ? { ref: c.ref, at: c.at } : null);
+    for (const p of restore.people) people.set(p.id, { ...p, clip: floorOf(p.clip) });
     for (const [id, ids] of restore.blocks) blocks.set(id, new Set(ids));
     for (const [k, n] of restore.waves) waves.set(k, n);
     for (const [id, n] of restore.latest) latest.set(id, n);
     for (const k of restore.likes) likes.set(k, true);
-    // A dance back comes back as the yes it was; its clip does not.
+    // A dance back comes back as the yes it was, and with its clip only if its video did. A file from before clips
+    // were kept has no danceClips.
     for (const k of restore.dances) dances.set(k, null);
+    for (const [k, ref] of Array.isArray(restore.danceClips) ? restore.danceClips : []) if (dances.has(k)) dances.set(k, kept(ref));
     for (const m of restore.matches) matches.set(pairKey(m.a, m.b), m);
     for (const [id, tomb] of restore.tombs) tombs.set(id, tomb);
     reports.push(...restore.reports);
@@ -812,12 +820,14 @@ export function createRoom({
   function dump() {
     return {
       salt,
-      people: [...people.values()].map((p) => ({ ...p, clip: null })),
+      people: [...people.values()].map((p) => ({ ...p })),
       blocks: [...blocks].map(([id, ids]) => [id, [...ids]]),
       waves: [...waves],
       latest: [...latest],
       likes: [...likes.keys()],
       dances: [...dances.keys()],
+      // Kept apart from `dances`, so a build from before clips were kept reads this dump as it always did.
+      danceClips: [...dances].filter(([, ref]) => ref),
       matches: [...matches.values()],
       tombs: [...tombs],
       reports: reports.slice(),

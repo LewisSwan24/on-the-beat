@@ -1198,7 +1198,11 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   file on the machine's own volume, but it is still one small machine: more
   people than it holds needs more than one, and one volume means a failed
   drive takes the relay down until a new volume is made (*Always on*). Clips
-  are not carried across a restart. A phone that used a
+  are carried across a restart as files beside the night's
+  (`/data/night-clips/`, one a clip, gone with the clip at its hour, 40 MB
+  at most together); a clip still being written when the machine stops is
+  lost, and anything left in the folder that no clip uses is cleared at the
+  next start. A phone that used a
   tunnel address starts over at the fixed one: a browser keeps the app's
   storage per address.
   **How many one machine holds** was measured with `scripts/load.mjs` — a
