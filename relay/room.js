@@ -90,6 +90,16 @@ const nightMinsOf = (hhmm) => {
 };
 
 /** The five times, each HH:MM and none before the one ahead of it in the night, or null. */
+/**
+ * The cards a venue closed for tonight, as staff sent them: known ids, each once, in the table's order, never every
+ * card. [] for none closed; null for anything else, which changes nothing.
+ */
+export function closedOf(list) {
+  if (!Array.isArray(list) || !list.every((id) => INTENTS.includes(id))) return null;
+  const ids = INTENTS.filter((id) => list.includes(id));
+  return ids.length < INTENTS.length ? ids : null;
+}
+
 export function timesOf(t) {
   if (!t || typeof t !== 'object') return null;
   const out = {};
@@ -153,6 +163,9 @@ export function createRoom({
   let notice = null;
   // The show's times as the venue's staff moved them: the five, and when, or null while they stand as listed.
   let times = null;
+  // The cards the venue's staff closed for tonight, and when: { cards, at }, or null while every card is open.
+  let closed = null;
+  const isClosed = (id) => !!closed?.cards.includes(id);
   let nextReport = 1;
   let nextMatch = 1;
   // Near: what each person's wristband heard, never shown to anyone. 'a>b' -> [{ at, rssi }], a's band
@@ -187,6 +200,10 @@ export function createRoom({
     if (n && typeof n.text === 'string' && n.text && Number.isFinite(n.at)) notice = { text: clip(n.text, NOTICE_MAX), at: n.at };
     const t = timesOf(restore.times);
     if (t && Number.isFinite(restore.times.at)) times = { ...t, at: restore.times.at };
+    // Nor closed cards. A card the file names that this build does not have is not closed here.
+    const c = restore.closed;
+    const shut = c && Array.isArray(c.cards) ? closedOf(c.cards.filter((id) => INTENTS.includes(id))) : null;
+    if (shut?.length && Number.isFinite(c.at)) closed = { cards: shut, at: c.at };
   }
 
   // A handle is a function of the salt and the two ids alone, and a push asks for P*P of them (every person's view of
@@ -277,6 +294,7 @@ export function createRoom({
     const p = people.get(id);
     if (!p) return;
     const armed = INTENTS.includes(intent) ? intent : null;
+    if (armed && isClosed(armed)) return;   // closed tonight: refused where it came from (fromPhone, the relay's set)
     changed(p, armed, armed ? false : p.invisible, by);
   }
 
@@ -301,6 +319,7 @@ export function createRoom({
     const news = seq > p.seq;
     p.seq = Math.max(p.seq, seq);
     const hides = m.t === 'invisible' ? !!m.on : !INTENTS.includes(m.intent);
+    if (!hides && isClosed(m.intent)) return 'changed';
     if (m.again) {
       if (!news || !hides) return null;
     } else if (!hides && Number.isInteger(m.basis) && m.basis !== p.rev) {
@@ -345,12 +364,25 @@ export function createRoom({
     return true;
   }
 
-  /** The night ends: what staff said for it (the opener, a notice, moved times) goes if `isOld(when it was said)`. */
+  /**
+   * The venue's staff close cards for tonight, or open them all again with []. Anyone showing a card that closes goes
+   * off, said by staff. False when the list is not one (closedOf) or changes nothing.
+   */
+  function setClosed(list) {
+    const ids = closedOf(list);
+    if (!ids || ids.join() === (closed?.cards ?? []).join()) return false;
+    closed = ids.length ? { cards: ids, at: now() } : null;
+    for (const p of people.values()) if (isClosed(p.armed)) changed(p, null, p.invisible, 'staff');
+    return true;
+  }
+
+  /** The night ends: what staff said for it (the opener, a notice, moved times, closed cards) goes if `isOld(when it was said)`. */
   function letGo(isOld) {
     let gone = false;
     if (opener && isOld(opener.at)) { opener = null; gone = true; }
     if (notice && isOld(notice.at)) { notice = null; gone = true; }
     if (times && isOld(times.at)) { times = null; gone = true; }
+    if (closed && isOld(closed.at)) { closed = null; gone = true; }
     return gone;
   }
 
@@ -367,8 +399,10 @@ export function createRoom({
   /** A clip for the floor, seen by everyone in the room. */
   function postClip(id, ref) {
     const p = people.get(id);
-    if (!p) return;
+    if (!p) return false;
+    if (ref && isClosed('dance')) return false;   // nobody's floor tonight
     p.clip = ref ? { ref: String(ref), at: now() } : null;
+    return true;
   }
 
   function matchIfMutual(has, a, b, intent) {
@@ -461,7 +495,7 @@ export function createRoom({
   function yes(card, viewer, h, what) {
     const play = plays[card];
     const t = target(viewer, h);
-    if (!t || !play.may(viewer, t, what)) return false;
+    if (!t || isClosed(card) || !play.may(viewer, t, what)) return false;
     play.take(viewer, t, what);
     return matchIfMutual((k) => play.yeses.has(k), viewer, t, card);
   }
@@ -731,7 +765,10 @@ export function createRoom({
         rev: me.rev, seq: me.seq, by: me.by, fresh: me.by === 'relay',
       },
       // Each card's list: near, wall and floor (plays, above).
-      ...Object.fromEntries(Object.values(plays).map((play) => [play.list, play.rows(id, others, row)])),
+      // A card the venue closed tonight lists nobody.
+      ...Object.fromEntries(Object.entries(plays).map(([card, play]) => [play.list, isClosed(card) ? [] : play.rows(id, others, row)])),
+      // The cards open here tonight, in their order: the ones a phone lays out and a person may arm.
+      cards: INTENTS.filter((c) => !isClosed(c)),
       // And, once the venue's staff name FIRST SONG?'s answer: the same for everyone.
       opener: opener ? { ...opener } : null,
       // What the venue's staff told everyone here, and the show's times if they moved them: the same for everyone.
@@ -775,6 +812,7 @@ export function createRoom({
       opener,
       notice,
       times,
+      closed,
     };
   }
 
@@ -786,6 +824,9 @@ export function createRoom({
     notice: () => (notice ? { ...notice } : null),
     /** The times as staff moved them (the five, and at), or null. */
     times: () => (times ? { ...times } : null),
+    /** The cards staff closed tonight ({ cards, at }), or null while every card is open. */
+    closed: () => (closed ? { cards: [...closed.cards], at: closed.at } : null),
+    setClosed,
     wave, wavedAtYou, wavesAt, like, unlike, danceBack, block,
     /** The cards that have a yes here, in their order (tests/cards.test.js holds them to relay/cards.js). */
     played: () => Object.keys(plays),

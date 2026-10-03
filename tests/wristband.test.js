@@ -1107,3 +1107,39 @@ test("staff name the opener: the band of whoever called it is told, for a minute
     await own.close();
   }
 });
+
+// ---------- the cards a venue closed tonight ----------
+
+test('staff close a card: the band showing it goes off, and a set to it is refused as closed', async () => {
+  const own = await createRelay({ port: 0, host: '127.0.0.1', root: dir,
+    staffCodes: JSON.stringify({ 'closed-room': await makeEntry('test-passcode-closed') }) });
+  const on = helpers(() => own.port);
+  try {
+    const band = await on.wristband();
+    const ana = await on.phone('closed-room');
+    await on.pairBand(ana, band);
+    ana.send({ t: 'arm', intent: 'song' });
+    await band.until((s) => s.kind === 'song');
+    const staff = new WebSocket('ws://127.0.0.1:' + own.port + WS_PATH);
+    const told = [];
+    staff.on('message', (d) => told.push(JSON.parse(String(d))));
+    await new Promise((resolve) => staff.once('open', resolve));
+    staff.send(JSON.stringify({ t: 'staff', venue: 'closed-room', code: 'test-passcode-closed' }));
+    while (!told.some((m) => m.t === 'staff' && m.ok)) await pause(20);
+    staff.send(JSON.stringify({ t: 'closed', cards: ['song'] }));
+    const off = await band.until((s) => s.kind === 'off');
+    await ana.until((v) => v.me.armed === null && v.me.by === 'staff' && v.cards.join() === 'hi,dance');
+    const refused = on.reply(band, 'set');
+    band.send({ t: 'set', intent: 'song', basis: off.rev });
+    assert.deepEqual(await refused, { t: 'set', ok: false, why: 'closed' });
+    await pause(200);
+    assert.equal(ana.view.me.armed, null);
+    band.send({ t: 'set', intent: 'dance', basis: off.rev });
+    await band.until((s) => s.kind === 'dance');
+    staff.close();
+    close(ana, band);
+  } finally {
+    on.cleanup();
+    await own.close();
+  }
+});

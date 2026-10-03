@@ -336,9 +336,20 @@ Every report reaches the venue's own team at `/staff`
   line is corrected in place, and no wristband plays it again. Another song
   is a new naming. Each panel also says aloud, for a screen reader, what
   the relay took.
-- **What staff say lasts the night.** The first song, a notice and moved
-  times stay with nobody in the venue yet, so times moved before doors are
-  there when they open; a restart keeps them; 06:00 takes all of them back. A
+- **Closing a card for tonight.** *Tonight's cards* lists the cards, each
+  open or closed. *CLOSE* asks once, since whoever is showing that card goes
+  off; the last open card cannot be closed, and *OPEN* puts one back. Phones
+  lay out only the open cards, and a phone whose card closed says so: "The
+  venue closed LET'S DANCE for tonight." A closed card cannot be armed from
+  a phone or a wristband, lists nobody, and takes no wave, like or dance
+  back; with LET'S DANCE! closed nothing goes on the floor. A wristband that
+  steps to a closed card shows NOT SENT, as it does for any refusal: the
+  firmware does not know which cards are closed, so it still steps through
+  all of them.
+- **What staff say lasts the night.** The first song, a notice, moved
+  times and closed cards stay with nobody in the venue yet, so times moved
+  before doors are there when they open; a restart keeps them; 06:00 takes
+  all of them back. A
   staff screen signed out at 06:00 cannot say anything more, even in the
   moment before its socket closes.
 

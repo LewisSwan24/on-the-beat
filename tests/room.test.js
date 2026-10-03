@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoom, BANDS, MARKS, HEARD_MS } from '../relay/room.js';
+import { createRoom, closedOf, BANDS, MARKS, HEARD_MS } from '../relay/room.js';
 
 let channel = 1;
 /**
@@ -648,6 +648,60 @@ test('a notice and moved times are carried across a restart; a dump from before 
   old.times = { ...old.times, headline: '18:00' };
   const v = createRoom({ now, restore: old }).viewFor('ana');
   assert.deepEqual([v.notice, v.times], [null, null]);
+});
+
+test('staff close only cards there are, never all of them; [] opens them all again', () => {
+  assert.deepEqual(closedOf(['dance', 'hi', 'dance']), ['hi', 'dance'], 'each once, in the table order');
+  assert.deepEqual(closedOf([]), []);
+  for (const bad of [['hi', 'song', 'dance'], ['nope'], 'hi', null, [1], ['constructor']]) assert.equal(closedOf(bad), null);
+});
+
+test('a closed card: whoever showed it goes off, it cannot be armed, it lists nobody and takes no yes', () => {
+  const { room, handleOf } = night();
+  for (const p of ['ana', 'ben']) { room.pick(p, 'Treasure'); room.arm(p, 'song'); }
+  const wall = handleOf('ana', 'ben', 'wall');
+  room.arm('cai', 'hi');
+  const rev = room.revOf('ana');
+  assert.equal(room.setClosed(['song']), true);
+  assert.equal(room.setClosed(['song']), false, 'the same list changes nothing');
+  assert.equal(room.setClosed(['hi', 'song', 'dance']), false);
+  const v = room.viewFor('ana');
+  assert.deepEqual([v.me.armed, v.me.by, room.revOf('ana')], [null, 'staff', rev + 1]);
+  assert.equal(room.armedOf('cai'), 'hi', 'an open card stays on');
+  assert.deepEqual([v.cards, v.wall], [['hi', 'dance'], []]);
+  room.arm('ana', 'song');
+  assert.equal(room.armedOf('ana'), null);
+  assert.equal(room.fromPhone('ana', { t: 'arm', intent: 'song', seq: 1, basis: room.revOf('ana') }), 'changed');
+  assert.equal(room.like('ana', wall), false);
+  assert.equal(room.postClip('ana', null), true, 'taking a clip down is always allowed');
+  room.setClosed(['dance']);
+  assert.equal(room.postClip('ana', 'clip-ana'), false);
+  assert.equal(room.like('ana', wall), null, 'song is open again');
+  assert.deepEqual(room.viewFor('ana').cards, ['hi', 'song']);
+  assert.deepEqual(room.closed(), { cards: ['dance'], at: room.closed().at });
+});
+
+test('closed cards are carried across a restart and go when the night ends; a dump from before them has none', () => {
+  let t = 5000;
+  const now = () => t;
+  const room = createRoom({ now });
+  room.join('ana');
+  room.setClosed(['hi']);
+  const back = createRoom({ now, restore: JSON.parse(JSON.stringify(room.dump())) });
+  assert.deepEqual(back.viewFor('ana').cards, ['song', 'dance']);
+  assert.deepEqual(back.closed(), { cards: ['hi'], at: 5000 });
+  for (const closed of [undefined, { cards: ['hi', 'song', 'dance'], at: 1 }, { cards: ['later'], at: 1 }, { cards: ['hi'] }, 'hi']) {
+    const old = JSON.parse(JSON.stringify(room.dump()));
+    old.closed = closed;
+    assert.equal(createRoom({ now, restore: old }).closed(), null, JSON.stringify(closed));
+  }
+  const later = JSON.parse(JSON.stringify(room.dump()));
+  later.closed = { cards: ['hi', 'later'], at: 7 };
+  assert.deepEqual(createRoom({ now, restore: later }).closed(), { cards: ['hi'], at: 7 }, 'a card this build lacks is dropped');
+  t = 6000;
+  assert.equal(back.letGo((at) => at < 5000), false);
+  assert.equal(back.letGo((at) => at < 6000), true);
+  assert.deepEqual(back.viewFor('ana').cards, ['hi', 'song', 'dance']);
 });
 
 // ---------- restart spec §1: a room carried across a restart ----------

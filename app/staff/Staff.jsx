@@ -9,6 +9,7 @@ import { connectStaff } from './line.js';
 import { REFUSED, freshIds, openCount, ordered, timeOf, titleFor, whereLine, whoLine } from './list.js';
 import { NOTICE_TAG, NOTIFY_WORDS, fromB64u, sameKey, startState } from './notify.js';
 import { fiveOf, inOrder, shiftFrom } from '../lib/venue.js';
+import { CARDS } from '../../relay/cards.js';
 
 const SESSION = 'otb:staff';   // { venue, token }: in sessionStorage, or in localStorage once notifications are on
 const storage = (name) => { try { return window[name] ?? null; } catch { return null; } };
@@ -157,6 +158,45 @@ const TIME_NAMES = { doors: 'Doors', support: 'Support', break: 'Break', headlin
  * Tonight's times, moved: every phone's phase bar and countdowns follow. A row's −5 and +5 move it and everything after
  * it, as a late start does; nothing goes until SAVE TIMES, and BACK AS LISTED undoes all of it.
  */
+/**
+ * Tonight's cards: staff close one the night has no room for, and open it again. Closing asks once, since whoever is
+ * showing it goes off; the last open card cannot be closed.
+ */
+function CardsPanel({ closed, onSet }) {
+  const shut = closed?.cards ?? [];
+  const [asking, setAsking] = useState(null);
+  const set = (cards) => { setAsking(null); onSet(cards); };
+  const stillOpen = CARDS.length - shut.length;
+  return (
+    <section className="staff-opener staff-cards" aria-label="Tonight's cards">
+      <div className="label">Tonight's cards</div>
+      <p className="small">{closed ? 'Closed at ' + timeOf(closed.at) + '. Phones lay out only the open ones.' : 'All open. Close one the night has no room for.'}</p>
+      <Said>{closed ? 'Closed tonight: ' + CARDS.filter((c) => shut.includes(c.id)).map((c) => c.label).join(', ') + '.' : ''}</Said>
+      {CARDS.map((c) => {
+        const isShut = shut.includes(c.id);
+        return (
+          <div key={c.id} className="staff-line staff-card-row">
+            <span className="body">{c.label}</span>
+            <span className="small">{isShut ? 'closed tonight' : 'open'}</span>
+            {isShut ? (
+              <button type="button" className="btn-s" onClick={() => set(shut.filter((id) => id !== c.id))}>OPEN</button>
+            ) : asking === c.id ? (
+              <span className="staff-line" role="group" aria-label={'Close ' + c.label + '?'}>
+                <span className="small">Whoever shows it goes off.</span>
+                <button type="button" className="btn-s" onClick={() => set([...shut, c.id])}>CLOSE IT</button>
+                <button type="button" className="btn-s" onClick={() => setAsking(null)}>KEEP</button>
+              </span>
+            ) : (
+              <button type="button" className="btn-s" disabled={stillOpen <= 1} onClick={() => setAsking(c.id)}
+                aria-label={'Close ' + c.label + ' for tonight'}>CLOSE</button>
+            )}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 function TimesPanel({ times, listed, onSet }) {
   const now = times ? fiveOf(times) : fiveOf(listed);
   // A draft remembers which times it was made from, so a move from another staff screen meanwhile is said, not lost.
@@ -219,6 +259,7 @@ export default function Staff() {
   const [notice, setNotice] = useState(undefined);   // the notice standing, as the relay holds it: undefined until told
   const [noticeWait, setNoticeWait] = useState(0);   // seconds before a new one may go, once one was sent too soon
   const [times, setTimes] = useState(undefined);     // tonight's times as moved, null as listed: undefined until told
+  const [closed, setClosed] = useState(undefined);   // the cards closed tonight ({ cards, at }), null for none: undefined until told
   const [flash, setFlash] = useState(0);
   const [hearing, setHearing] = useState(false);
   const [notify, setNotify] = useState(() => startState({
@@ -283,6 +324,10 @@ export default function Staff() {
     if (m.t === 'notice') {
       setNotice(m.notice && typeof m.notice.text === 'string' ? m.notice : null);
       setNoticeWait(Number.isInteger(m.wait) && m.wait > 0 ? m.wait : 0);
+      return;
+    }
+    if (m.t === 'closed') {
+      setClosed(m.closed && Array.isArray(m.closed.cards) ? m.closed : null);
       return;
     }
     if (m.t === 'times') {
@@ -430,6 +475,9 @@ export default function Staff() {
         {times !== undefined ? (
           <TimesPanel times={times} listed={shows.find((x) => x.id === session.venue)}
             onSet={(next) => line.current?.send({ t: 'times', times: next })} />
+        ) : null}
+        {closed !== undefined ? (
+          <CardsPanel closed={closed} onSet={(cards) => line.current?.send({ t: 'closed', cards })} />
         ) : null}
         {opener !== undefined ? (
           <OpenerPanel opener={opener} setlist={shows.find((x) => x.id === session.venue)?.setlist}

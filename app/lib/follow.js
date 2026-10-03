@@ -24,6 +24,7 @@ export const FOLLOW_SAY = {
   away: 'You were away a while, so your card went off.',
   lost: 'That didn’t go through — tap again',
   changed: 'Something changed — check and tap again.',
+  closed: (intent) => 'The venue closed ' + HUE[intent].label + ' for tonight.',
 };
 
 /**
@@ -61,6 +62,8 @@ export function follow(phone, view) {
   const toast = (text, unpair = false) => { out.toast = { text, unpair }; };
   if (me.fresh && phone.armed && !armed) {
     toast(FOLLOW_SAY.away);
+  } else if (me.by === 'staff' && phone.armed && !armed) {
+    toast(FOLLOW_SAY.closed(phone.armed));
   } else if (me.by === 'band') {
     // Going dark from the wrist says itself: the quiet screen, as before.
     if (!invisible && quietMoved) toast(armed ? FOLLOW_SAY.backOn(armed) : FOLLOW_SAY.visible, true);

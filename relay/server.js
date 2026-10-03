@@ -515,6 +515,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const room = rooms.get(b.key)?.room;
     if (!room?.has(b.person)) return refuse('no room');
     if (m.basis !== room.revOf(b.person)) return refuse('changed');
+    // A card the venue closed tonight. A band reads any no but `changed` as NOT SENT.
+    if (m.intent && room.closed()?.cards.includes(m.intent)) return refuse('closed');
     if (now() - b.setAt < SET_GAP_MS) return refuse('too fast');
     b.setAt = now();
     room.setInvisible(b.person, false, 'band');
@@ -892,10 +894,19 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (r?.staff.has(ws) && r.room.setTimes(m.times)) push(r);
   }
 
-  /** What staff said for the venue (its opener, notice and times), to its signed-in staff sockets not yet told it. */
+  /**
+   * A staff socket closes cards for tonight, or opens them all again with []: every phone there stops laying them
+   * out, and anyone showing one goes off. The room takes only a list of its cards that leaves one open.
+   */
+  function closedBy(ws, m) {
+    const r = rooms.get(ws.staff.key);
+    if (r?.staff.has(ws) && r.room.setClosed(m.cards)) push(r);
+  }
+
+  /** What staff said for the venue (its opener, notice, times and closed cards), to its staff sockets not yet told it. */
   function saidTo(r, sockets = r.staff) {
     if (!sockets.size) return;
-    const said = { opener: r.room.opener(), notice: r.room.notice(), times: r.room.times() };
+    const said = { opener: r.room.opener(), notice: r.room.notice(), times: r.room.times(), closed: r.room.closed() };
     for (const [t, value] of Object.entries(said)) {
       const text = JSON.stringify({ t, [t]: value });
       for (const ws of sockets) {
@@ -988,13 +999,14 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // A phone of theirs was heard: any message, pings included (rule 2).
     if (ws.r && ws.me) ws.r.heard.set(ws.me, now());
     if (m.t === 'ping') { ws.send('{"t":"pong"}'); return; }
-    // A signed-in staff socket only marks reports, names the opener, sends a notice, moves the times, hands over its
-    // device's subscription, or signs out: what a phone or a wristband would say is ignored.
+    // A signed-in staff socket only marks reports, names the opener, sends a notice, moves the times, closes cards,
+    // hands over its device's subscription, or signs out: what a phone or a wristband would say is ignored.
     if (ws.staff) {
       if (m.t === 'handled') handledBy(ws, m);
       if (m.t === 'opener') openerBy(ws, m);
       if (m.t === 'notice') noticeBy(ws, m);
       if (m.t === 'times') timesBy(ws, m);
+      if (m.t === 'closed') closedBy(ws, m);
       if (m.t === 'push') pushFrom(ws, m);
       if (m.t === 'signout') signOutFrom(ws);
       return;
@@ -1090,9 +1102,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         const to = m.to ? String(m.to) : null;
         const ref = keepClip(r, me, m.mime, m.data, to ? 'to:' + to : 'floor');
         if (!ref) { ws.send(JSON.stringify({ t: 'error', why: 'clip refused' })); return; }
-        if (!to) room.postClip(me, ref);
-        else if (room.danceBack(me, to, ref) === false) {
-          // They are gone, blocked or invisible. Keep nothing for nobody.
+        if (!to ? room.postClip(me, ref) === false : room.danceBack(me, to, ref) === false) {
+          // They are gone, blocked or invisible, or LET'S DANCE! is closed tonight. Keep nothing for nobody.
           r.clips.delete(ref);
           ws.send(JSON.stringify({ t: 'error', why: 'clip refused' }));
           return;
@@ -1318,7 +1329,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // A venue with a staff page keeps tonight's reports for its team once everyone has gone; 06:00 clears them.
     if (staffEntries.has(r.key) && r.room.hasReports()) return;
     // And what its staff said for tonight, so times moved before doors are there when the doors open.
-    if (r.room.opener() || r.room.notice() || r.room.times()) return;
+    if (r.room.opener() || r.room.notice() || r.room.times() || r.room.closed()) return;
     for (const b of bands.values()) if (b.key === r.key && b.ws) return;
     rooms.delete(r.key);
   }
@@ -1383,7 +1394,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         ws.close(4004, 'expired');
       }
       if (r.room.forgetReports((t) => night(t) !== tonight)) push(r);
-      // What staff said for last night (its opener, a notice, moved times) is not tonight's.
+      // What staff said for last night (its opener, a notice, moved times, closed cards) is not tonight's.
       if (r.room.letGo((t) => night(t) !== tonight)) push(r);
     }
     for (const r of [...rooms.values()]) gcRoom(r);

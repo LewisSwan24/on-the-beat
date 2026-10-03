@@ -706,7 +706,7 @@ export default function App() {
       body = <Scan onCode={(code) => { back(); pairWith(code); }} onType={back} onBack={back} />;
       break;
     case 'home':
-      body = <Home show={show} phase={phase} line={line} armed={invisible ? null : armed} ci={ci} setCi={setCi}
+      body = <Home show={show} phase={phase} line={line} armed={invisible ? null : armed} open={view.cards} ci={ci} setCi={setCi}
         notice={notice} onHideNotice={() => setNightState({ noticeHidden: notice.at })}
         band={bandShown} onBand={() => (paired ? bandSheet() : go('pair'))}
         onArm={(id) => arm(armed === id ? null : id)} onOpen={(id) => go(cardOf(id).open)} onHow={howSheet} />;

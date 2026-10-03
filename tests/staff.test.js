@@ -63,7 +63,7 @@ async function start({ staffCheck, ...more } = {}) {
   /** A staff page's socket: each answer to a sign-in, each list it is sent, and how it closed. */
   async function staff({ ip = '203.0.113.' + (1 + (addresses++ % 199)) } = {}) {
     const ws = new WebSocket('ws://127.0.0.1:' + relay.port + WS_PATH, { headers: { 'cf-connecting-ip': ip } });
-    const s = { ws, answers: [], lists: [], openers: [], notices: [], waits: [], times: [], closed: null, waiters: [] };
+    const s = { ws, answers: [], lists: [], openers: [], notices: [], waits: [], times: [], shut: [], closed: null, waiters: [] };
     const wake = () => { s.waiters = s.waiters.filter((w) => !w()); };
     ws.on('message', (d) => {
       const m = JSON.parse(String(d));
@@ -72,6 +72,7 @@ async function start({ staffCheck, ...more } = {}) {
       if (m.t === 'opener') s.openers.push(m.opener);
       if (m.t === 'notice') (m.wait ? s.waits : s.notices).push(m.wait ? m : m.notice);
       if (m.t === 'times') s.times.push(m.times);
+      if (m.t === 'closed') s.shut.push(m.closed);
       wake();
     });
     ws.on('close', (code) => { s.closed = code; wake(); });
@@ -443,22 +444,69 @@ test('staff move the times and every phone, and the venue list, follow; only fiv
   assert.deepEqual(await listed(), before);
 });
 
+test('staff close cards for tonight: phones lay out the rest, whoever showed one goes off, and nothing of it is taken', async () => {
+  const { phone, signedIn } = await start();
+  const one = await signedIn();
+  await one.until(() => one.shut.length === 1);
+  assert.equal(one.shut[0], null, 'told at sign-in that every card is open');
+  const ana = await phone('staff-venue');
+  const ben = await phone('staff-venue');
+  await ana.until((v) => v.cards?.join() === 'hi,song,dance');
+  ana.send({ t: 'arm', intent: 'dance' });
+  ben.send({ t: 'arm', intent: 'hi' });
+  await ana.until((v) => v.me.armed === 'dance');
+  ana.send({ t: 'closed', cards: ['dance'] });                     // a phone cannot
+  one.send({ t: 'closed', cards: ['hi', 'song', 'dance'] });       // never every card
+  one.send({ t: 'closed', cards: ['nonsense'] });
+  one.send({ t: 'closed', cards: 'dance' });
+  await pause(200);
+  assert.equal(ana.view.cards.join(), 'hi,song,dance');
+  one.send({ t: 'closed', cards: ['dance', 'song'] });
+  await ana.until((v) => v.cards.join() === 'hi' && v.me.armed === null && v.me.by === 'staff');
+  await one.until(() => one.shut.at(-1));
+  assert.deepEqual(one.shut.at(-1), { cards: ['song', 'dance'], at: EIGHT_PM });
+  assert.equal(ben.view.me.armed, 'hi', 'an open card stays on');
+  ana.send({ t: 'arm', intent: 'song', basis: ana.view.me.rev, seq: Date.now() });
+  ana.send({ t: 'clip', mime: 'video/webm', data: Buffer.from('dance').toString('base64') });
+  await ana.until(() => ana.errors.includes('clip refused'));
+  await pause(200);
+  assert.equal(ana.view.me.armed, null, 'a closed card is not armed');
+  assert.equal(ana.view.me.clip, null, 'nor is a clip put on a closed floor');
+  one.send({ t: 'closed', cards: [] });
+  await ana.until((v) => v.cards.join() === 'hi,song,dance');
+  await one.until(() => one.shut.at(-1) === null);
+});
+
 test('what staff said for a night lasts with nobody there, and 06:00 takes all of it back', async () => {
   const { relay, clock, phone, signedIn } = await start();
   const one = await signedIn();
   one.send({ t: 'opener', track: 'Treasure' });
   one.send({ t: 'notice', text: 'Doors at 19:30 tonight' });
   one.send({ t: 'times', times: { doors: '19:30', support: '20:15', break: '21:00', headline: '21:50', end: '23:30' } });
-  await one.until(() => one.times.at(-1) && one.notices.at(-1) && one.openers.at(-1));
+  one.send({ t: 'closed', cards: ['dance'] });
+  await one.until(() => one.times.at(-1) && one.notices.at(-1) && one.openers.at(-1) && one.shut.at(-1));
   one.ws.close();
   await one.until(() => one.closed !== null);
   await pause(100);
   relay.expire(clock.t);                                          // set before doors, with nobody in yet
   const ana = await phone('staff-venue');
-  await ana.until((v) => v.times?.doors === '19:30' && v.notice && v.opener);
+  await ana.until((v) => v.times?.doors === '19:30' && v.notice && v.opener && v.cards.join() === 'hi,song');
   clock.t = NEXT_MORNING;
   relay.expire(clock.t);
-  await ana.until((v) => v.times === null && v.notice === null && v.opener === null);
+  await ana.until((v) => v.times === null && v.notice === null && v.opener === null && v.cards.join() === 'hi,song,dance');
+});
+
+test('cards closed before doors, and nothing else said, are there when the doors open', async () => {
+  const { relay, clock, phone, signedIn } = await start();
+  const one = await signedIn();
+  one.send({ t: 'closed', cards: ['dance'] });
+  await one.until(() => one.shut.at(-1));
+  one.ws.close();
+  await one.until(() => one.closed !== null);
+  await pause(100);
+  relay.expire(clock.t);
+  const ana = await phone('staff-venue');
+  await ana.until((v) => v.cards?.join() === 'hi,song');
 });
 
 test('a staff screen signed out at 06:00 says nothing more to its venue, even before its socket has closed', async () => {
@@ -470,13 +518,14 @@ test('a staff screen signed out at 06:00 says nothing more to its venue, even be
     one.send({ t: 'notice', text: 'still here' });
     one.send({ t: 'times', times: { doors: '19:30', support: '20:15', break: '21:00', headline: '21:50', end: '23:30' } });
     one.send({ t: 'opener', track: 'Treasure' });
+    one.send({ t: 'closed', cards: ['dance'] });
   });
   clock.t = NEXT_MORNING;
   const ana = await phone('staff-venue');
   relay.expire(clock.t);
   await one.until(() => one.closed !== null);
   await pause(300);
-  assert.deepEqual([ana.view.notice, ana.view.times, ana.view.opener], [null, null, null]);
+  assert.deepEqual([ana.view.notice, ana.view.times, ana.view.opener, ana.view.cards.length], [null, null, null, 3]);
 });
 
 test('the opener is for its night: 06:00 takes it back', async () => {
