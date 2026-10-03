@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { HUE, cards, hueVars } from '../copy.js';
-import { PHASES } from '../lib/phase.js';
+import { PHASES, hhmm } from '../lib/phase.js';
 import { Icon } from '../ui.jsx';
 import { bandLine } from './Band.jsx';
 
@@ -22,8 +22,23 @@ const DanceGlyph = () => (
   </svg>
 );
 
+/** What the venue's staff told everyone here, until this person puts it away. */
+function Notice({ notice, onHide }) {
+  return (
+    <div className="notice" role="status">
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="micro" style={{ color: 'var(--warn)' }}>FROM THE VENUE · {hhmm(notice.at)}</div>
+        <div className="body notice-text">{notice.text}</div>
+      </div>
+      <button type="button" className="icon-btn" onClick={onHide} aria-label="Put the notice away">
+        <Icon name="cancel" size={20} />
+      </button>
+    </div>
+  );
+}
+
 /** S3 — where the night is, and three cards that each arm one thing. */
-export function Home({ show, phase, line, armed, ci, setCi, onArm, onOpen, onHow, band, onBand }) {
+export function Home({ show, phase, line, armed, ci, setCi, onArm, onOpen, onHow, band, onBand, notice, onHideNotice }) {
   const deck = useRef(null);
   const [w, setW] = useState(393);
   const [drag, setDrag] = useState({ on: false, dx: 0 });
@@ -81,6 +96,7 @@ export function Home({ show, phase, line, armed, ci, setCi, onArm, onOpen, onHow
           {PHASES.map((p, i) => <span key={p} className="label" style={{ color: i <= pi ? '#fff' : 'var(--text-2)' }}>{p}</span>)}
         </div>
         <div className="label tnum" aria-live="polite" style={{ padding: '9px 24px 0' }}>{line}</div>
+        {notice ? <Notice notice={notice} onHide={onHideNotice} /> : null}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px 0' }}>

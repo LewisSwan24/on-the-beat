@@ -5,8 +5,11 @@ import { battery, buzz, toBase64 } from './lib/device.js';
 import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
 import { meetingOn, newlyFound } from './lib/found.js';
 import { connect } from './lib/net.js';
+import { openerArrived, openerNews } from './lib/opener.js';
+import { noticeArrived, showWith, timesArrived } from './lib/venue.js';
 import { phaseLine, phaseOf } from './lib/phase.js';
 import { refusalWords } from './lib/refusals.js';
+import { saveCard } from './lib/vcard.js';
 import * as store from './lib/store.js';
 import { WAVES_HOW, buzzes, newWaves } from './lib/waved.js';
 import { Bar, Home } from './screens/Home.jsx';
@@ -64,12 +67,14 @@ function ReportForm({ onSend }) {
 export default function App() {
   const [s, update] = useStore();
   const night = store.tonight(s);
-  const show = night?.show || null;
+  const listed = night?.show || null;
 
   const [screen, setScreen] = useState('splash');
   const [stack, setStack] = useState([]);
   const [shows, setShows] = useState(null);
   const [view, setView] = useState(EMPTY);
+  // The show as tonight runs it: its times as the venue's staff moved them, if they did.
+  const show = showWith(listed, view.times);
   const [status, setStatus] = useState('connecting');
   const [sheet, setSheet] = useState(null);
   const [toast, setToast] = useState(null);
@@ -298,6 +303,36 @@ export default function App() {
   }, [view]);
   useEffect(() => { wavesSeen.current = null; }, [night?.me]);
 
+  // FIRST SONG?'s answer, once the venue's staff name it: told once, kept on Tonight, against the pick held when it came.
+  useEffect(() => {
+    const step = openerArrived(night?.state || {}, view, pick);
+    if (!step) return;
+    setNightState(step.patch);
+    update((prev) => store.setEvent(prev, 'opener', step.event, view.opener?.at));
+    if (step.say) say(step.say);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.opener?.track, view.opener?.at, !!view.me, night?.me]);
+  const opener = openerNews(view.opener, night?.state?.openerPick ?? pick, view.wall);
+
+  // What the venue's staff tell everyone: a notice, told once and kept on Tonight, and the times when they move them.
+  useEffect(() => {
+    const step = noticeArrived(night?.state || {}, view);
+    if (!step) return;
+    setNightState(step.patch);
+    update((prev) => store.addEvent(prev, 'notice', step.event, view.notice.at));
+    say(step.say);
+    buzz([60, 80, 60]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.notice?.at, !!view.me, night?.me]);
+  useEffect(() => {
+    const step = timesArrived(night?.state || {}, view, listed);
+    if (!step) return;
+    setNightState(step.patch);
+    if (step.say) say(step.say);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.times?.at, !!view.me, night?.me]);
+  const notice = view.notice && night?.state?.noticeHidden !== view.notice.at ? view.notice : null;
+
   // Found by both, news to this phone: a buzz, unless a live wristband plays it instead (found §1). The record
   // keeps foundAt (noteMatch, above), so a reload buzzes for nothing already found.
   const foundSeen = useRef(null);
@@ -482,6 +517,12 @@ export default function App() {
     ],
   });
 
+  // A kept person as a card for the phone's own contacts, made here and sent nowhere.
+  const saveContact = (k) => saveCard(k).then((how) => {
+    if (how === 'saved') say('saved as a contact card. open it to add them.');
+  }).catch(() => say("couldn't make the card. their contact is still here."));
+  const tonightCard = (m) => ({ name: m.name, contact: m.contact, venue: show?.venue || '', night: store.tonightKey() });
+
   const keep = (m, on) => {
     if (on && !s.contact) {
       setSheet({
@@ -665,6 +706,7 @@ export default function App() {
       break;
     case 'home':
       body = <Home show={show} phase={phase} line={line} armed={invisible ? null : armed} ci={ci} setCi={setCi}
+        notice={notice} onHideNotice={() => setNightState({ noticeHidden: notice.at })}
         band={bandShown} onBand={() => (paired ? bandSheet() : go('pair'))}
         onArm={(id) => arm(armed === id ? null : id)} onOpen={(id) => go(({ hi: 'beacon', song: 'pick', dance: 'camera' })[id])} onHow={howSheet} />;
       break;
@@ -679,7 +721,7 @@ export default function App() {
       break;
     case 'pick': body = <Pick show={show} text={pickText} setText={setPickText} onBack={back} />; break;
     case 'wall':
-      body = <Wall wall={view.wall} pick={pick} onBack={back} onChange={() => { setPickText(pick); go('pick'); }}
+      body = <Wall wall={view.wall} pick={pick} opener={opener} onBack={back} onChange={() => { setPickText(pick); go('pick'); }}
         onLike={(handle, on) => net.current?.send({ t: on ? 'like' : 'unlike', handle })} onMore={personSheet} />;
       break;
     case 'match':
@@ -699,12 +741,14 @@ export default function App() {
       body = match ? (
         <Mate match={match} number={paired && meetingOn(match, now.getTime()) ? match.number : null}
           onBack={back} onFound={() => sayFound(match)} onKeep={(on) => keep(match, on)} onTonight={() => go('tonight')}
+          onSave={() => saveContact(tonightCard(match))}
           onMore={() => personSheet(match.id, matchName(match))} />
       ) : null;
       break;
     case 'tonight':
       body = <Tonight show={show} phase={phase} night={night} live={view.matches} kept={s.kept} name={s.name}
-        onBack={back} onKeep={keep} onOpen={(m) => { setMatchId(m.id); go('mate'); }} onName={() => go('name')} />;
+        onBack={back} onKeep={keep} onOpen={(m) => { setMatchId(m.id); go('mate'); }} onName={() => go('name')}
+        onSave={(m) => saveContact(m.night ? m : tonightCard(m))} />;
       break;
     case 'quiet':
       body = <Quiet paired={paired} onBackOn={backOn} onBlock={quietBlock} onReport={quietReport} onLeft={leftVenue} />;

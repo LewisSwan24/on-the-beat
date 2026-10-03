@@ -503,10 +503,121 @@ test("two people's revs start far apart, so a rev chosen from one never names th
   assert.notEqual(a, b);
 });
 
+// ---------- the opener: FIRST SONG?'s answer, once the venue's staff name it ----------
+
+test('the opener, once named, is in every view; cut to a track\'s length, and an empty one takes it back', () => {
+  let t = 1000;
+  const room = createRoom({ now: () => t, salt: 'o' });
+  room.join('ana');
+  room.join('ben');
+  assert.equal(room.viewFor('ana').opener, null);
+  assert.equal(room.setOpener('  Treasure  '), true);
+  assert.deepEqual(room.viewFor('ana').opener, { track: 'Treasure', at: 1000 });
+  assert.deepEqual(room.viewFor('ben').opener, { track: 'Treasure', at: 1000 });
+  t = 2000;
+  assert.equal(room.setOpener('Treasure'), false, 'the same again is no change');
+  assert.equal(room.viewFor('ana').opener.at, 1000, 'and keeps when it was named');
+  assert.equal(room.setOpener('x'.repeat(100)), true);
+  assert.equal(room.viewFor('ana').opener.track.length, 60);
+  assert.equal(room.setOpener(''), true);
+  assert.equal(room.viewFor('ana').opener, null);
+  assert.equal(room.setOpener(null), false, 'nothing to take back');
+  assert.equal(room.opener(), null);
+  room.setOpener('Grenade');
+  assert.deepEqual(room.opener(), { track: 'Grenade', at: 2000 });
+});
+
+// ---------- what else the venue's staff say: a notice, and the show's times moved ----------
+
+test('a notice from staff is in every view, one line of at most 140 characters, and an empty one takes it down', () => {
+  let t = 1000;
+  const room = createRoom({ now: () => t, salt: 'n' });
+  room.join('ana');
+  room.join('ben');
+  assert.equal(room.viewFor('ana').notice, null);
+  assert.equal(room.setNotice('  Headline is' + String.fromCharCode(10) + ' 20 minutes   late  '), true);
+  assert.deepEqual(room.viewFor('ana').notice, { text: 'Headline is 20 minutes late', at: 1000 });
+  assert.deepEqual(room.viewFor('ben').notice, room.viewFor('ana').notice);
+  t = 2000;
+  assert.equal(room.setNotice('Headline is 20 minutes late'), false, 'the same again is no change');
+  assert.equal(room.setNotice('y'.repeat(300)), true);
+  assert.equal(room.viewFor('ana').notice.text.length, 140);
+  assert.equal(room.setNotice(''), true);
+  assert.equal(room.viewFor('ana').notice, null);
+  assert.equal(room.setNotice(null), false);
+});
+
+test("times are moved only as five clock times in the night's order, and null puts them back as listed", () => {
+  let t = 1000;
+  const room = createRoom({ now: () => t, salt: 'm' });
+  room.join('ana');
+  const five = { doors: '19:00', support: '20:10', break: '20:55', headline: '21:50', end: '00:30' };
+  assert.equal(room.viewFor('ana').times, null);
+  for (const bad of [
+    null, 'x', [], {}, { ...five, end: undefined }, { ...five, headline: '9:50' }, { ...five, headline: '24:00' },
+    { ...five, support: '18:59' }, { ...five, end: '06:00' }, { ...five, doors: 1900 },
+  ]) assert.equal(room.setTimes(bad), false, JSON.stringify(bad));
+  assert.equal(room.viewFor('ana').times, null);
+  assert.equal(room.setTimes({ ...five, extra: 'no' }), true, 'past midnight is later, not earlier');
+  assert.deepEqual(room.viewFor('ana').times, { ...five, at: 1000 });
+  t = 2000;
+  assert.equal(room.setTimes({ ...five }), false, 'the same again is no change');
+  assert.equal(room.setTimes({ ...five, headline: '21:55' }), true);
+  assert.equal(room.times().at, 2000);
+  assert.equal(room.setTimes({ ...five, break: '20:10', headline: '20:10' }), true, 'two parts may start together');
+  assert.equal(room.setTimes(null), true);
+  assert.equal(room.viewFor('ana').times, null);
+  assert.equal(room.setTimes(null), false);
+});
+
+test('the night ends: the opener, a notice and moved times said before it go, and what was said after stays', () => {
+  let t = 100;
+  const room = createRoom({ now: () => t, salt: 'g' });
+  room.join('ana');
+  room.setOpener('Treasure');
+  t = 200;
+  room.setNotice('Bar closes at 23:00');
+  t = 300;
+  room.setTimes({ doors: '19:00', support: '20:00', break: '20:45', headline: '21:30', end: '23:00' });
+  assert.equal(room.letGo((at) => at < 100), false, 'nothing that old');
+  assert.equal(room.letGo((at) => at < 250), true);
+  const v = room.viewFor('ana');
+  assert.deepEqual([v.opener, v.notice, v.times?.at], [null, null, 300]);
+  assert.equal(room.letGo(() => true), true);
+  assert.equal(room.viewFor('ana').times, null);
+});
+
+test('a notice and moved times are carried across a restart; a dump from before them, or a bad one, has none', () => {
+  const now = () => 5000;
+  const room = createRoom({ now });
+  room.join('ana');
+  room.setNotice('Cloakroom is full');
+  room.setTimes({ doors: '19:00', support: '20:00', break: '20:45', headline: '21:40', end: '23:00' });
+  const back = carried(room, now).viewFor('ana');
+  assert.deepEqual(back.notice, { text: 'Cloakroom is full', at: 5000 });
+  assert.equal(back.times.headline, '21:40');
+  const old = JSON.parse(JSON.stringify(room.dump()));
+  delete old.notice;
+  old.times = { ...old.times, headline: '18:00' };
+  const v = createRoom({ now, restore: old }).viewFor('ana');
+  assert.deepEqual([v.notice, v.times], [null, null]);
+});
+
 // ---------- restart spec §1: a room carried across a restart ----------
 
 /** A room as a restart brings it back: its dump, through JSON, made again on the same clock. */
 const carried = (room, now) => createRoom({ now, restore: JSON.parse(JSON.stringify(room.dump())) });
+
+test('the opener is carried across a restart, and a dump from before there was one has none', () => {
+  const now = () => 5000;
+  const room = createRoom({ now });
+  room.join('ana');
+  room.setOpener('24K Magic');
+  assert.deepEqual(carried(room, now).viewFor('ana').opener, { track: '24K Magic', at: 5000 });
+  const old = JSON.parse(JSON.stringify(room.dump()));
+  delete old.opener;
+  assert.equal(createRoom({ now, restore: old }).viewFor('ana').opener, null);
+});
 
 test('a room carried across a restart shows everyone what it did, and goes on from where it was', () => {
   let t = Date.UTC(2026, 8, 29, 11, 0);

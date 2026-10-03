@@ -763,6 +763,63 @@ test('a burst of changes in a room goes out as a view or two, not one each, and 
   close(ana, ben);
 });
 
+test('a room whose views cost a lot to work out sends them less often, so the relay is never busy with nothing else', async () => {
+  // Every reading of the clock moves it 60 ms: a push (one reading before it, one after) costs 60 ms. With a slack of 4
+  // the room waits four times that, 240 ms, between pushes, where a cheap room waits PUSH_GAP_MS, 100.
+  let tick = 0;
+  const costly = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist'), pushClock: () => (tick += 60), pushSlack: 4 });
+  const h = helpers(() => costly.port);
+  try {
+    const ana = await h.phone('costly-room');
+    const ben = await h.phone('costly-room');
+    const seen = new Map();
+    ben.ws.on('message', (d) => {
+      const m = JSON.parse(String(d));
+      if (m.t !== 'view') return;
+      for (const p of m.view.wall) if (!seen.has(p.pick)) seen.set(p.pick, Date.now());
+    });
+    await pause(600);   // whatever the joins cost is paid off
+    ana.send({ t: 'pick', track: 'first' });
+    await ben.until((v) => v.wall.some((p) => p.pick === 'first'));
+    ana.send({ t: 'pick', track: 'second' });
+    await ben.until((v) => v.wall.some((p) => p.pick === 'second'));
+    const apart = seen.get('second') - seen.get('first');
+    assert.ok(apart >= 200, 'two pushes were ' + apart + ' ms apart, where a room that costs 60 ms to push waits 240');
+    h.close(ana, ben);
+  } finally {
+    h.cleanup();
+    await costly.close();
+  }
+});
+
+test("however much a push costs, a room's views are held no longer than two seconds", async () => {
+  // A push that costs a second would wait four, uncapped.
+  let tick = 0;
+  const choked = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist'), pushClock: () => (tick += 1000), pushSlack: 4 });
+  const h = helpers(() => choked.port);
+  try {
+    const ana = await h.phone('choked-room');
+    const ben = await h.phone('choked-room');
+    const seen = new Map();
+    ben.ws.on('message', (d) => {
+      const m = JSON.parse(String(d));
+      if (m.t !== 'view') return;
+      for (const p of m.view.wall) if (!seen.has(p.pick)) seen.set(p.pick, Date.now());
+    });
+    await pause(2300);
+    ana.send({ t: 'pick', track: 'first' });
+    await ben.until((v) => v.wall.some((p) => p.pick === 'first'));
+    ana.send({ t: 'pick', track: 'second' });
+    await ben.until((v) => v.wall.some((p) => p.pick === 'second'), 3500);
+    const apart = seen.get('second') - seen.get('first');
+    assert.ok(apart >= 1800 && apart < 3000, 'two pushes were ' + apart + ' ms apart, where the cap is 2000');
+    h.close(ana, ben);
+  } finally {
+    h.cleanup();
+    await choked.close();
+  }
+});
+
 test('a socket sending far faster than any phone or wristband is closed as too fast, and the room goes on', async () => {
   const ana = await phone('fast-room');
   const eve = await phone('fast-room');

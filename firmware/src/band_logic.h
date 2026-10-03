@@ -80,6 +80,7 @@ constexpr Note JINGLE[] = {{1319, 80}, {1568, 80}, {2637, 80}, {2093, 80}, {2349
 constexpr Note WARN[] = {{880, 150}, {698, 150}, {880, 150}, {698, 150}};
 constexpr Note HELLO[] = {{1568, 60}, {2093, 120}};
 constexpr Note FOUND[] = {{1568, 70}, {2093, 70}, {2637, 70}, {0, 40}, {2637, 70}, {3136, 220}};
+constexpr Note CALLEDIT[] = {{2093, 90}, {0, 50}, {2093, 90}, {0, 50}, {2637, 90}, {3136, 230}};
 template <size_t N>
 constexpr Sound sound(const char* name, const Note (&notes)[N]) { return {name, notes, N}; }
 }  // namespace detail
@@ -88,7 +89,7 @@ constexpr Sound SOUNDS[] = {
     detail::sound("tick", detail::TICK),     detail::sound("double", detail::DOUBLE), detail::sound("down", detail::DOWN),
     detail::sound("up", detail::UP),         detail::sound("fall", detail::FALL),     detail::sound("low", detail::LOW_TONE),
     detail::sound("ask", detail::ASK),       detail::sound("jingle", detail::JINGLE), detail::sound("warn", detail::WARN),
-    detail::sound("hello", detail::HELLO),   detail::sound("found", detail::FOUND),
+    detail::sound("hello", detail::HELLO),   detail::sound("found", detail::FOUND),   detail::sound("calledit", detail::CALLEDIT),
 };
 
 inline const Sound* soundFor(const std::string& name) {
@@ -210,7 +211,7 @@ struct Flash {
 constexpr Flash FLASHES[] = {
     {"set", "card", 2, 150, 100},       {"changed", "red", 3, 120, 90}, {"notsent", "orange", 2, 350, 250},
     {"warn", "orange", 2, 350, 250},    {"check", "white", 2, 150, 100},   {"wave", "hi", 3, 500, 500},
-    {"found", "card", 3, 200, 150},
+    {"found", "card", 3, 200, 150},     {"calledit", "song", 3, 200, 150},
 };
 
 inline const Flash* flashFor(const std::string& name) {
@@ -554,6 +555,7 @@ struct Frame {
   int sound = -1;          // the show's sound switch: 1 on, 0 off, -1 not said (so not part of the Show)
   Waves waves;             // the show's waves, nobody unless said (so not part of the Show either)
   Found found;             // the show's found, none unless said (nor this)
+  int64_t calledIt = 0;    // the show's calledIt: when the opener its person called was named, 0 unless said
   std::string why;
   bool hasOk = false;      // {t:'set', ok:false, why}: the relay refused a choice
   bool ok = true;
@@ -642,6 +644,17 @@ inline bool readFrame(const std::string& text, Frame& f) {
           bool whole = false;
           if (!r.integer(v, whole)) return r.skip();
           (w == "n" ? f.waves.n : f.waves.seq) = whole ? v : 0;
+          return true;
+        });
+      }
+      if (k == "calledIt") {
+        if (!r.peek('{')) return r.skip();
+        return r.object([&](const std::string& w) {
+          if (w != "n") return r.skip();
+          int64_t v = 0;
+          bool whole = false;
+          if (!r.integer(v, whole)) return r.skip();
+          f.calledIt = whole ? v : 0;
           return true;
         });
       }
@@ -1683,6 +1696,13 @@ class Wrist {
     } else if (!f.found.n && personal()) {
       foundPlayed_ = 0;
     }
+    // The opener its person called: once a naming, in FIRST SONG's colour. Past CALLED_SHOW_MS a show names none.
+    if (f.calledIt && f.calledIt != calledItPlayed_) {
+      calledItPlayed_ = f.calledIt;
+      react("calledit", "calledit", 1);
+    } else if (!f.calledIt && personal()) {
+      calledItPlayed_ = 0;
+    }
     // After a meeting's jingle. A wave call already under way takes the new wave in; the open wave face counts it.
     if (newer && !waveCalling() && mode_ != WAVES) callWave();
   }
@@ -2156,6 +2176,8 @@ class Wrist {
   bool waveOwed_ = false;
   // Found by both (found §2): the number last played for, until a show about the person names none.
   int64_t foundPlayed_ = 0;
+  // The opener its person called (FIRST SONG?): when the naming last played for was, until a show about them names none.
+  int64_t calledItPlayed_ = 0;
   // Rule 5: the letters and the waiting face sleep. Until when they are lit, which letters lit them, when
   // waiting began, and until when a press says where to go.
   uint32_t litUntil_ = 0;
@@ -2306,6 +2328,7 @@ inline std::string heardLine(const Frame& f, std::string& shown) {
   else if (s.away) what += " (away)";
   if (s.kind == "meet" && s.small == "FOUND: WAITING") what += " (found: waiting)";
   if (f.found.n > 0) what += " (found " + std::to_string(f.found.n) + ")";
+  if (f.calledIt > 0) what += " (called the opener)";
   if (f.waves.n > 0) what += " (" + std::to_string(f.waves.n) + " waiting)";
   if (what == shown) return "";
   shown = what;

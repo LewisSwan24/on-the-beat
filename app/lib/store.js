@@ -66,6 +66,17 @@ export function addEvent(s, kind, text, at = Date.now()) {
   return { ...s, nights: { ...s.nights, [key]: { ...n, events: [...n.events, { at, kind, text }] } } };
 }
 
+/** Tonight's one line of this kind, made, replaced, or with no text taken out. */
+export function setEvent(s, kind, text, at = Date.now()) {
+  const key = tonightKey();
+  const n = s.nights[key];
+  if (!n) return s;
+  const had = n.events.filter((e) => e.kind === kind);
+  if (text ? had.length === 1 && had[0].text === text && had[0].at === at : had.length === 0) return s;
+  const events = [...n.events.filter((e) => e.kind !== kind), ...(text ? [{ at, kind, text }] : [])];
+  return { ...s, nights: { ...s.nights, [key]: { ...n, events } } };
+}
+
 export function hasEvent(s, kind) {
   return !!tonight(s)?.events.some((e) => e.kind === kind);
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { actShort, someone } from '../copy.js';
+import { sameTrack } from '../lib/opener.js';
 import { Back, Icon, More } from '../ui.jsx';
 
 /** S6 — what should the opening track be? Only the track is ever shown. */
@@ -36,8 +37,25 @@ export function Pick({ show, text, setText, onBack }) {
   );
 }
 
+/** Once the venue's staff name it: the answer, whether you called it, and how many here did — never who. */
+function Opener({ opener }) {
+  return (
+    <div className="yours" role="status" style={{ borderColor: 'var(--song)', marginBottom: 8 }}>
+      <Icon name="queue_music" size={19} color="var(--song)" />
+      <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span className="micro" style={{ color: 'var(--song)' }}>the opener was</span>
+        <span className="h2">{opener.track}</span>
+        <span className="small">
+          {opener.line ? <span style={{ color: opener.called ? 'var(--ok)' : undefined }}>{opener.line} </span> : null}
+          {opener.crowd}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 /** S7 — what everyone wants first. Like a track, not a face, and take it back if you like. */
-export function Wall({ wall, pick, onBack, onChange, onLike, onMore }) {
+export function Wall({ wall, pick, opener, onBack, onChange, onLike, onMore }) {
   // A like is sent at once, and shown at once: the room's answer follows and replaces it.
   const [pending, setPending] = useState({});
   useEffect(() => setPending({}), [wall]);
@@ -52,6 +70,7 @@ export function Wall({ wall, pick, onBack, onChange, onLike, onMore }) {
       <Back onClick={onBack} />
       <h1 className="h1" style={{ margin: '6px 0 4px' }}>What everyone wants first</h1>
       <span className="small" style={{ marginBottom: 12 }}>like a track, not a face — and you can take it back.</span>
+      {opener ? <Opener opener={opener} /> : null}
       {pick ? (
         <div className="yours">
           <Icon name="music_note" size={19} color="var(--song)" />
@@ -84,7 +103,10 @@ export function Wall({ wall, pick, onBack, onChange, onLike, onMore }) {
                 <More className="more" onClick={() => onMore(w.handle, someone(w.band))} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingRight: 6 }}>
-                <span className="small">{on ? 'You liked this' : someone(w.band)}</span>
+                <span className="small">
+                  {on ? 'You liked this' : someone(w.band)}
+                  {opener && sameTrack(w.pick, opener.track) ? <span className="micro" style={{ color: 'var(--song)', marginLeft: 8 }}>CALLED IT</span> : null}
+                </span>
                 <button type="button" className="btn-s" aria-pressed={on} onClick={() => tap(w)} style={{ margin: '-6px 0', '--c': on ? 'var(--song)' : 'var(--line)', '--f': on ? 'var(--song)' : '#fff' }}>
                   {on ? 'LIKED' : 'LIKE'}
                 </button>

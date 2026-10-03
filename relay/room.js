@@ -54,6 +54,10 @@ const CONTACT_MAX = 60;
 const TRACK_MAX = 60;
 const REPORTS_MAX = 1000;      // the newest kept a venue, handled ones dropped first, for its staff page (relay/server.js reportsTo())
 const WHY_MAX = 200;           // a reporter's few words for the venue team
+export const NOTICE_MAX = 140; // a notice from the venue's staff to every phone there
+
+// The show's times, in the night's order, as a shows file writes them.
+export const TIME_KEYS = ['doors', 'support', 'break', 'headline', 'end'];
 
 // Near (docs/superpowers/specs/2026-09-26-wrist-near-design.md §2).
 export const HEARD_MS = 30_000;   // what a band heard, and that it listened at all, counts this long
@@ -74,6 +78,28 @@ const median = (list) => {
 /** A pair's key, the same whichever way round it is asked. */
 const pairKey = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
 const clip = (s, n) => String(s ?? '').trim().slice(0, n);
+
+/** A clock time as the night reads it, in minutes: before 06:00 is after midnight. Null for anything but HH:MM. */
+const nightMinsOf = (hhmm) => {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm);
+  if (!m) return null;
+  const t = Number(m[1]) * 60 + Number(m[2]);
+  return t < 360 ? t + 1440 : t;
+};
+
+/** The five times, each HH:MM and none before the one ahead of it in the night, or null. */
+export function timesOf(t) {
+  if (!t || typeof t !== 'object') return null;
+  const out = {};
+  let last = -1;
+  for (const k of TIME_KEYS) {
+    const n = typeof t[k] === 'string' ? nightMinsOf(t[k]) : null;
+    if (n === null || n < last) return null;
+    last = n;
+    out[k] = t[k];
+  }
+  return out;
+}
 
 /**
  * How many handles (a viewer's name for one other person) a relay's rooms may hold between them. A room works each one out
@@ -119,6 +145,12 @@ export function createRoom({
   // come back as they left. Outlives leave(), as blocks do.
   const tombs = new Map();
   const reports = [];         // oldest first: { id, at, from, about, aboutBand, fromBand, why, handledAt }
+  // FIRST SONG?'s answer, as the venue's staff named it: { track, at }, or null until they do. Everyone sees it.
+  let opener = null;
+  // A notice the venue's staff sent every phone here: { text, at }, or null. Only the latest stands.
+  let notice = null;
+  // The show's times as the venue's staff moved them: the five, and when, or null while they stand as listed.
+  let times = null;
   let nextReport = 1;
   let nextMatch = 1;
   // Near: what each person's wristband heard, never shown to anyone. 'a>b' -> [{ at, rssi }], a's band
@@ -145,6 +177,14 @@ export function createRoom({
     reports.push(...restore.reports);
     nextReport = restore.nextReport;
     nextMatch = restore.nextMatch;
+    // A file from before there was an opener has none.
+    const o = restore.opener;
+    if (o && typeof o.track === 'string' && o.track && Number.isFinite(o.at)) opener = { track: clip(o.track, TRACK_MAX), at: o.at };
+    // Nor, from before there were these, a notice or moved times.
+    const n = restore.notice;
+    if (n && typeof n.text === 'string' && n.text && Number.isFinite(n.at)) notice = { text: clip(n.text, NOTICE_MAX), at: n.at };
+    const t = timesOf(restore.times);
+    if (t && Number.isFinite(restore.times.at)) times = { ...t, at: restore.times.at };
   }
 
   // A handle is a function of the salt and the two ids alone, and a push asks for P*P of them (every person's view of
@@ -267,6 +307,47 @@ export function createRoom({
     if (m.t === 'invisible') setInvisible(id, m.on, 'phone');
     else arm(id, m.intent, 'phone');
     return null;
+  }
+
+  /** The venue's staff name the opener, or take it back with an empty one. True when that changed it. */
+  function setOpener(track) {
+    const t = clip(track, TRACK_MAX);
+    if ((opener?.track || '') === t) return false;
+    opener = t ? { track: t, at: now() } : null;
+    return true;
+  }
+
+  /** The venue's staff send every phone here a notice, or take it down with an empty one. True when that changed it. */
+  function setNotice(text) {
+    const t = clip(String(text ?? '').replace(/\s+/g, ' '), NOTICE_MAX);
+    if ((notice?.text || '') === t) return false;
+    notice = t ? { text: t, at: now() } : null;
+    return true;
+  }
+
+  /**
+   * The venue's staff move the show's times, or put them back as listed with null. Five times in the night's order, or
+   * nothing changes. True when that changed them.
+   */
+  function setTimes(next) {
+    if (next === null) {
+      if (!times) return false;
+      times = null;
+      return true;
+    }
+    const t = timesOf(next);
+    if (!t || (times && TIME_KEYS.every((k) => times[k] === t[k]))) return false;
+    times = { ...t, at: now() };
+    return true;
+  }
+
+  /** The night ends: what staff said for it (the opener, a notice, moved times) goes if `isOld(when it was said)`. */
+  function letGo(isOld) {
+    let gone = false;
+    if (opener && isOld(opener.at)) { opener = null; gone = true; }
+    if (notice && isOld(notice.at)) { notice = null; gone = true; }
+    if (times && isOld(times.at)) { times = null; gone = true; }
+    return gone;
   }
 
   function pick(id, track) {
@@ -621,6 +702,11 @@ export function createRoom({
       wall: others.filter((p) => p.pick).map((p) => ({
         ...row(p), pick: p.pick, liked: likes.has(id + '>' + p.id),
       })),
+      // And, once the venue's staff name it, the answer: the same for everyone.
+      opener: opener ? { ...opener } : null,
+      // What the venue's staff told everyone here, and the show's times if they moved them: the same for everyone.
+      notice: notice ? { ...notice } : null,
+      times: times ? { ...times } : null,
       // LET'S DANCE!: five seconds each. One sent straight to you comes first, and says so.
       floor: others.flatMap((p) => {
         const toYou = dances.get(p.id + '>' + id);
@@ -662,11 +748,20 @@ export function createRoom({
       reports: reports.slice(),
       nextReport,
       nextMatch,
+      opener,
+      notice,
+      times,
     };
   }
 
   return {
-    join, leave, setProfile, arm, setInvisible, fromPhone, pick, postClip,
+    join, leave, setProfile, arm, setInvisible, fromPhone, pick, postClip, setOpener, setNotice, setTimes, letGo,
+    /** The opener as staff named it ({ track, at }), or null. */
+    opener: () => (opener ? { ...opener } : null),
+    /** The notice standing ({ text, at }), or null. */
+    notice: () => (notice ? { ...notice } : null),
+    /** The times as staff moved them (the five, and at), or null. */
+    times: () => (times ? { ...times } : null),
     wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, found, heard, nearTick, viewFor, dump,
     /** How many handles the room holds now (a count for the tests, so the ones of people who left are seen to go). */
     handlesHeld: () => { let n = 0; for (const row of handles.values()) n += row.size; return n; },    /** For the relay: who is here, so it knows whose view to push. */

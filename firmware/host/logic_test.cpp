@@ -399,7 +399,7 @@ void sound() {
   // On a buzzer a sound goes up whole octaves, as far as its highest note stays within BUZZER_TOP_HZ...
   const std::pair<const char*, uint32_t> octaves[] = {{"tick", 2}, {"double", 2}, {"down", 4},   {"up", 2},
                                                       {"fall", 2}, {"ask", 2},    {"jingle", 1}, {"warn", 4},
-                                                      {"hello", 2}, {"found", 1}};
+                                                      {"hello", 2}, {"found", 1}, {"calledit", 1}};
   CHECK(sizeof octaves / sizeof octaves[0] + 1 == sizeof SOUNDS / sizeof SOUNDS[0]);  // and low, below
   for (const auto& o : octaves) CHECK(soundFor(o.first) && !buzzerOwn(o.first) && buzzerFactor(*soundFor(o.first)) == o.second);
   for (const Sound& s : SOUNDS) {

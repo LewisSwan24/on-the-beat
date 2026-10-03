@@ -29,6 +29,7 @@ npm run staff-code   # one venue's staff passcode, as a line for STAFF_CODES (se
 npm run preflight    # is a relay ready for doors? read-only checks; takes another address too
 npm run image-check  # before a deploy: will the Docker image build and its relay start? no Docker needed
 npm run fonts        # after drawing a new icon: fetch the icon font again, cut to the icons the code draws
+npm run mutate -- list.json   # break a guard and see its test go red; puts every file back and proves it byte for byte
 ```
 
 **The night ends at 06:00 at the venue.** `NIGHT_TZ=Australia/Brisbane npm start`
@@ -191,7 +192,9 @@ never becomes a match.
   to that file so a restart carries it on (*Always on*, above); without it,
   stop the relay and the night is gone.
   - After a change the relay pushes each phone its own `viewFor()`, at
-    most every 100 ms a room, so a burst of changes is one push.
+    most every 100 ms a room, so a burst of changes is one push. A room
+    whose pushes cost more waits four times what they cost (never past 2 s),
+    so pushing takes a quarter of the relay's time at most.
   - What each wristband heard of the others and of the markers is kept
     30 s, in memory, and never leaves the relay; every five seconds each
     room works out who is near whom and who is in which area, and pushes
@@ -299,6 +302,23 @@ Every report reaches the venue's own team at `/staff`
   sees them; at 06:00 they go. A restart or a deploy keeps them, and keeps
   every staff page signed in, unless its venue's passcode entry changed: the
   page signs back in with its token.
+- **Telling everyone here.** *SEND TO EVERY PHONE* puts one line, at most
+  140 characters, on every phone at the venue: a toast and a buzz, a
+  `FROM THE VENUE` banner on the cards screen until that person puts it away,
+  and a line on their Tonight. Only the latest stands; *TAKE DOWN* removes it.
+  A new one goes at most every 20 seconds a venue, since each one reaches
+  every phone there, and the page says how long to wait.
+- **Moving the times.** *Show times* holds the night's five times. A row's
+  −5 and +5 move it and every time after it, as a late start does; a time can
+  also be typed. Nothing goes until *SAVE TIMES*, and the relay takes only five
+  clock times in the night's order. Every phone's phase bar and countdown
+  follow at once, with a toast saying what moved, and the venue list shows the
+  moved times to anyone choosing a show. *BACK AS LISTED* undoes it.
+- **What staff say lasts the night.** The first song, a notice and moved
+  times stay with nobody in the venue yet, so times moved before doors are
+  there when they open; a restart keeps them; 06:00 takes all of them back. A
+  staff screen signed out at 06:00 cannot say anything more, even in the
+  moment before its socket closes.
 
 To give a venue its page, make its line and set it on the relay:
 
@@ -444,6 +464,15 @@ that was taken.
   minute; the phone buzzes only when no live wristband plays it. Refused or
   out of reach, the band says `NOT SENT`. Never said by both, the number goes
   at fifteen minutes, and nothing says why.
+- **The first song, called, on the wrist.** When the venue's staff name the
+  opener, the band of everyone whose pick it was plays a `calledit` chirp and
+  flashes FIRST SONG's yellow three times, once a naming, whatever its face
+  shows but NOT NOW; a band out of reach then plays it when it is back within
+  a minute. A band whose person missed is told nothing, so no band ever says
+  what anyone else picked, nor that they missed. The relay matches a pick as
+  the phone does, whatever its case, accents or punctuation. This has run in
+  the band's logic, JS and C++ alike, and in both firmware builds, not yet on
+  a real band.
 - **Who is near comes from the wristbands.** While a band is on the relay,
   paired and not in NOT NOW, it beacons four bytes by ESP-NOW twice a second,
   under an address it makes up at every boot, and for one second in every ten
@@ -722,6 +751,32 @@ read back from the picture with jsQR, the scanner the app uses.
   but someone has to be named when two people both say yes. A contact is
   asked for only the first time you keep someone, and only shared if they
   keep you too.
+- **A contact both kept can be saved to the phone's own contacts.** The
+  canvas shows it and stops there. The owner chose on 3 Oct 2026 a SAVE TO
+  CONTACTS button wherever a contact both people kept is shown: on S11, in
+  the AFTER list and under *kept from other nights*. The card (vCard 3.0,
+  `app/lib/vcard.js`) is made on the phone from what it already holds and
+  goes to the share sheet where the browser can share a file, or downloads
+  otherwise; nothing is sent. A number goes in as a number, an email or a
+  web address as itself, and a handle in the note with where they met.
+- **FIRST SONG? gets its answer.** The canvas asks for a pick and never says
+  what opened. The owner chose on 3 Oct 2026 that the venue's staff name it:
+  the staff page has a *First song* panel with the night's setlist as chips,
+  *NAME IT*, and *TAKE BACK* for a mistake. Every phone at the venue then
+  shows `THE OPENER WAS` above its own pick, *You called it.* or *Not this
+  time.*, and how many here called it, never who; the wall marks a matching
+  pick `CALLED IT`, which is no more than the pick on that row already says.
+  A pick matches whatever its case, accents, punctuation or spacing
+  (`app/lib/opener.js`), and is held as it was when the answer came, so
+  changing it afterwards calls nothing. Tonight keeps one line for it. Only a
+  signed-in staff page can name it; a restart keeps it, and 06:00 takes it
+  back with the night.
+- **The venue can tell everyone something, and move the times.** The canvas's
+  times are the show's as listed, and nothing reaches every phone at once. The
+  owner chose on 3 Oct 2026 that a signed-in staff page can send a notice to
+  every phone at its venue and move the night's times (see "The staff page").
+  A notice is the venue's own words, the same for everyone, and says nothing
+  about anyone in the room.
 - **Venue distances are gone.** The canvas shows "40 m" beside each show;
   that needs the phone's location, and promise 1 says nobody sees where you
   are. The list shows doors times instead.
@@ -1115,6 +1170,11 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   is about five times cheaper. Until that day about a third of the relay's
   time went on hashing the same handles again on every push; the room now
   remembers them (the same day before: 59% at 100, 94% at 150).
+  On 3 Oct 2026 the gap between a room's pushes began to follow what they
+  cost (above): the same rig at 250 keen people, 30 s measured, went from
+  95% of the core, loop lag p99 352 ms and a wave seen again after ~203 ms
+  to 30%, 154 ms and ~380 ms, and was no longer saturated. A room of 100
+  pushes as often as before. One run each, on the laptop.
   **Memory is not the wall for the people alone**: in a real 256 MB Linux
   cgroup (WSL2) Node picked a 259 MB heap limit by itself and held 250 keen
   people at 127 MB rss and 500 calm ones at 182 MB, none killed. Video is

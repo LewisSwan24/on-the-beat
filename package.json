@@ -15,7 +15,8 @@
     "fonts": "node scripts/fonts.mjs",
     "staff-code": "node scripts/staff-code.mjs",
     "preflight": "node scripts/preflight.mjs",
-    "image-check": "node scripts/image-check.mjs"
+    "image-check": "node scripts/image-check.mjs",
+    "mutate": "node scripts/mutate.mjs"
   },
   "dependencies": {
     "jsqr": "file:vendor/jsqr-1.4.0.tgz",

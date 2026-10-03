@@ -7,8 +7,10 @@ import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createRelay, bandIdOf, BAND_ALONE_MS, PAIR_CHECK_MS, HEARD_GAP_MS } from '../relay/server.js';
-import { MEET_MS } from '../relay/band.js';
+import WebSocket from 'ws';
+import { createRelay, bandIdOf, BAND_ALONE_MS, PAIR_CHECK_MS, HEARD_GAP_MS, WS_PATH } from '../relay/server.js';
+import { CALLED_SHOW_MS, MEET_MS } from '../relay/band.js';
+import { makeEntry } from '../relay/staff.js';
 import { helpers, newKey, pause } from './relay-harness.js';
 
 let relay;
@@ -1062,4 +1064,46 @@ test('a phone never names an area: not when it joins, not as {t:"band"}', async 
     await pause(60);
     assert.deepEqual([eve.view.me.band, areaOn(nb, 'eve')], ['in this room', 'in this room']);
   });
+});
+
+// ---------- the opener its person called (FIRST SONG?'s answer) ----------
+
+test("staff name the opener: the band of whoever called it is told, for a minute; a band whose person missed hears nothing", async () => {
+  const clock = { t: new Date(2026, 9, 3, 21, 0).getTime() };
+  const own = await createRelay({ port: 0, host: '127.0.0.1', root: dir, clock: () => clock.t,
+    staffCodes: JSON.stringify({ 'called-room': await makeEntry('test-passcode-called') }) });
+  const on = helpers(() => own.port);
+  try {
+    const [aBand, bBand] = [await on.wristband(), await on.wristband()];
+    const ana = await on.phone('called-room');
+    const ben = await on.phone('called-room');
+    await on.pairBand(ana, aBand);
+    await on.pairBand(ben, bBand);
+    clock.t += 3_000;                              // past the white flash a new pairing gives
+    ana.send({ t: 'pick', track: 'Locked out of heaven' });
+    ben.send({ t: 'pick', track: 'Grenade' });
+    for (const p of [ana, ben]) p.send({ t: 'arm', intent: 'song' });
+    await aBand.until((s) => s.kind === 'song' && s.small);
+    await bBand.until((s) => s.kind === 'song' && s.small);
+    const staff = new WebSocket('ws://127.0.0.1:' + own.port + WS_PATH);
+    const told = [];
+    staff.on('message', (d) => told.push(JSON.parse(String(d))));
+    await new Promise((resolve) => staff.once('open', resolve));
+    staff.send(JSON.stringify({ t: 'staff', venue: 'called-room', code: 'test-passcode-called' }));
+    while (!told.some((m) => m.t === 'staff' && m.ok)) await pause(20);
+    const named = clock.t;
+    staff.send(JSON.stringify({ t: 'opener', track: 'Locked Out of Heaven' }));
+    const shown = await aBand.until((s) => s.calledIt);
+    assert.deepEqual([shown.kind, shown.calledIt], ['song', { n: named }]);
+    await ana.until((v) => v.opener?.track === 'Locked Out of Heaven');
+    await pause(200);
+    assert.equal('calledIt' in bBand.show, false, "ben's band is not told he missed");
+    clock.t = named + CALLED_SHOW_MS;               // the band redraws each second: a minute on, no more
+    await aBand.until((s) => !('calledIt' in s), 3000);
+    staff.close();
+    close(ana, ben, aBand, bBand);
+  } finally {
+    on.cleanup();
+    await own.close();
+  }
 });
