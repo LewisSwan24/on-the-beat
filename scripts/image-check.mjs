@@ -293,7 +293,8 @@ export async function imageCheck({ root = ROOT } = {}) {
     }
     // A joined folder goes first, itself, so removing the tree can never reach what it points at.
     for (const link of joined.reverse()) { try { unjoin(link); } catch { /* the removal below says if it matters */ } }
-    await rm(stage, { recursive: true, force: true });
+    // Windows can hold a folder a just-ended build or relay was in for a moment (EBUSY): rm retries those.
+    await rm(stage, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 }
 
