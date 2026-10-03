@@ -52,7 +52,14 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
    channels split the WHO'S NEAR lists into groups. Markers beacon on every
    channel and are immune. If the venue's Wi-Fi is a phone hotspot, that is
    one channel and one group.
-4. **No deploys after this point.** A deploy restarts the one machine
+4. **Tonight's cards**, on the staff page: close any card the night has no
+   room for, before doors rather than during them. LET'S DANCE! wants floor
+   space and a crowd that moves; a seated show or a packed floor is the
+   reason to close it. FIRST SONG? wants a headliner whose opener staff can
+   name when it starts; with nobody to name it, close it. SAY HI suits every
+   room. At least one card stays open; the page will not close the last.
+   What closing does is under *During the night — closing a card*.
+5. **No deploys after this point.** A deploy restarts the one machine
    (~5-60 s of downtime). It carries the night on, but nothing should ship
    mid-show: hold every `flyctl deploy` and `machine restart` until the room
    is empty or the operator says the show is over.
@@ -64,7 +71,7 @@ The shows — doors and set times, quiet corners to meet at, the set list — ar
 deploy, put a file of the same shape at `/data/shows.json` on the volume:
 fly.toml points the relay's `SHOWS` at it. The relay reads the shows only as it
 starts, so a change is a restart, and a *Before doors* job like any other
-(step 4 above): never mid-show.
+(step 5 above): never mid-show.
 
 1. On the laptop, edit a copy of `relay/shows.json` (or fetch the one on the
    volume: `flyctl ssh sftp get /data/shows.json -a on-the-beat`, which will
@@ -398,6 +405,29 @@ minutes of silence, and a paired band holds its person for an hour. If a
 list looks stale, reopening the app reconnects it; usually it reconnects by
 itself first.
 
+## During the night — closing a card
+
+Closing a card mid-show is allowed and quick, and it is felt: *Tonight's
+cards* on the staff page, **CLOSE**, then **CLOSE IT**.
+
+- Everyone showing that card goes off at once, and their phone says why:
+  "The venue closed LET'S DANCE for tonight." A phone open on one of its
+  screens goes home. The home screen lays out only the open cards.
+- Nobody can arm it again from a phone or a band. It lists nobody and takes
+  no new wave, like or dance back; with LET'S DANCE! closed, no clip goes on
+  the floor. Matches already made stay, with their numbers.
+- A band flashed with ca721c3 or later steps over closed cards on SIDE. An
+  older band still steps onto one and shows `NOT SENT`, then goes back to
+  what it showed; that is the refusal, not a fault.
+- **OPEN** puts it back for everyone, and anyone can arm it again. Waves,
+  likes and dance backs from before it closed are still there.
+- Two staff screens see each other's changes as they happen. Closing waits
+  for **CLOSE IT**, and a question left open on one screen goes away when the
+  other changes a card.
+
+Closed cards last the night, a restart included, and go at 06:00 with the
+rest of what staff said.
+
 ## If the relay must restart mid-show
 
 `flyctl machine restart -a on-the-beat` (or a deploy, which *Before doors*
@@ -416,8 +446,8 @@ sign-in.
 
 ## After
 
-- The night ends by itself at **06:00 venue time**: reports go, staff pages
-  sign out, and the night file is removed once it holds nothing.
+- The night ends by itself at **06:00 venue time**: reports go, every card
+  is open again, staff pages sign out, and the night file is removed once it holds nothing.
 - Collect bands and markers. `marker off` on a marker's console turns it back
   into a wristband (it restarts as one). Charge everything: nobody has run a
   band's battery to empty yet (README, *What is not done*), so treat a night
