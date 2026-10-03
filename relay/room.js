@@ -267,6 +267,21 @@ export function createRoom({
   }
 
   /**
+   * Their night is over: they leave, and everything the room kept of them goes with it — matches, yeses either way,
+   * blocks either way, waves, and how they left. A person forgotten and joined again starts with nothing.
+   */
+  function forgetPerson(id) {
+    leave(id);
+    tombs.delete(id);
+    latest.delete(id);
+    blocks.delete(id);
+    for (const ids of blocks.values()) ids.delete(id);
+    const theirs = (k) => k.split('>').includes(id);
+    for (const map of [waves, likes, dances]) for (const k of [...map.keys()]) if (theirs(k)) map.delete(k);
+    for (const [k, m] of [...matches]) if (m.a === id || m.b === id) matches.delete(k);
+  }
+
+  /**
    * Every change to armed or invisible, from anywhere, moves rev; `by` says who.
    * Each person counts only their own changes, so a rev says nothing about
    * anyone else in the room.
@@ -816,7 +831,7 @@ export function createRoom({
   }
 
   return {
-    join, leave, setProfile, arm, setInvisible, fromPhone, pick, postClip, setOpener, setNotice, setTimes, letGo,
+    join, leave, forgetPerson, setProfile, arm, setInvisible, fromPhone, pick, postClip, setOpener, setNotice, setTimes, letGo,
     /** The opener as staff named it ({ track, at }), or null. */
     opener: () => (opener ? { ...opener } : null),
     /** The notice standing ({ text, at }), or null. */
@@ -831,9 +846,12 @@ export function createRoom({
     played: () => Object.keys(plays),
     report, keep, found, heard, nearTick, viewFor, dump,
     /** How many handles the room holds now (a count for the tests, so the ones of people who left are seen to go). */
-    handlesHeld: () => { let n = 0; for (const row of handles.values()) n += row.size; return n; },    /** For the relay: who is here, so it knows whose view to push. */
+    handlesHeld: () => { let n = 0; for (const row of handles.values()) n += row.size; return n; },
+    /** For the relay: who is here, so it knows whose view to push. */
     ids: () => [...people.keys()],
     has: (id) => people.has(id),
+    /** When someone here was made in this room, or null for someone not here. */
+    joinedAt: (id) => people.get(id)?.joinedAt ?? null,
     /** The rev a wristband's `set` must name (rule 1), or null for someone not here. */
     revOf: (id) => people.get(id)?.rev ?? null,
     /** What a wristband's wave back needs its person to show: SAY HI. */

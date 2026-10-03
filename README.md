@@ -583,6 +583,15 @@ that was taken.
   connected and was last heard before it, goes back to four letters, so it
   does not carry last night's person into the next night; the room it was
   keeping open can then go.
+- **06:00 ends the night for everyone still in a room from it**, phone open
+  or not. A page frozen in a pocket still answers the socket's pings, so an
+  open phone used to keep last night's person in the room, with their
+  matches and their wristband, for as long as it stayed open. Now the relay
+  tells each such phone the night is over, forgets everything the room kept
+  of that person (matches, yeses, blocks, waves), and their wristband goes
+  back to four letters. The app goes back to choosing a venue and says so;
+  its own record of the night stays on Tonight. Someone who joined after
+  06:00 is not touched.
 - **After a relay restart** the wristband comes back with its secret and goes
   straight back to its person: the relay carried its record across (*Always
   on*). A relay that comes back without its night — no file, or one another
@@ -1187,9 +1196,7 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   file on the machine's own volume, but it is still one small machine: more
   people than it holds needs more than one, and one volume means a failed
   drive takes the relay down until a new volume is made (*Always on*). Clips
-  are not carried across a restart. A phone left connected past 06:00 still
-  keeps its venue's room, and so last night's matches, until it closes: only
-  a wristband's hold on a room ends with the night. A phone that used a
+  are not carried across a restart. A phone that used a
   tunnel address starts over at the fixed one: a browser keeps the app's
   storage per address.
   **How many one machine holds** was measured with `scripts/load.mjs` — a

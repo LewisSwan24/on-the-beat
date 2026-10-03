@@ -493,7 +493,9 @@ test('what staff said for a night lasts with nobody there, and 06:00 takes all o
   await ana.until((v) => v.times?.doors === '19:30' && v.notice && v.opener && v.cards.join() === 'hi,song');
   clock.t = NEXT_MORNING;
   relay.expire(clock.t);
-  await ana.until((v) => v.times === null && v.notice === null && v.opener === null && v.cards.join() === 'hi,song,dance');
+  // ana's night is over with it (tests/rules.test.js): the next morning's first phone finds none of it.
+  const bea = await phone('staff-venue');
+  await bea.until((v) => v.times === null && v.notice === null && v.opener === null && v.cards.join() === 'hi,song,dance');
 });
 
 test('cards closed before doors, and nothing else said, are there when the doors open', async () => {
@@ -536,7 +538,8 @@ test('the opener is for its night: 06:00 takes it back', async () => {
   await ana.until((v) => v.opener?.track === 'Treasure');
   clock.t = NEXT_MORNING;
   relay.expire(clock.t);
-  await ana.until((v) => v.opener === null);
+  const bea = await phone('staff-venue');
+  await bea.until((v) => v.opener === null);
 });
 
 test('a venue with a staff page keeps tonight\'s reports with nobody in it, till 06:00; another venue does not', async () => {

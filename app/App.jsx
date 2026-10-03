@@ -241,6 +241,15 @@ export default function App() {
       setStack([]);
       setScreen('venue');
     }
+    // 06:00 at the venue: the relay has ended the night this phone was in. The record of it stays on Tonight.
+    if (m.t === 'over') {
+      net.current?.forget('leave');
+      const key = Object.keys(s.nights).find((k) => s.nights[k].me === night?.me);
+      if (key) update((prev) => ({ ...prev, nights: { ...prev.nights, [key]: { ...prev.nights[key], left: true, leaving: false, state: {} } } }));
+      setStack([]);
+      setScreen('venue');
+      say('The night is over. See you at the next one.');
+    }
     const pairFailed = (words) => {
       setPairPending(false);
       setPairCode(null);

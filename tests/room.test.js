@@ -294,6 +294,35 @@ test('a block takes every yes between the two, both ways, out of what the room k
   assert.deepEqual(kept(), []);
 });
 
+test('a person forgotten at the end of the night takes everything the room kept of them, and comes back with nothing', () => {
+  const { room, handleOf } = night();
+  meet(room, handleOf, 'ana', 'cai');
+  for (const p of ['ana', 'cai']) room.pick(p, 'Treasure');
+  room.like('cai', handleOf('cai', 'ana'));
+  room.arm('ben', 'hi');
+  const [toBen, toAna] = [handleOf('ana', 'ben'), handleOf('ben', 'ana')];
+  room.block('ben', toAna);
+  room.block('ana', toBen);
+  room.setInvisible('ana', true);
+  const of = (list) => list.filter((k) => k.split('>').includes('ana'));
+  const kept = (d) => [
+    ...of(d.waves.map(([k]) => k)), ...of(d.likes),
+    ...d.matches.filter((m) => m.a === 'ana' || m.b === 'ana').map(() => 'match'),
+    ...d.blocks.flatMap(([id, ids]) => ids.map((x) => id + '#' + x)).filter((k) => k.split('#').includes('ana')),
+  ];
+  assert.deepEqual(kept(room.dump()).sort(), ['ana#ben', 'ana>cai', 'ben#ana', 'cai>ana', 'cai>ana', 'match']);
+  room.forgetPerson('ana');
+  assert.equal(room.has('ana'), false);
+  const d = room.dump();
+  assert.deepEqual(kept(d), [], 'no waves, yeses, matches or blocks, either way');
+  assert.deepEqual(d.tombs.filter(([id]) => id === 'ana'), [], 'nothing of how she left');
+  room.join('ana');
+  room.arm('ana', 'hi');
+  assert.equal(room.viewFor('ana').me.invisible, false, 'she comes back seen, not as she left');
+  assert.deepEqual(room.viewFor('ana').matches, []);
+  assert.ok(handleOf('ben', 'ana') && handleOf('ana', 'ben'), 'and she and ben see each other again');
+});
+
 test('block is silent and both ways, and ends a match', () => {
   const { room, handleOf } = night();
   const m = meet(room, handleOf, 'ana', 'ben');

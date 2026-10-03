@@ -1348,13 +1348,35 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       bands.delete(b.id);
     }
     // Someone held only by their wristband leaves an hour after a phone of theirs
-    // was last heard, or when the night ends at 06:00, whichever is first.
+    // was last heard, or when the night ends at 06:00 (below), whichever is first.
     for (const r of [...rooms.values()]) {
       for (const me of r.room.ids()) {
         if (phoneOf(r, me) || r.left.has(me) || !bandOf(r.key, me)?.ws) continue;
         const heard = r.heard.get(me) ?? 0;
-        if (at - heard >= bandAloneMs || night(heard) !== night(at)) leaveRoom(r, me);
+        if (at - heard >= bandAloneMs) leaveRoom(r, me);
       }
+    }
+    // 06:00 ends the night for everyone still in a room from it, phone open or not. A page frozen in a pocket still
+    // answers the socket's pings, so an open phone would otherwise keep last night's person, their matches and their
+    // wristband in tonight's room for as long as it stayed open. Their phones are told; the app goes back to choosing a
+    // venue, as it does after leaving.
+    for (const r of rooms.values()) {
+      const over = r.room.ids().filter((me) => night(r.room.joinedAt(me)) !== night(at));
+      if (!over.length) continue;
+      for (const me of over) {
+        for (const s of [...r.sockets]) {
+          if (s.me !== me) continue;
+          r.sockets.delete(s);
+          s.r = null;
+          s.send(JSON.stringify({ t: 'over' }));
+        }
+        stopGrace(r, me);
+        for (const [ref, c] of r.clips) if (c.by === me) r.clips.delete(ref);
+        r.room.forgetPerson(me);
+        const b = bandOf(r.key, me);
+        if (b?.ws) unpairBand(b);
+      }
+      push(r);
     }
     // A wristband still worn when the night ends, with no phone of its person's here and none heard since, goes back to
     // four letters, as one waiting for its owner does. Otherwise it stays paired to last night's person for as long as it
