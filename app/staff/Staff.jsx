@@ -75,6 +75,7 @@ function OpenerPanel({ opener, setlist, onName }) {
   return (
     <section className="staff-opener" aria-label="First song">
       <div className="label">First song</div>
+      <Said>{opener ? 'Named: ' + opener.track + '. Every phone sees it.' : ''}</Said>
       {opener ? (
         <div className="staff-line" style={{ justifyContent: 'space-between' }}>
           <span className="body">Named: <strong>{opener.track}</strong> <span className="small">at {timeOf(opener.at)}</span></span>
@@ -105,6 +106,12 @@ const NOTICE_MAX = 140;
  * A notice to every phone at the venue: a toast on each, a line on its Home screen until put away, and a line on its
  * Tonight. Only the latest stands; a new one goes at most every 20 seconds, and taking one down never waits.
  */
+/**
+ * What the relay took, said aloud: a screen reader hears that a notice went up, a time moved or the opener was named,
+ * which the line beside the button only shows. Always rendered, so a change is announced; empty says nothing.
+ */
+const Said = ({ children }) => <span className="sr-only" role="status">{children}</span>;
+
 function NoticePanel({ notice, wait, onSend }) {
   const [text, setText] = useState('');
   const sent = useRef(null);
@@ -122,6 +129,7 @@ function NoticePanel({ notice, wait, onSend }) {
   return (
     <section className="staff-opener staff-notice" aria-label="Notice">
       <div className="label">Tell everyone here</div>
+      <Said>{notice ? 'On every phone: ' + notice.text : ''}</Said>
       {notice ? (
         <div className="staff-line" style={{ justifyContent: 'space-between' }}>
           <span className="body">On every phone: <strong>{notice.text}</strong> <span className="small">since {timeOf(notice.at)}</span></span>
@@ -165,6 +173,7 @@ function TimesPanel({ times, listed, onSet }) {
     <section className="staff-opener staff-times" aria-label="Show times">
       <div className="label">Show times</div>
       <p className="small">{times ? 'Moved at ' + timeOf(times.at) + '. Every phone shows these.' : 'As listed. Move them if the night runs late.'}</p>
+      <Said>{times ? 'Times moved. Every phone shows them.' : ''}</Said>
       <form className="staff-form" onSubmit={save}>
         {Object.entries(TIME_NAMES).map(([k, name]) => (
           <div key={k} className="staff-time-row">
