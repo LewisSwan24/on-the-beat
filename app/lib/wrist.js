@@ -59,7 +59,15 @@ export const LIGHT_OFF = 0;
 
 /** The words each card shows, as relay/band.js bandShow() sends them. */
 export const CARD_WORDS = Object.fromEntries(CARDS.map((c) => [c.id, c.band]));
-const ORDER = [...INTENTS, 'off'];
+/**
+ * The card SIDE steps to from `card`: the next open one in the table, off after the last, and the first open one
+ * after off. `closed` is the show's closed cards; the relay never closes them all. band_logic.h cardAfter() is its twin.
+ */
+export const cardAfter = (card, closed = []) => {
+  const order = [...INTENTS.filter((id) => !closed.includes(id)), 'off'];
+  const i = order.indexOf(card);
+  return i < 0 ? order[0] : order[(i + 1) % order.length];
+};
 const LIT = [...INTENTS, 'meet'];
 
 /** Every constant above, by name: the fixtures' times are written in these. */
@@ -117,6 +125,7 @@ function readShow(s) {
     hasArmed: 'armed' in s && (s.armed === null || typeof s.armed === 'string'),
     armed: typeof s.armed === 'string' ? s.armed : '',
     rev: Number.isInteger(s.rev) ? s.rev : 0,
+    closed: typeof s.closed === 'string' ? s.closed.split(',') : [],
   };
 }
 
@@ -392,12 +401,12 @@ export function createWrist({ key }) {
     if (mode === 'look') {
       const cur = current();
       fromQuiet = cur === 'notnow';
-      preview = fromQuiet ? ORDER[0] : ORDER[(ORDER.indexOf(cur) + 1) % ORDER.length];
+      preview = cardAfter(fromQuiet ? 'off' : cur, show.closed);   // out of NOT NOW: the first open card
       mode = 'choosing';
       stepAt = now;
       return;
     }
-    preview = ORDER[(ORDER.indexOf(preview) + 1) % ORDER.length];
+    preview = cardAfter(preview, show.closed);
     stepAt = now;
   }
 

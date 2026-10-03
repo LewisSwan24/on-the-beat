@@ -342,10 +342,11 @@ Every report reaches the venue's own team at `/staff`
   lay out only the open cards, and a phone whose card closed says so: "The
   venue closed LET'S DANCE for tonight." A closed card cannot be armed from
   a phone or a wristband, lists nobody, and takes no wave, like or dance
-  back; with LET'S DANCE! closed nothing goes on the floor. A wristband that
-  steps to a closed card shows NOT SENT, as it does for any refusal: the
-  firmware does not know which cards are closed, so it still steps through
-  all of them.
+  back; with LET'S DANCE! closed nothing goes on the floor. The wristband's
+  show names the closed cards (`closed: "song,dance"`, only when there are
+  some), and SIDE steps over them, out of NOT NOW too. A band flashed before
+  that knew the field skips it, still steps through every card, and shows
+  NOT SENT on a closed one, as it does for any refusal.
 - **What staff say lasts the night.** The first song, a notice, moved
   times and closed cards stay with nobody in the venue yet, so times moved
   before doors are there when they open; a restart keeps them; 06:00 takes

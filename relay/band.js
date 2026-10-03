@@ -9,7 +9,7 @@
 // Pure: everything it needs is passed in, so every state can be tested
 // without a socket or a clock.
 
-import { cardOf } from './cards.js';
+import { INTENTS, cardOf } from './cards.js';
 
 /** Pairing codes: letters only, none that look like another (no I, L or O). */
 export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -75,7 +75,9 @@ export function bandShow({ view = null, battery = null, code = null, check = nul
   if (testUntil > now) return { kind: 'test', ...said };
   const dim = battery !== null && battery <= DIM_AT;
   if (!view) return { kind: 'off', battery, away: true, ...said };
-  const about = { armed: view.me.armed ?? null, rev: view.me.rev ?? 0, ...said };
+  // The cards the venue closed tonight, so SIDE steps over them: said only when there are some.
+  const closed = view.cards ? INTENTS.filter((id) => !view.cards.includes(id)) : [];
+  const about = { armed: view.me.armed ?? null, rev: view.me.rev ?? 0, ...(closed.length ? { closed: closed.join(',') } : {}), ...said };
   // NOT NOW is black, completely. Nothing broadcasting, and nothing to read.
   if (view.me.invisible) return { kind: 'off', battery, quiet: true, ...about };
   const waved = view.me.armed === 'hi' && waves.length ? { waves: { ref: waves[0].handle, n: waves.length, seq: waves[0].n } } : {};

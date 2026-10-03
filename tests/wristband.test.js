@@ -1110,7 +1110,7 @@ test("staff name the opener: the band of whoever called it is told, for a minute
 
 // ---------- the cards a venue closed tonight ----------
 
-test('staff close a card: the band showing it goes off, and a set to it is refused as closed', async () => {
+test('staff close a card: the band showing it goes off, is told which are closed, and a set to one is refused', async () => {
   const own = await createRelay({ port: 0, host: '127.0.0.1', root: dir,
     staffCodes: JSON.stringify({ 'closed-room': await makeEntry('test-passcode-closed') }) });
   const on = helpers(() => own.port);
@@ -1127,7 +1127,7 @@ test('staff close a card: the band showing it goes off, and a set to it is refus
     staff.send(JSON.stringify({ t: 'staff', venue: 'closed-room', code: 'test-passcode-closed' }));
     while (!told.some((m) => m.t === 'staff' && m.ok)) await pause(20);
     staff.send(JSON.stringify({ t: 'closed', cards: ['song'] }));
-    const off = await band.until((s) => s.kind === 'off');
+    const off = await band.until((s) => s.kind === 'off' && s.closed === 'song');
     await ana.until((v) => v.me.armed === null && v.me.by === 'staff' && v.cards.join() === 'hi,dance');
     const refused = on.reply(band, 'set');
     band.send({ t: 'set', intent: 'song', basis: off.rev });
@@ -1135,7 +1135,9 @@ test('staff close a card: the band showing it goes off, and a set to it is refus
     await pause(200);
     assert.equal(ana.view.me.armed, null);
     band.send({ t: 'set', intent: 'dance', basis: off.rev });
-    await band.until((s) => s.kind === 'dance');
+    await band.until((s) => s.kind === 'dance' && s.closed === 'song');
+    staff.send(JSON.stringify({ t: 'closed', cards: [] }));
+    await band.until((s) => s.kind === 'dance' && !('closed' in s));
     staff.close();
     close(ana, band);
   } finally {

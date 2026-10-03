@@ -887,13 +887,14 @@ std::string answer(const Command& c) {
     return out + "}";
   }
   if (c.verb == "cards") {
-    // CARDS in order, and where SIDE steps from each: ["hi","song","dance"] and {"hi":"song",...,"off":"hi"}.
+    // CARDS in order, and where SIDE steps from each: ["hi","song","dance"] and {"hi":"song",...,"off":"hi"}. The arg
+    // is a show's closed cards ("song,dance"), which SIDE steps over.
     std::string order = "[", steps = "{";
     for (const Hue& h : CARDS) {
       order += std::string(order.size() > 1 ? "," : "") + quote(h.id);
-      steps += std::string(steps.size() > 1 ? "," : "") + quote(h.id) + ":" + quote(cardAfter(h.id));
+      steps += std::string(steps.size() > 1 ? "," : "") + quote(h.id) + ":" + quote(cardAfter(h.id, c.arg));
     }
-    return "{\"order\":" + order + "],\"after\":" + steps + ",\"off\":" + quote(cardAfter("off")) + "}}";
+    return "{\"order\":" + order + "],\"after\":" + steps + ",\"off\":" + quote(cardAfter("off", c.arg)) + "}}";
   }
   if (c.verb == "relay") {
     const Relay r = parseRelay(c.arg);

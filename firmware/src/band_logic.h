@@ -304,10 +304,11 @@ struct Show {
   bool hasArmed = false;  // a show about the person says what is armed, even when that is nothing
   std::string armed;      // hi | song | dance, or empty for none
   int64_t rev = 0;        // the state it was made from: a choice names it back as its basis
+  std::string closed;     // the cards the venue closed tonight, as the relay lists them ("song,dance"); empty for none
   bool operator==(const Show& o) const {
     return kind == o.kind && intent == o.intent && big == o.big && small == o.small && code == o.code &&
            dim == o.dim && quiet == o.quiet && away == o.away && hasArmed == o.hasArmed && armed == o.armed &&
-           rev == o.rev;
+           rev == o.rev && closed == o.closed;
   }
   bool operator!=(const Show& o) const { return !(*this == o); }
 };
@@ -607,6 +608,7 @@ inline bool readFrame(const std::string& text, Frame& f) {
       if (k == "big") return text_(s.big, 64);
       if (k == "small") return text_(s.small, 128);
       if (k == "code") return text_(s.code, 8);
+      if (k == "closed") return text_(s.closed, 64);
       if (k == "dim") return flag(s.dim);
       if (k == "quiet") return flag(s.quiet);
       if (k == "away") return flag(s.away);
@@ -1425,11 +1427,29 @@ inline const char* cardWords(const std::string& intent) {
   return h ? h->words : "";
 }
 
-/** The card SIDE steps to from `card`: the next in CARDS, off after the last, and the first after off. */
-inline std::string cardAfter(const std::string& card) {
+/** Is `id` one of a show's closed cards ("song,dance")? */
+inline bool closedIn(const std::string& closed, const std::string& id) {
+  size_t at = 0;
+  while (at <= closed.size()) {
+    const size_t end = std::min(closed.find(',', at), closed.size());
+    if (closed.compare(at, end - at, id) == 0) return true;
+    at = end + 1;
+  }
+  return false;
+}
+
+/**
+ * The card SIDE steps to from `card`: the next open one in CARDS, off after the last, and the first open one after
+ * off. `closed` is the show's closed cards; the relay never closes them all.
+ */
+inline std::string cardAfter(const std::string& card, const std::string& closed = "") {
+  std::vector<std::string> order;
   for (size_t i = 0; i < CARD_COUNT; ++i)
-    if (card == CARDS[i].id) return i + 1 < CARD_COUNT ? CARDS[i + 1].id : "off";
-  return CARDS[0].id;
+    if (!closedIn(closed, CARDS[i].id)) order.push_back(CARDS[i].id);
+  order.push_back("off");
+  for (size_t i = 0; i < order.size(); ++i)
+    if (order[i] == card) return order[(i + 1) % order.size()];
+  return order[0];
 }
 
 /** What the screen shows: two lines on one field, the backlight, the KEEP HOLDING bar, and letters to draw with their QR. */
@@ -2130,12 +2150,12 @@ class Wrist {
     if (mode_ == LOOK) {
       const std::string cur = current();
       fromQuiet_ = cur == "notnow";
-      preview_ = fromQuiet_ ? CARDS[0].id : cardAfter(cur);
+      preview_ = cardAfter(fromQuiet_ ? "off" : cur, show_.closed);   // out of NOT NOW: the first open card
       mode_ = CHOOSING;
       stepAt_ = now;
       return;
     }
-    preview_ = cardAfter(preview_);
+    preview_ = cardAfter(preview_, show_.closed);
     stepAt_ = now;
   }
 
