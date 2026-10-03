@@ -227,11 +227,14 @@ never becomes a match.
     phone's carousel, hues and routes, and the wristband's words, colours
     and SIDE order all come from it; `firmware/src/band_logic.h` `CARDS` is
     the firmware's copy. What a card does once armed (a wave, a like, a
-    dance back) stays in its own code. `tests/cards.test.js` and
-    `tests/firmware.test.js` hold everything else to it, so a card added
-    there is either complete or red: words idle and armed, an icon in the
-    subset font, `--id` and `--id-g` in the stylesheet, its screens, and the
-    same table in the firmware.
+    dance back) is its play in `relay/room.js`: who may be sent its yes,
+    what the room keeps of one, and the list a phone sees. A yes each way
+    is a match, and a block takes every card's yes away, through the one
+    table. `tests/cards.test.js` and `tests/firmware.test.js` hold
+    everything to it, so a card added there is either complete or red:
+    words idle and armed, an icon in the subset font, `--id` and `--id-g`
+    in the stylesheet, its screens, its play and its own list, and the same
+    table in the firmware.
 - **`app/`** — React, built by Vite into `dist/`, installable as a PWA.
   - `lib/net.js`: on every join the phone says again what it is (name, armed
     card, NOT NOW, pick), because the relay may have restarted without its

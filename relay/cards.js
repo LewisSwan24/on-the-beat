@@ -8,8 +8,8 @@
 // two to each other, to the phone's copy (app/copy.js) and to its colours
 // (app/styles.css).
 //
-// What a card does once it is armed (a wave, a like, a dance back) is its own
-// code, and stays there. A card added here gets everything else.
+// What a card does once it is armed (a wave, a like, a dance back) is its play
+// in relay/room.js, and a card added here without one fails tests/cards.test.js.
 //
 // It lives in relay/ because the relay's image carries relay/ and dist/ only:
 // the phone reaches it through Vite, as it already reaches relay/band.js.

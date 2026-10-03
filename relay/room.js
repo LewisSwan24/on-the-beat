@@ -139,7 +139,7 @@ export function createRoom({
   // the last wave b was sent, so a wristband that kept the number it last called for is called by the next.
   const waves = new Map();
   const latest = new Map();   // id -> the number of the last wave they were sent; outlives leave()
-  const likes = new Set();    // 'a>b': a liked b's pick (FIRST SONG?)
+  const likes = new Map();    // 'a>b' -> true: a liked b's pick (FIRST SONG?)
   const dances = new Map();   // 'a>b' -> clip ref: a danced back to b (LET'S DANCE!)
   const matches = new Map();  // pairKey -> match
   // id -> what the room keeps of someone who left tonight: their last rev, so a
@@ -171,7 +171,7 @@ export function createRoom({
     for (const [id, ids] of restore.blocks) blocks.set(id, new Set(ids));
     for (const [k, n] of restore.waves) waves.set(k, n);
     for (const [id, n] of restore.latest) latest.set(id, n);
-    for (const k of restore.likes) likes.add(k);
+    for (const k of restore.likes) likes.set(k, true);
     // A dance back comes back as the yes it was; its clip does not.
     for (const k of restore.dances) dances.set(k, null);
     for (const m of restore.matches) matches.set(pairKey(m.a, m.b), m);
@@ -361,7 +361,7 @@ export function createRoom({
     if ((p.pick || '') === t) return;
     p.pick = t || null;
     // A like was for an answer. A changed answer takes its likes with it.
-    for (const k of [...likes]) if (k.endsWith('>' + id)) likes.delete(k);
+    for (const k of [...likes.keys()]) if (k.endsWith('>' + id)) likes.delete(k);
   }
 
   /** A clip for the floor, seen by everyone in the room. */
@@ -405,21 +405,68 @@ export function createRoom({
     return t;
   }
 
-  // Each yes answers false when it was refused, null when it was taken and is
-  // not returned yet, and the match when it just made one.
+  // ---------- each card's yes ----------
+  //
+  // What someone may send a card's wearer once it is armed: who may be sent one (may), what is kept of it (yeses,
+  // 'a>b' -> what it carries, set by take), and the list a phone sees of the people it is for (list, made by rows).
+  // A yes each way is a match. Every card in relay/cards.js has its play here; tests/cards.test.js holds the two
+  // together, so a card added there without one fails.
+  const plays = {
+    // SAY HI: a wave, to someone showing blue.
+    hi: {
+      yeses: waves,
+      may: (viewer, t) => people.get(t).armed === 'hi',
+      take: (viewer, t) => {
+        const k = viewer + '>' + t;
+        // A second wave keeps the first one's number: it is not newer.
+        if (waves.has(k)) return;
+        const n = Math.max(now(), (latest.get(t) ?? 0) + 1);
+        latest.set(t, n);
+        waves.set(k, n);
+      },
+      // Who is showing blue, as a band and at most a pick — and whether they waved at you.
+      list: 'near',
+      rows: (id, others, row) => blueOf(id, others).map((p) => ({
+        ...row(p), pick: p.pick, waved: waves.has(id + '>' + p.id), wavedAtYou: waves.has(p.id + '>' + id),
+      })),
+    },
+    // FIRST SONG?: a like, for an answer.
+    song: {
+      yeses: likes,
+      may: (viewer, t) => !!people.get(t).pick,
+      take: (viewer, t) => { likes.set(viewer + '>' + t, true); },
+      // Everyone's answer, liked as an answer, never as a face.
+      list: 'wall',
+      rows: (id, others, row) => others.filter((p) => p.pick).map((p) => ({
+        ...row(p), pick: p.pick, liked: likes.has(id + '>' + p.id),
+      })),
+    },
+    // LET'S DANCE!: a dance back, your own five seconds, straight to someone who danced where you could see.
+    dance: {
+      yeses: dances,
+      may: (viewer, t, ref) => !!ref && !!(people.get(t).clip || dances.has(t + '>' + viewer)),
+      take: (viewer, t, ref) => { dances.set(viewer + '>' + t, String(ref)); },
+      // Five seconds each. One sent straight to you comes first, and says so.
+      list: 'floor',
+      rows: (id, others, row) => others.flatMap((p) => {
+        const toYou = dances.get(p.id + '>' + id);
+        if (!toYou && !p.clip) return [];
+        return [{ ...row(p), ref: toYou ?? p.clip.ref, toYou: !!toYou, dancedBack: dances.has(id + '>' + p.id) }];
+      }).sort((a, b) => b.toYou - a.toYou),
+    },
+  };
 
-  function wave(viewer, h) {
+  // A yes answers false when it was refused, null when it was taken and is not returned yet, and the match when it
+  // just made one.
+  function yes(card, viewer, h, what) {
+    const play = plays[card];
     const t = target(viewer, h);
-    if (!t || people.get(t).armed !== 'hi') return false;
-    const k = viewer + '>' + t;
-    // A second wave keeps the first one's number: it is not newer.
-    if (!waves.has(k)) {
-      const n = Math.max(now(), (latest.get(t) ?? 0) + 1);
-      latest.set(t, n);
-      waves.set(k, n);
-    }
-    return matchIfMutual((x) => waves.has(x), viewer, t, 'hi');
+    if (!t || !play.may(viewer, t, what)) return false;
+    play.take(viewer, t, what);
+    return matchIfMutual((k) => play.yeses.has(k), viewer, t, card);
   }
+
+  const wave = (viewer, h) => yes('hi', viewer, h);
 
   /** Has the person behind this handle waved at the viewer? */
   function wavedAtYou(viewer, h) {
@@ -427,25 +474,14 @@ export function createRoom({
     return !!t && waves.has(t + '>' + viewer);
   }
 
-  function like(viewer, h) {
-    const t = target(viewer, h);
-    if (!t || !people.get(t).pick) return false;
-    likes.add(viewer + '>' + t);
-    return matchIfMutual((k) => likes.has(k), viewer, t, 'song');
-  }
+  const like = (viewer, h) => yes('song', viewer, h);
 
   function unlike(viewer, h) {
     const t = resolve(viewer, h);
     if (t) likes.delete(viewer + '>' + t);
   }
 
-  /** Dance back: your own five seconds, straight to someone who danced where you could see. */
-  function danceBack(viewer, h, ref) {
-    const t = target(viewer, h);
-    if (!t || !ref || !(people.get(t).clip || dances.has(t + '>' + viewer))) return false;
-    dances.set(viewer + '>' + t, String(ref));
-    return matchIfMutual((k) => dances.has(k), viewer, t, 'dance');
-  }
+  const danceBack = (viewer, h, ref) => yes('dance', viewer, h, ref);
 
   /** Instant, silent, and permanent for tonight. Also ends any match between them. */
   function block(viewer, h) {
@@ -454,11 +490,7 @@ export function createRoom({
     if (!blocks.has(viewer)) blocks.set(viewer, new Set());
     blocks.get(viewer).add(t);
     matches.delete(pairKey(viewer, t));
-    for (const k of [viewer + '>' + t, t + '>' + viewer]) {
-      waves.delete(k);
-      likes.delete(k);
-      dances.delete(k);
-    }
+    for (const k of [viewer + '>' + t, t + '>' + viewer]) for (const play of Object.values(plays)) play.yeses.delete(k);
     return true;
   }
 
@@ -698,25 +730,13 @@ export function createRoom({
         armed: me.armed, invisible: me.invisible, pick: me.pick, band: me.band, name: me.name, clip: me.clip?.ref ?? null,
         rev: me.rev, seq: me.seq, by: me.by, fresh: me.by === 'relay',
       },
-      // SAY HI: who is showing blue, as a band and at most a pick — and whether they waved at you.
-      near: blueOf(id, others).map((p) => ({
-        ...row(p), pick: p.pick, waved: waves.has(id + '>' + p.id), wavedAtYou: waves.has(p.id + '>' + id),
-      })),
-      // FIRST SONG?: everyone's answer, liked as an answer, never as a face.
-      wall: others.filter((p) => p.pick).map((p) => ({
-        ...row(p), pick: p.pick, liked: likes.has(id + '>' + p.id),
-      })),
-      // And, once the venue's staff name it, the answer: the same for everyone.
+      // Each card's list: near, wall and floor (plays, above).
+      ...Object.fromEntries(Object.values(plays).map((play) => [play.list, play.rows(id, others, row)])),
+      // And, once the venue's staff name FIRST SONG?'s answer: the same for everyone.
       opener: opener ? { ...opener } : null,
       // What the venue's staff told everyone here, and the show's times if they moved them: the same for everyone.
       notice: notice ? { ...notice } : null,
       times: times ? { ...times } : null,
-      // LET'S DANCE!: five seconds each. One sent straight to you comes first, and says so.
-      floor: others.flatMap((p) => {
-        const toYou = dances.get(p.id + '>' + id);
-        if (!toYou && !p.clip) return [];
-        return [{ ...row(p), ref: toYou ?? p.clip.ref, toYou: !!toYou, dancedBack: dances.has(id + '>' + p.id) }];
-      }).sort((a, b) => b.toYou - a.toYou),
       matches: [...matches.values()].filter((m) => m.a === id || m.b === id).map((m) => {
         const other = m.a === id ? m.b : m.a;
         const both = m.keep[m.a] && m.keep[m.b];
@@ -745,7 +765,7 @@ export function createRoom({
       blocks: [...blocks].map(([id, ids]) => [id, [...ids]]),
       waves: [...waves],
       latest: [...latest],
-      likes: [...likes],
+      likes: [...likes.keys()],
       dances: [...dances.keys()],
       matches: [...matches.values()],
       tombs: [...tombs],
@@ -766,7 +786,10 @@ export function createRoom({
     notice: () => (notice ? { ...notice } : null),
     /** The times as staff moved them (the five, and at), or null. */
     times: () => (times ? { ...times } : null),
-    wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, found, heard, nearTick, viewFor, dump,
+    wave, wavedAtYou, wavesAt, like, unlike, danceBack, block,
+    /** The cards that have a yes here, in their order (tests/cards.test.js holds them to relay/cards.js). */
+    played: () => Object.keys(plays),
+    report, keep, found, heard, nearTick, viewFor, dump,
     /** How many handles the room holds now (a count for the tests, so the ones of people who left are seen to go). */
     handlesHeld: () => { let n = 0; for (const row of handles.values()) n += row.size; return n; },    /** For the relay: who is here, so it knows whose view to push. */
     ids: () => [...people.keys()],

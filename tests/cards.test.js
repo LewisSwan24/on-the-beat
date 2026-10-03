@@ -1,13 +1,13 @@
-// relay/cards.js is the one place a card is named. These hold everything that
-// is not a card's own protocol to it, so a card added there is either complete
-// or red here: its words on the phone, its colours in the stylesheet, its icon
-// in the font, its screens, and what the band shows for it.
+// relay/cards.js is the one place a card is named. These hold everything else
+// to it, so a card added there is either complete or red here: its words on the
+// phone, its colours in the stylesheet, its icon in the font, its screens, what
+// the band shows for it, and its yes in the room.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CARDS, INTENTS, cardOf } from '../relay/cards.js';
-import { INTENTS as ROOM_INTENTS } from '../relay/room.js';
+import { INTENTS as ROOM_INTENTS, createRoom } from '../relay/room.js';
 import { bandShow } from '../relay/band.js';
 import { HUE, cards } from '../app/copy.js';
 import { INTENT_OF } from '../app/lib/follow.js';
@@ -67,4 +67,36 @@ test('every card shows on the band in its own colour, with its own words', () =>
   }
   assert.equal(lit({ kind: 'meet', intent: 'nope' }), false);
   assert.equal(lit({ kind: 'off', intent: 'hi' }), false);
+});
+
+// What each card needs of the person it is armed by before anyone can say yes to it, and the yes itself.
+const YES = {
+  hi: { ready: () => {}, send: (room, a, h) => room.wave(a, h) },
+  song: { ready: (room, a) => room.pick(a, 'Treasure'), send: (room, a, h) => room.like(a, h) },
+  dance: { ready: (room, a) => room.postClip(a, 'clip-' + a), send: (room, a, h) => room.danceBack(a, h, 'back-' + a) },
+};
+
+test('every card has its yes in the room, its own list on the phone, and a yes each way is its match', () => {
+  assert.deepEqual(createRoom({ salt: 'c' }).played(), INTENTS);
+  assert.deepEqual(Object.keys(YES), INTENTS, 'this test knows every card');
+  const lists = new Set();
+  for (const id of INTENTS) {
+    const room = createRoom({ salt: 'c' });
+    for (const p of ['ana', 'ben']) {
+      room.join(p);
+      room.arm(p, id);
+      YES[id].ready(room, p);
+    }
+    const before = Object.keys(room.viewFor('ana'));
+    const list = before.find((k) => !lists.has(k) && Array.isArray(room.viewFor('ana')[k]) && room.viewFor('ana')[k].length === 1
+      && k !== 'matches');
+    assert.ok(list, id + ' lists the other person somewhere no card before it does');
+    lists.add(list);
+    const h = (a, b) => room.viewFor(a)[list].find((p) => p.band === room.viewFor(b).me.band).handle;
+    assert.equal(YES[id].send(room, 'ana', h('ana', 'ben')), null, id + ': one yes is not a match');
+    const m = YES[id].send(room, 'ben', h('ben', 'ana'));
+    assert.equal(m?.intent, id, id + ': a yes back is its match');
+    assert.equal(room.viewFor('ana').matches[0].intent, id);
+  }
+  assert.equal(lists.size, INTENTS.length);
 });

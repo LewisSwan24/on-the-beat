@@ -264,6 +264,36 @@ test('NOT NOW: an invisible person is in nobody\'s lists and sees nobody', () =>
   assert.equal(room.viewFor('ben').wall.length, 1, 'and it comes back only when she turns it on');
 });
 
+test('a yes needs what its card asks of the one it is for: a pick to like, a dance to dance back to', () => {
+  const { room, handleOf } = night();
+  room.arm('cai', 'hi');   // so ana and ben have a handle for cai, who has no pick and has not danced
+  const cai = handleOf('ana', 'cai');
+  assert.ok(cai);
+  assert.equal(room.like('ana', cai), false, 'cai has no pick to like');
+  assert.equal(room.danceBack('ana', cai, 'clip-ana'), false, 'cai has not danced');
+  room.postClip('cai', 'clip-cai');
+  assert.equal(room.danceBack('ana', cai, ''), false, 'a dance back is a clip');
+  assert.equal(room.danceBack('ana', cai, 'clip-ana'), null);
+  room.pick('cai', 'Treasure');
+  assert.equal(room.like('ana', cai), null);
+});
+
+test('a block takes every yes between the two, both ways, out of what the room keeps', () => {
+  const { room, handleOf } = night();
+  for (const p of ['ana', 'ben']) {
+    room.arm(p, 'hi');
+    room.pick(p, 'Treasure');
+    room.postClip(p, 'clip-' + p);
+  }
+  room.wave('ana', handleOf('ana', 'ben'));
+  room.like('ben', handleOf('ben', 'ana'));
+  room.danceBack('ana', handleOf('ana', 'ben', 'floor'), 'back-ana');
+  const kept = () => { const d = room.dump(); return [...d.waves.map(([k]) => k), ...d.likes, ...d.dances]; };
+  assert.deepEqual(kept().sort(), ['ana>ben', 'ana>ben', 'ben>ana']);
+  room.block('ben', handleOf('ben', 'ana'));
+  assert.deepEqual(kept(), []);
+});
+
 test('block is silent and both ways, and ends a match', () => {
   const { room, handleOf } = night();
   const m = meet(room, handleOf, 'ana', 'ben');
