@@ -63,6 +63,16 @@ test('the answer is told once, with the pick held as it was when it came', () =>
   assert.equal(fixed.patch.openerPick, 'Grenade');
 });
 
+test('the same song spelled better is taken in quietly: no second toast, and Tonight keeps its one line', () => {
+  const first = openerArrived({}, view({ track: 'desire lines', at: 10 }), 'Desire Lines');
+  assert.equal(first.say, 'The opener was desire lines. You called it!');
+  const fixed = openerArrived(first.patch, view({ track: 'Desire Lines', at: 10 }), 'Desire Lines');
+  assert.deepEqual(fixed, { patch: { openerSeen: 'Desire Lines' }, event: 'the opener was Desire Lines — you called it', say: null }, "Tonight's line is put right, in place");
+  assert.equal(openerArrived({ ...first.patch, ...fixed.patch }, view({ track: 'Desire Lines', at: 10 }), 'Desire Lines'), null);
+  // Another song at the same moment is not a spelling: told.
+  assert.equal(openerArrived(first.patch, view({ track: 'Grenade', at: 10 }), 'Desire Lines').say, 'The opener was Grenade.');
+});
+
 test('an answer taken back takes its line and its held pick with it', () => {
   const back = openerArrived({ openerSeen: 'Treasure', openerAt: 10, openerPick: 'x' }, view(null), 'x');
   assert.deepEqual(back, { patch: { openerSeen: null, openerAt: null, openerPick: null }, event: null, say: null });

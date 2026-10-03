@@ -527,6 +527,23 @@ test('the opener, once named, is in every view; cut to a track\'s length, and an
   assert.deepEqual(room.opener(), { track: 'Grenade', at: 2000 });
 });
 
+test('the same song spelled better keeps when it was named; another song is named anew', () => {
+  let t = 1000;
+  const room = createRoom({ now: () => t, salt: 'o' });
+  room.join('ana');
+  room.setOpener('desire lines');
+  t = 5000;
+  assert.equal(room.setOpener('Desire Lines'), true, 'the words change');
+  assert.deepEqual(room.viewFor('ana').opener, { track: 'Desire Lines', at: 1000 }, 'the moment does not: no phone or band hears it twice');
+  t = 9000;
+  assert.equal(room.setOpener('Desire Line'), true);
+  assert.deepEqual(room.opener(), { track: 'Desire Line', at: 9000 }, 'a different song is a new naming');
+  room.setOpener('');
+  t = 12000;
+  room.setOpener('Desire Line');
+  assert.equal(room.opener().at, 12000, 'taken back and named again is a new naming');
+});
+
 // ---------- what else the venue's staff say: a notice, and the show's times moved ----------
 
 test('a notice from staff is in every view, one line of at most 140 characters, and an empty one takes it down', () => {

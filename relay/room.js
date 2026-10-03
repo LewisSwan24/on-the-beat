@@ -44,6 +44,7 @@
 // tested without a network.
 
 import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { trackKey } from './band.js';
 import { INTENTS } from './cards.js';
 
 export { INTENTS };
@@ -314,7 +315,9 @@ export function createRoom({
   function setOpener(track) {
     const t = clip(track, TRACK_MAX);
     if ((opener?.track || '') === t) return false;
-    opener = t ? { track: t, at: now() } : null;
+    // The same song spelled better keeps its moment, so no phone or band is told it twice.
+    const same = opener && t && trackKey(opener.track) === trackKey(t);
+    opener = t ? { track: t, at: same ? opener.at : now() } : null;
     return true;
   }
 

@@ -45,6 +45,10 @@ export function openerArrived(state = {}, view, pick) {
     return { patch: { openerSeen: null, openerAt: null, openerPick: null }, event: null, say: null };
   }
   if (state.openerSeen === o.track && state.openerAt === o.at) return null;
+  // Staff spelled the same song better: Tonight's line follows, and nobody is told again.
+  if (state.openerAt === o.at && trackKey(state.openerSeen) === trackKey(o.track)) {
+    return { patch: { openerSeen: o.track }, event: openerEvent(openerNews(o, state.openerPick ?? '')), say: null };
+  }
   const held = state.openerPick ?? (pick || '');
   const news = openerNews(o, held);
   return {

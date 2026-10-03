@@ -159,8 +159,11 @@ const TIME_NAMES = { doors: 'Doors', support: 'Support', break: 'Break', headlin
  */
 function TimesPanel({ times, listed, onSet }) {
   const now = times ? fiveOf(times) : fiveOf(listed);
-  const [draft, setDraft] = useState(null);
-  const shown = draft || now;
+  // A draft remembers which times it was made from, so a move from another staff screen meanwhile is said, not lost.
+  const [draft, setDraftFive] = useState(null);
+  const setDraft = (five) => setDraftFive((d) => five && { five, from: d ? d.from : times?.at ?? null });
+  const shown = draft?.five || now;
+  const movedMeanwhile = draft && draft.from !== (times?.at ?? null);
   const changed = Object.keys(TIME_NAMES).some((k) => shown[k] !== now[k]);
   const ok = inOrder(shown);
   const save = (e) => {
@@ -187,6 +190,12 @@ function TimesPanel({ times, listed, onSet }) {
           </div>
         ))}
         {!ok ? <p className="small staff-error" role="alert">Each time has to come after the one above it.</p> : null}
+        {movedMeanwhile ? (
+          <p className="small staff-error" role="alert">
+            {times ? 'Another screen moved the times at ' + timeOf(times.at) + '.' : 'Another screen put the times back as listed.'} SAVE
+            TIMES puts these instead; UNDO shows theirs.
+          </p>
+        ) : null}
         <div className="staff-line">
           <button type="submit" className="btn-s" disabled={!changed || !ok}>SAVE TIMES</button>
           {draft ? <button type="button" className="btn-s" onClick={() => setDraft(null)}>UNDO</button> : null}
@@ -419,7 +428,7 @@ export default function Staff() {
             onSend={(text) => { setNoticeWait(0); line.current?.send({ t: 'notice', text }); }} />
         ) : null}
         {times !== undefined ? (
-          <TimesPanel key={times?.at ?? 'listed'} times={times} listed={shows.find((x) => x.id === session.venue)}
+          <TimesPanel times={times} listed={shows.find((x) => x.id === session.venue)}
             onSet={(next) => line.current?.send({ t: 'times', times: next })} />
         ) : null}
         {opener !== undefined ? (

@@ -323,7 +323,16 @@ Every report reaches the venue's own team at `/staff`
   also be typed. Nothing goes until *SAVE TIMES*, and the relay takes only five
   clock times in the night's order. Every phone's phase bar and countdown
   follow at once, with a toast saying what moved, and the venue list shows the
-  moved times to anyone choosing a show. *BACK AS LISTED* undoes it.
+  moved times to anyone choosing a show. *BACK AS LISTED* undoes it. When
+  two staff screens are open and one saves while the other is part way
+  through a change, the other keeps its change and says so: *SAVE TIMES*
+  puts it instead, *UNDO* shows what was saved.
+- **Putting the first song's spelling right.** Naming the same song again,
+  spelled better (`desire lines`, then `Desire Lines`), changes the words
+  everywhere but not when it was named: no phone is told twice, Tonight's
+  line is corrected in place, and no wristband plays it again. Another song
+  is a new naming. Each panel also says aloud, for a screen reader, what
+  the relay took.
 - **What staff say lasts the night.** The first song, a notice and moved
   times stay with nobody in the venue yet, so times moved before doors are
   there when they open; a restart keeps them; 06:00 takes all of them back. A
