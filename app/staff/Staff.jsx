@@ -165,6 +165,8 @@ const TIME_NAMES = { doors: 'Doors', support: 'Support', break: 'Break', headlin
 function CardsPanel({ closed, onSet }) {
   const shut = closed?.cards ?? [];
   const [asking, setAsking] = useState(null);
+  // Another screen opening or closing a card meanwhile is a new question: asking again is a tap away.
+  useEffect(() => setAsking(null), [closed?.at]);
   const set = (cards) => { setAsking(null); onSet(cards); };
   const stillOpen = CARDS.length - shut.length;
   return (
@@ -180,7 +182,7 @@ function CardsPanel({ closed, onSet }) {
             <span className="small">{isShut ? 'closed tonight' : 'open'}</span>
             {isShut ? (
               <button type="button" className="btn-s" onClick={() => set(shut.filter((id) => id !== c.id))}>OPEN</button>
-            ) : asking === c.id ? (
+            ) : asking === c.id && stillOpen > 1 ? (
               <span className="staff-line" role="group" aria-label={'Close ' + c.label + '?'}>
                 <span className="small">Whoever shows it goes off.</span>
                 <button type="button" className="btn-s" onClick={() => set([...shut, c.id])}>CLOSE IT</button>

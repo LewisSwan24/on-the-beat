@@ -319,11 +319,10 @@ export function createRoom({
     const news = seq > p.seq;
     p.seq = Math.max(p.seq, seq);
     const hides = m.t === 'invisible' ? !!m.on : !INTENTS.includes(m.intent);
-    if (!hides && isClosed(m.intent)) return 'changed';
     if (m.again) {
       if (!news || !hides) return null;
-    } else if (!hides && Number.isInteger(m.basis) && m.basis !== p.rev) {
-      return 'changed';
+    } else if (!hides && (isClosed(m.intent) || (Number.isInteger(m.basis) && m.basis !== p.rev))) {
+      return 'changed';   // the rev moved, or the venue closed that card tonight
     }
     if (m.t === 'invisible') setInvisible(id, m.on, 'phone');
     else arm(id, m.intent, 'phone');

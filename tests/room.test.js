@@ -672,6 +672,10 @@ test('a closed card: whoever showed it goes off, it cannot be armed, it lists no
   room.arm('ana', 'song');
   assert.equal(room.armedOf('ana'), null);
   assert.equal(room.fromPhone('ana', { t: 'arm', intent: 'song', seq: 1, basis: room.revOf('ana') }), 'changed');
+  assert.equal(room.fromPhone('ana', { t: 'arm', intent: 'song', seq: 2 }), 'changed', 'with no basis too');
+  // A copy re-said after a reconnect is dropped quietly, as any showing copy is (rule 3): nothing to refuse.
+  assert.equal(room.fromPhone('ana', { t: 'arm', intent: 'song', seq: 1, again: true }), null);
+  assert.equal(room.fromPhone('ana', { t: 'arm', intent: 'song', seq: 9, again: true }), null);
   assert.equal(room.like('ana', wall), false);
   assert.equal(room.postClip('ana', null), true, 'taking a clip down is always allowed');
   room.setClosed(['dance']);

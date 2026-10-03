@@ -52,6 +52,12 @@ export function follow(phone, view) {
   };
   const cardMoved = armed !== (phone.armed ?? null);
   const quietMoved = invisible !== !!phone.invisible;
+  // On a screen of a card the venue has just closed: back home, with nothing of it behind.
+  const card = INTENT_OF[phone.screen];
+  if (card && Array.isArray(view.cards) && !view.cards.includes(card)) {
+    out.screen = 'home';
+    out.clearStack = true;
+  }
   if (!cardMoved && !quietMoved) return out;
 
   out.clearStack = true;
