@@ -838,6 +838,11 @@ std::string answer(const Command& c) {
   if (c.verb == "hold") return HOLD_FRAME;
   if (c.verb == "refuse") return refuseFrame(c.arg);
   if (c.verb == "ping") return PING_FRAME;
+  auto cardWordsJson = [] {
+    std::string out = "{";
+    for (const Hue& h : CARDS) out += std::string(out.size() > 1 ? "," : "") + quote(h.id) + ":" + quote(h.words);
+    return out + "}";
+  };
   if (c.verb == "consts") {
     // Every constant the table's times are written in, by name, as app/lib/wrist.js CONSTS has them.
     return "{\"WAKE_MS\":" + std::to_string(WAKE_MS) + ",\"HOLD_MS\":" + std::to_string(HOLD_MS) +
@@ -850,8 +855,7 @@ std::string answer(const Command& c) {
            ",\"LIGHT_FULL\":" + std::to_string(LIGHT_FULL) +
            ",\"LIGHT_DIM\":" + std::to_string(LIGHT_DIM) + ",\"LIGHT_PAIR\":" + std::to_string(LIGHT_PAIR) +
            ",\"LIGHT_AWAKE\":" + std::to_string(LIGHT_AWAKE) + ",\"LIGHT_OFF\":" + std::to_string(LIGHT_OFF) +
-           ",\"CARD_WORDS\":{\"hi\":" + quote(cardWords("hi")) + ",\"song\":" + quote(cardWords("song")) +
-           ",\"dance\":" + quote(cardWords("dance")) + "}}";
+           ",\"CARD_WORDS\":" + cardWordsJson() + "}";
   }
   if (c.verb == "sounds") {
     // SOUNDS, as app/lib/wrist.js has it: {"tick":[[1800,25]],...}
@@ -878,9 +882,18 @@ std::string answer(const Command& c) {
   }
   if (c.verb == "hues") {
     std::string out = "{";
-    for (const Hue& h : HUES)
+    for (const Hue& h : CARDS)
       out += std::string(out.size() > 1 ? "," : "") + quote(h.id) + ":{\"c\":" + quote(hex(h.c)) + ",\"g\":" + quote(hex(h.g)) + "}";
     return out + "}";
+  }
+  if (c.verb == "cards") {
+    // CARDS in order, and where SIDE steps from each: ["hi","song","dance"] and {"hi":"song",...,"off":"hi"}.
+    std::string order = "[", steps = "{";
+    for (const Hue& h : CARDS) {
+      order += std::string(order.size() > 1 ? "," : "") + quote(h.id);
+      steps += std::string(steps.size() > 1 ? "," : "") + quote(h.id) + ":" + quote(cardAfter(h.id));
+    }
+    return "{\"order\":" + order + "],\"after\":" + steps + ",\"off\":" + quote(cardAfter("off")) + "}}";
   }
   if (c.verb == "relay") {
     const Relay r = parseRelay(c.arg);

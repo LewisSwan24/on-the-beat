@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { cardOf } from '../relay/cards.js';
 import { HUE, PROMISES, matchName, someone } from './copy.js';
 import { SOUND_SAY, soundRow } from './lib/bandsound.js';
 import { battery, buzz, toBase64 } from './lib/device.js';
@@ -663,7 +664,7 @@ export default function App() {
 
   const barHue = invisible ? null : armed;
   const barFor = {
-    home: { label: armed ? 'OPEN ' + HUE[armed].label : 'TAP A CARD TO ARM', off: !armed, tap: () => armed && go(({ hi: 'beacon', song: 'pick', dance: 'camera' })[armed]) },
+    home: { label: armed ? 'OPEN ' + HUE[armed].label : 'TAP A CARD TO ARM', off: !armed, tap: () => armed && go(cardOf(armed).open) },
     beacon: { label: "WHO'S NEAR", tap: () => go('near') },
     near: { label: 'POCKET IT', tap: () => go('home') },
     pick: { label: "THAT'S MY PICK", off: !pickText.trim(), tap: savePick },
@@ -708,7 +709,7 @@ export default function App() {
       body = <Home show={show} phase={phase} line={line} armed={invisible ? null : armed} ci={ci} setCi={setCi}
         notice={notice} onHideNotice={() => setNightState({ noticeHidden: notice.at })}
         band={bandShown} onBand={() => (paired ? bandSheet() : go('pair'))}
-        onArm={(id) => arm(armed === id ? null : id)} onOpen={(id) => go(({ hi: 'beacon', song: 'pick', dance: 'camera' })[id])} onHow={howSheet} />;
+        onArm={(id) => arm(armed === id ? null : id)} onOpen={(id) => go(cardOf(id).open)} onHow={howSheet} />;
       break;
     case 'beacon':
       body = paired

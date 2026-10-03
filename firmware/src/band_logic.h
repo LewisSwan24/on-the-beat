@@ -229,18 +229,25 @@ struct Rgb {
   bool operator==(const Rgb& o) const { return r == o.r && g == o.g && b == o.b; }
 };
 
-/** The canvas's hues (app/copy.js): the light colour, and the deeper one it falls to. */
+/**
+ * A card (relay/cards.js CARDS, in the same order): what is armed, the
+ * canvas's hue — the light colour and the deeper one it falls to — and the
+ * words the band shows for it, as relay/band.js bandShow() sends them. SIDE
+ * steps through them in this order, then off.
+ */
 struct Hue {
   const char* id;
   Rgb c;
   Rgb g;
+  const char* words;
 };
 
-constexpr Hue HUES[] = {
-  {"hi", {0x4E, 0xD7, 0xF1}, {0x0C, 0x9D, 0xE2}},
-  {"song", {0xF2, 0xD6, 0x5E}, {0xC7, 0x9A, 0x1E}},
-  {"dance", {0xDA, 0x8C, 0xF2}, {0xA9, 0x3F, 0xD9}},
+constexpr Hue CARDS[] = {
+  {"hi", {0x4E, 0xD7, 0xF1}, {0x0C, 0x9D, 0xE2}, "HI :)"},
+  {"song", {0xF2, 0xD6, 0x5E}, {0xC7, 0x9A, 0x1E}, "FIRST SONG?"},
+  {"dance", {0xDA, 0x8C, 0xF2}, {0xA9, 0x3F, 0xD9}, "LET'S DANCE!"},
 };
+constexpr size_t CARD_COUNT = sizeof(CARDS) / sizeof(CARDS[0]);
 
 constexpr Rgb INK = {0x04, 0x14, 0x18};     // words on a lit face
 constexpr Rgb TEXT_2 = {0x9A, 0x99, 0xA4};  // words on a dark one
@@ -258,7 +265,7 @@ inline const Rgb* plainField(const std::string& field) {
 }
 
 inline const Hue* hueFor(const std::string& intent) {
-  for (const Hue& h : HUES)
+  for (const Hue& h : CARDS)
     if (intent == h.id) return &h;
   return nullptr;
 }
@@ -307,7 +314,7 @@ struct Show {
 
 /** A face in one of the card colours, as the stand-in's BandFace decides it. */
 inline bool lit(const Show& s) {
-  return hueFor(s.intent) && (s.kind == "hi" || s.kind == "song" || s.kind == "dance" || s.kind == "meet");
+  return hueFor(s.intent) && (s.kind == "meet" || hueFor(s.kind));
 }
 
 // ---------- UTF-8 ----------
@@ -1414,10 +1421,15 @@ constexpr const char* PING_FRAME = "{\"t\":\"ping\"}";
 
 /** The words each card shows, as relay/band.js bandShow() sends them. A preview draws these. */
 inline const char* cardWords(const std::string& intent) {
-  if (intent == "hi") return "HI :)";
-  if (intent == "song") return "FIRST SONG?";
-  if (intent == "dance") return "LET'S DANCE!";
-  return "";
+  const Hue* h = hueFor(intent);
+  return h ? h->words : "";
+}
+
+/** The card SIDE steps to from `card`: the next in CARDS, off after the last, and the first after off. */
+inline std::string cardAfter(const std::string& card) {
+  for (size_t i = 0; i < CARD_COUNT; ++i)
+    if (card == CARDS[i].id) return i + 1 < CARD_COUNT ? CARDS[i + 1].id : "off";
+  return CARDS[0].id;
 }
 
 /** What the screen shows: two lines on one field, the backlight, the KEEP HOLDING bar, and letters to draw with their QR. */
@@ -2082,13 +2094,6 @@ class Wrist {
     if (held && !silent_) react("double");
   }
 
-  static std::string after(const std::string& card) {
-    if (card == "hi") return "song";
-    if (card == "song") return "dance";
-    if (card == "dance") return "off";
-    return "hi";
-  }
-
   /** A SIDE hold in the wave face: wave back to the newest waiting, from the state its show carried. */
   void waveBack(uint32_t now) {
     out_.push_back("{\"t\":\"wave\",\"ref\":\"" + waves_.ref + "\",\"basis\":" + std::to_string(show_.rev) + "}");
@@ -2125,12 +2130,12 @@ class Wrist {
     if (mode_ == LOOK) {
       const std::string cur = current();
       fromQuiet_ = cur == "notnow";
-      preview_ = fromQuiet_ ? "hi" : after(cur);
+      preview_ = fromQuiet_ ? CARDS[0].id : cardAfter(cur);
       mode_ = CHOOSING;
       stepAt_ = now;
       return;
     }
-    preview_ = after(preview_);
+    preview_ = cardAfter(preview_);
     stepAt_ = now;
   }
 

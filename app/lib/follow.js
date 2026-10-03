@@ -10,10 +10,11 @@
 // re-said after a reconnect, and carries the view's own seq, so a re-said fact
 // the phone learned from the relay is never news to it (relay rule 3).
 
+import { CARDS } from '../../relay/cards.js';
 import { HUE } from '../copy.js';
 
 /** Arriving on one of these arms its card, as the canvas does. */
-export const INTENT_OF = { beacon: 'hi', near: 'hi', pick: 'song', wall: 'song', camera: 'dance', floor: 'dance' };
+export const INTENT_OF = Object.fromEntries(CARDS.flatMap((c) => c.screens.map((screen) => [screen, c.id])));
 
 export const FOLLOW_SAY = {
   armed: (intent) => 'Armed from your wristband: ' + HUE[intent].label,

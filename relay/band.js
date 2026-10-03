@@ -9,6 +9,8 @@
 // Pure: everything it needs is passed in, so every state can be tested
 // without a socket or a clock.
 
+import { cardOf } from './cards.js';
+
 /** Pairing codes: letters only, none that look like another (no I, L or O). */
 export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 export const MEET_MS = 15 * 60_000;   // the number shows while the two of you find each other
@@ -89,13 +91,17 @@ export function bandShow({ view = null, battery = null, code = null, check = nul
     .filter((m) => now - m.at < MEET_MS && !m.foundAt)
     .sort((a, b) => b.at - a.at)[0];
   if (meet) return { kind: 'meet', intent: meet.intent, big: String(meet.number), small: meet.found ? 'FOUND: WAITING' : 'MEET', dim, ...about, ...waved, ...plays };
-  switch (view.me.armed) {
-    case 'hi': return { kind: 'hi', intent: 'hi', big: 'HI :)', small: 'blue means hello', dim, ...about, ...waved, ...plays };
-    case 'song': return { kind: 'song', intent: 'song', big: 'FIRST SONG?', small: short(view.me.pick, 16), dim, ...about, ...plays };
-    case 'dance': return { kind: 'dance', intent: 'dance', big: "LET'S DANCE!", small: '', dim, ...about, ...plays };
-    default: return { kind: 'off', battery, ...about, ...plays };
-  }
+  const card = cardOf(view.me.armed);
+  if (!card) return { kind: 'off', battery, ...about, ...plays };
+  const small = SMALL[card.id]?.(view) ?? '';
+  return { kind: card.id, intent: card.id, big: card.band, small, dim, ...about, ...waved, ...plays };
 }
+
+/** A card's second line on the band, where it has one: SAY HI's meaning, and your own pick. */
+const SMALL = {
+  hi: () => 'blue means hello',
+  song: (view) => short(view.me.pick, 16),
+};
 
 /** A fresh code, not one that is already waiting to be typed. */
 export function newCode(taken, rand = Math.random) {

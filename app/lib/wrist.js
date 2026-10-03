@@ -33,6 +33,7 @@
 // the called-it chirp and flashes FIRST SONG's colour three times, once for
 // each naming. A band whose person did not call it is not told anything.
 
+import { CARDS, INTENTS } from '../../relay/cards.js';
 import { bandIdOf } from './sha256.js';
 
 export const WAKE_MS = 6000;           // a KEY1 press shows the face this long
@@ -57,9 +58,9 @@ export const LIGHT_AWAKE = 110;
 export const LIGHT_OFF = 0;
 
 /** The words each card shows, as relay/band.js bandShow() sends them. */
-export const CARD_WORDS = { hi: 'HI :)', song: 'FIRST SONG?', dance: "LET'S DANCE!" };
-const ORDER = ['hi', 'song', 'dance', 'off'];
-const LIT = ['hi', 'song', 'dance', 'meet'];
+export const CARD_WORDS = Object.fromEntries(CARDS.map((c) => [c.id, c.band]));
+const ORDER = [...INTENTS, 'off'];
+const LIT = [...INTENTS, 'meet'];
 
 /** Every constant above, by name: the fixtures' times are written in these. */
 export const CONSTS = {
@@ -140,7 +141,8 @@ function readCalledIt(s) {
   return Number.isInteger(c.n) ? c.n : 0;
 }
 
-const lit = (s) => LIT.includes(s.kind) && !!CARD_WORDS[s.intent];
+/** A face in its card's colour: an armed card, or a meeting, in a card the band knows. The stand-in's BandFace draws it so too. */
+export const lit = (s) => LIT.includes(s.kind) && !!CARD_WORDS[s.intent];
 const words = (big, small, field, ink, light) => ({ big, small, field, ink, light, bar: -1, code: '' });
 
 export function createWrist({ key }) {
@@ -390,7 +392,7 @@ export function createWrist({ key }) {
     if (mode === 'look') {
       const cur = current();
       fromQuiet = cur === 'notnow';
-      preview = fromQuiet ? 'hi' : ORDER[(ORDER.indexOf(cur) + 1) % ORDER.length];
+      preview = fromQuiet ? ORDER[0] : ORDER[(ORDER.indexOf(cur) + 1) % ORDER.length];
       mode = 'choosing';
       stepAt = now;
       return;

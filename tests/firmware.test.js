@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes } from 'node:crypto';
 import WebSocket from 'ws';
 import { createRelay, WS_PATH } from '../relay/server.js';
+import { INTENTS } from '../relay/cards.js';
 import { HUE } from '../app/copy.js';
 import { codeFrom, pairUrl } from '../app/lib/pairing.js';
 import { CONSTS, FLASH_COLOURS, FLASHES, SOUNDS } from '../app/lib/wrist.js';
@@ -117,6 +118,12 @@ test('the colours on the wrist are the colours on the phone', { skip }, () => {
   const [hues] = speak(['hues']);
   const phone = Object.fromEntries(Object.entries(HUE).map(([id, h]) => [id, { c: h.c.toUpperCase(), g: h.g.toUpperCase() }]));
   assert.deepEqual(JSON.parse(hues), phone);
+});
+
+test('the wrist steps through the cards in their order, then off, then the first again', { skip }, () => {
+  const [cards] = speak(['cards']);
+  const after = Object.fromEntries([...INTENTS.map((id, i) => [id, INTENTS[i + 1] ?? 'off']), ['off', INTENTS[0]]]);
+  assert.deepEqual(JSON.parse(cards), { order: INTENTS, after });
 });
 
 test("the flashes' red and orange are the stand-in's, and red is the phone's own --stop", { skip }, () => {

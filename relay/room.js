@@ -44,8 +44,9 @@
 // tested without a network.
 
 import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { INTENTS } from './cards.js';
 
-export const INTENTS = ['hi', 'song', 'dance'];
+export { INTENTS };
 export const BANDS = ['in this room', 'near the bar', 'by the stage', 'somewhere out the back'];
 export const SPOTS = ["by the merch stand — it's the quietest corner", 'at the end of the bar, by the water', 'by the cloakroom'];
 
