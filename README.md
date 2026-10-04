@@ -626,7 +626,7 @@ a dead socket. Its two buttons work as above.
 ```
 cd firmware
 pio run -t upload       # build it and flash it over USB
-pio device monitor      # its console: ssid, pass, relay, show, forget, press, hold, face, snap, turn, near, marker
+pio device monitor      # its console: ssid, pass, channel, relay, show, forget, press, hold, face, snap, turn, near, marker
 
 pio run -e m5sticks3 -t upload    # the same, for a StickS3
 ```
@@ -1288,8 +1288,11 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   band hears only bands on its own channel, so a venue whose access points
   use several splits its bands into groups, each of which keeps the others
   listed. Markers do not have this problem: they beacon on every channel.
-  Three ways round it, none built, are drafted in
-  `docs/superpowers/specs/2026-10-04-near-channels-design.md`.
+  Three ways round it are drafted in
+  `docs/superpowers/specs/2026-10-04-near-channels-design.md`: the runbook
+  asks the venue for one channel for the bands, and since 4 Oct 2026 a band
+  can be held to one with `channel <n>` at its console (built and compiled,
+  not yet flashed or tried on a second network).
 - **Markers have met two bands, not a room.** On 27 Sep 2026 the StickC
   Plus, made `marker bar` at its console, sent 338 beacons in 13 s on
   channels 1 to 13, none lost or refused, each sweep about 30 ms. The

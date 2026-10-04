@@ -733,6 +733,20 @@ void markers() {
   CHECK(markPower("20") == 80 && markPower("2") == 8 && markPower("8") == 32 && markPower("08") == 32);
   for (const char* no : {"1", "21", "0", "", "-5", "8.5", "x", "020", "8 "}) CHECK(markPower(no) == -1);
 
+  // `channel <n>`: 1 to 13 joins only there, 0 any channel as before.
+  CHECK(wifiChannel("0") == 0 && wifiChannel("1") == 1 && wifiChannel("6") == 6 && wifiChannel("13") == 13 && wifiChannel("06") == 6);
+  for (const char* no : {"14", "", "-1", "6.0", "x", "006", "6 ", "99"}) CHECK(wifiChannel(no) == -1);
+  // Pinned, a band joins the strongest point with its network's name on that channel, and no other.
+  {
+    const std::vector<SeenPoint> seen = {
+        {"venue", -40, 1}, {"venue", -70, 6}, {"venue", -55, 6}, {"other", -30, 6}, {"venue", -60, 11}};
+    CHECK(pickPinned(seen, "venue", 6) == 2);
+    CHECK(pickPinned(seen, "venue", 1) == 0);
+    CHECK(pickPinned(seen, "venue", 13) == -1);
+    CHECK(pickPinned(seen, "nobody", 6) == -1);
+    CHECK(pickPinned({}, "venue", 6) == -1);
+  }
+
   // Its face is dark; a key lights it for WAKE_MS with what it is, in the screen's alphabet.
   Marker m(1);
   CHECK(!m.lit(0) && !m.lit(WAKE_MS));

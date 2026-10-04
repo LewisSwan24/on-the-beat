@@ -1252,6 +1252,38 @@ inline int markPower(const std::string& dbm) {
   return d >= MARK_POWER_MIN && d <= MARK_POWER_MAX ? d * 4 : -1;
 }
 
+// ---------- one Wi-Fi channel for every band (docs/superpowers/specs/2026-10-04-near-channels-design.md, B) ----------
+
+constexpr int WIFI_CHANNEL_MAX = 13;   // `channel` takes 1 to this; 12 and 13 are allowed in Australia, not everywhere
+
+/** `channel <n>` on the console: 1 to WIFI_CHANNEL_MAX joins only there, 0 joins any as before; -1 is not a channel. */
+inline int wifiChannel(const std::string& s) {
+  if (s.empty() || s.size() > 2 || s.find_first_not_of("0123456789") != std::string::npos) return -1;
+  const int c = std::atoi(s.c_str());
+  return c <= WIFI_CHANNEL_MAX ? c : -1;
+}
+
+/** An access point a scan saw: what a band pinned to a channel chooses among. */
+struct SeenPoint {
+  std::string ssid;
+  int rssi;
+  int channel;
+};
+
+/**
+ * Which access point a band pinned to `channel` joins: the strongest named `ssid` on that channel, or -1 for none.
+ * To the core a channel is only where its scan starts (esp_wifi_types.h, `sta.channel`), and a band given one alone
+ * joins the first point it finds on any; so the band chooses here, and joins that one point by its address.
+ */
+inline int pickPinned(const std::vector<SeenPoint>& seen, const std::string& ssid, int channel) {
+  int best = -1;
+  for (size_t i = 0; i < seen.size(); ++i) {
+    if (seen[i].ssid != ssid || seen[i].channel != channel) continue;
+    if (best < 0 || seen[i].rssi > seen[static_cast<size_t>(best)].rssi) best = static_cast<int>(i);
+  }
+  return best;
+}
+
 /** Six address bytes as twelve lower-case hex digits, as the hello's air and a report write them. */
 inline std::string airHex(const uint8_t* mac) {
   static const char DIGITS[] = "0123456789abcdef";

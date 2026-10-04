@@ -65,6 +65,7 @@ WebSocketsClient socket_;
 M5Canvas face(&M5.Display);  // drawn off-screen, then pushed whole: no half-drawn frames on the wrist
 
 std::string ssid, pass, relayText;
+int pinned = 0;   // `channel`: the one Wi-Fi channel this band joins on, or 0 for any
 Relay relay;
 
 Wrist* wrist = nullptr;  // made in setup(), once the radio is on and the key is truly random
@@ -126,6 +127,7 @@ void loadSettings() {
   ssid =setting("ssid", OTB_WIFI_SSID);
   pass = setting("pass", OTB_WIFI_PASS);
   relayText = setting("relay", OTB_RELAY);
+  pinned = std::max(0, wifiChannel(setting("channel", "0")));
 }
 
 // ---------- the socket, on a task of its own ----------
@@ -306,8 +308,26 @@ void startWifi() {
     Serial.println("no wi-fi yet. Type:  ssid <network name>  then  pass <password>");
     return;
   }
-  WiFi.begin(ssid.c_str(), pass.empty() ? nullptr : pass.c_str());
   rejoin.began(millis());
+  if (!pinned) {
+    WiFi.begin(ssid.c_str(), pass.empty() ? nullptr : pass.c_str());
+    return;
+  }
+  // Pinned: a scan of that channel alone (a few hundred ms, the face held meanwhile), then the point it chose, by its
+  // address, so the core cannot wander to another channel. With none there, the next rejoin scans again.
+  const int16_t n = WiFi.scanNetworks(false, false, false, 300, static_cast<uint8_t>(pinned), ssid.c_str());
+  std::vector<SeenPoint> seen;
+  for (int16_t i = 0; i < n; ++i) seen.push_back({WiFi.SSID(i).c_str(), static_cast<int>(WiFi.RSSI(i)), static_cast<int>(WiFi.channel(i))});
+  const int pick = pickPinned(seen, ssid, pinned);
+  uint8_t point[6] = {0};
+  if (pick >= 0) memcpy(point, WiFi.BSSID(pick), sizeof point);
+  WiFi.scanDelete();
+  rejoin.began(millis());
+  if (pick < 0) {
+    Serial.printf("no %s on channel %d; looking again in %u s\n", ssid.c_str(), pinned, static_cast<unsigned>(REJOIN_MS / 1000));
+    return;
+  }
+  WiFi.begin(ssid.c_str(), pass.empty() ? nullptr : pass.c_str(), pinned, point);
 }
 
 /** Why the radio last dropped, as the console says it: its number and, when the core has one, its name. */
@@ -905,6 +925,7 @@ void help() {
   Serial.println(
       "  ssid <network name>     the venue's Wi-Fi\n"
       "  pass <password>         its password (leave it out for an open network)\n"
+      "  channel <1-13>|0        join the venue's Wi-Fi only on that channel, so every band hears every other (kept); 0 any\n"
       "  relay <address>         https://....trycloudflare.com from npm run tunnel, or ws://<laptop>:8790 on a LAN\n"
       "  show                    what it is set to, and how it is doing\n"
       "  forget                  back to what it was built with\n"
@@ -974,6 +995,21 @@ void run(const Command& c) {
     ssid = trim(c.arg);
     prefs.putString("ssid", ssid.c_str());
     startWifi();
+  } else if (c.verb == "channel") {
+    const std::string a = trim(c.arg);
+    if (!a.empty()) {
+      const int ch = wifiChannel(a);
+      if (ch < 0) {
+        Serial.printf("channel 1 to %d joins only there; channel 0 joins any\n", WIFI_CHANNEL_MAX);
+        return;
+      }
+      pinned = ch;
+      if (ch) prefs.putString("channel", std::to_string(ch).c_str());
+      else prefs.remove("channel");
+      startWifi();
+    }
+    if (pinned) Serial.printf("channel %d: joins %s only there, on it now: %d\n", pinned, ssid.c_str(), WiFi.isConnected() ? WiFi.channel() : 0);
+    else Serial.printf("channel 0: joins %s on any channel\n", ssid.c_str());
   } else if (c.verb == "pass") {
     pass = c.arg;
     prefs.putString("pass", pass.c_str());
@@ -1028,6 +1064,7 @@ void run(const Command& c) {
   } else if (c.verb == "forget") {
     prefs.remove("ssid");
     prefs.remove("pass");
+    prefs.remove("channel");
     prefs.remove("relay");
     prefs.remove("turn");
     usbRight = false;

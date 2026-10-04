@@ -46,15 +46,26 @@ built for them alone is enough.
 
 A console setting, `channel <1-13>`, kept across restarts as `ssid` and `pass`
 are; `channel 0` (the default) is today's behaviour. With it set, the band
-calls `WiFi.begin(ssid, pass, channel)`, so it joins the strongest access
-point of that SSID on that channel and no other, and rejoins on that channel
-after a drop. Every band of the night is set to the same channel, so all of
-them hear each other while the venue's other channels carry its phones.
+scans that channel alone, takes the strongest access point of its SSID there,
+and joins that point by its address (BSSID); after a drop, the rejoin every
+15 s scans again, so it moves to another point on the channel if its own has
+gone. Every band of the night is set to the same channel, so all of them
+hear each other while the venue's other channels carry its phones.
 
-- Costs: one setting and the join call in `main.cpp`; the setting's parsing
-  in `band_logic.h`, held by host tests; `near` on the console says the
-  channel it was asked for beside the one it is on. The relay is unchanged:
-  the same-channel rule already does the right thing.
+Why a scan, and not `WiFi.begin(ssid, pass, channel)` as this draft first
+said: in the ESP-IDF the band's core is built on, a station's channel is
+only where its scan starts ("Set to 1~13 to scan starting from the specified
+channel before connecting to AP", `esp_wifi_types.h`, `sta.channel`), so a
+band given a channel alone would still join a point on any other. Only an
+address (`bssid_set`) holds it to one point.
+
+- Built 4 Oct 2026, not yet on a band: `wifiChannel()` and `pickPinned()` in
+  `band_logic.h`, held by the host checks (four mutations, all caught); the
+  scan and join in `main.cpp`'s `startWifi()`; console `channel`, with no
+  number saying the setting and the channel it is on now; `forget` clears
+  it. Both envs compile. The scan holds the loop a few hundred ms each time
+  it runs, which is only when joining. The relay is unchanged: the
+  same-channel rule already does the right thing.
 - Limits: the bands lean on a third of the venue's access points. Where a
   part of the floor has no point on that channel, a band there joins nothing
   and is offline (its person keeps the phone, as with any band offline).
