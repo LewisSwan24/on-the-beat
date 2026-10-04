@@ -85,6 +85,21 @@ test('leaving the venue takes you out of the room straight away; a dropped socke
   close(ana, ben);
 });
 
+test('a clip is kept only as video/webm or video/mp4, so its served type is one of the two and nothing more', async () => {
+  const ana = await phone('mime-guard');
+  const ben = await phone('mime-guard');
+  for (const mime of ['video/webm' + String.fromCodePoint(13, 10) + 'x-said: so', 'video/mp4x', 'video/webm codecs', 'video/webmx;codecs=vp8']) {
+    const refused = reply(ana, 'error');
+    ana.send({ t: 'clip', mime, data: randomBytes(64).toString('base64') });
+    assert.equal((await refused).why, 'clip refused', JSON.stringify(mime));
+  }
+  ana.send({ t: 'clip', mime: 'video/mp4; codecs="avc1"', data: randomBytes(64).toString('base64') });
+  const { floor: [tile] } = await ben.until((v) => v.floor.length === 1);
+  const res = await fetch(url('/clip/mime-guard/' + tile.ref));
+  assert.equal(res.headers.get('content-type'), 'video/mp4');
+  close(ana, ben);
+});
+
 test('a clip on the floor is served to the room, and a dance back reaches only its person', async () => {
   const ana = await phone('the lantern');
   const ben = await phone('the lantern');

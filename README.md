@@ -1076,6 +1076,13 @@ was red-teamed and hardened. A red/blue pass found and closed:
 - **MIME confusion.** Every served response — the app, a built asset, a clip,
   the shows feed — carries `X-Content-Type-Options: nosniff`, so a browser
   takes the declared type and never guesses one.
+- **A clip's type as a header** (4 Oct 2026). A clip was kept with whatever
+  type its phone sent, so long as it began `video/webm` or `video/mp4`, and
+  that type was served as its `Content-Type`. A type with a line break in it
+  made Node throw while writing the header, outside any handler, and one
+  phone could stop the relay by posting such a clip and fetching it. Now a
+  clip is kept only as `video/webm` or `video/mp4` exactly (a `;` and its
+  codecs may follow, and are dropped), and anything else is refused.
 - **Framing, referrers, injected script.** Every response says
   `Referrer-Policy: no-referrer`, and over https `Strict-Transport-Security`
   for a year (Fly's proxy says which; not for subdomains, no preload).

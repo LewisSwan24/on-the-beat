@@ -782,7 +782,10 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
    */
   function keepClip(r, id, mime, data, slot) {
     const buf = Buffer.from(String(data || ''), 'base64');
-    if (!buf.length || buf.length > CLIP_MAX || !/^video\/(webm|mp4)/.test(String(mime))) return null;
+    // Kept as one of the two types and nothing of what followed: it is served as a header, where a character a header
+    // cannot hold would throw out of the request and stop the relay.
+    const type = /^video\/(webm|mp4)(?:;|$)/.exec(String(mime));
+    if (!buf.length || buf.length > CLIP_MAX || !type) return null;
     const drop = (room, ref, c) => {
       room.clips.delete(ref);
       if (c.slot === 'floor' && room.room.has(c.by)) {
@@ -799,7 +802,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       all -= c.buf.length;
     }
     const ref = randomBytes(12).toString('hex');
-    r.clips.set(ref, { mime: String(mime).split(';')[0], buf, by: id, slot, at: now() });
+    r.clips.set(ref, { mime: 'video/' + type[1], buf, by: id, slot, at: now() });
     return ref;
   }
 
