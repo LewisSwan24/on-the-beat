@@ -591,7 +591,12 @@ that was taken.
   of that person (matches, yeses, blocks, waves), and their wristband goes
   back to four letters. The app goes back to choosing a venue and says so;
   its own record of the night stays on Tonight. Someone who joined after
-  06:00 is not touched.
+  06:00 is not touched. Those who left before 06:00 are forgotten with them,
+  so a room kept open past six, in memory and in the night's file, holds
+  nothing of last night. A wristband out of reach at 06:00 is let go as well:
+  back on, it waits for its owner's phone and then shows letters, as one the
+  relay has no record of does; and one away when its room went, worn again
+  before six, goes back to letters at six.
 - **After a relay restart** the wristband comes back with its secret and goes
   straight back to its person: the relay carried its record across (*Always
   on*). A relay that comes back without its night — no file, or one another

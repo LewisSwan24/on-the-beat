@@ -359,6 +359,29 @@ test('a clip past its hour is not brought back, and its file goes', async () => 
   assert.deepEqual(readdirSync(clipsOf(n)), []);
 });
 
+test("after 06:00 the night's file holds nothing of last night's people, those still in and those who left alike", async () => {
+  const n = night();
+  await n.start();
+  const ana = await n.on.phone('restart-six');
+  const ben = await n.on.phone('restart-six');
+  for (const p of [ana, ben]) p.send({ t: 'sound', on: true });
+  const left = n.on.reply(ben, 'left');
+  ben.send({ t: 'leave' });
+  await left;
+  n.clock.t = Date.UTC(2026, 8, 29, 20, 0, 30);   // 06:00:30 on 30 Sep at the venue
+  const cai = await n.on.phone('restart-six');
+  cai.send({ t: 'sound', on: true });
+  await pause(100);
+  const over = n.on.reply(ana, 'over');
+  n.relay.expire(n.clock.t + 30_000);
+  await over;
+  await n.stop();
+  const [room] = n.saved().rooms;
+  assert.deepEqual(room.heard.map(([id]) => id), [personOf(cai.me)]);
+  assert.deepEqual(room.sound.map(([id]) => id), [personOf(cai.me)]);
+  assert.deepEqual(room.room.tombs, [], 'ben left before six, and goes with it');
+});
+
 test('a clip replaced, or gone at its hour, takes its file with it', async () => {
   const n = night();
   await n.start();

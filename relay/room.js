@@ -266,7 +266,7 @@ export function createRoom({
   /** Leaving the room ends broadcasting. Matches, yeses, blocks and NOT NOW stay for the night. */
   function leave(id) {
     const p = people.get(id);
-    if (p) tombs.set(id, { rev: p.rev, invisible: p.invisible });
+    if (p) tombs.set(id, { rev: p.rev, invisible: p.invisible, joinedAt: p.joinedAt });
     people.delete(id);
     // Their handles go with them: the ones they were shown, and everyone else's of them.
     ledger.held -= handles.get(id)?.size ?? 0;
@@ -287,6 +287,16 @@ export function createRoom({
     const theirs = (k) => k.split('>').includes(id);
     for (const map of [waves, likes, dances]) for (const k of [...map.keys()]) if (theirs(k)) map.delete(k);
     for (const [k, m] of [...matches]) if (m.a === id || m.b === id) matches.delete(k);
+  }
+
+  /**
+   * Everyone who has left and last joined at a time `isOver` says belongs to a night that has ended, forgotten as
+   * forgetPerson forgets: their ids. A tomb from before tombs kept the time is kept, as every tomb was.
+   */
+  function forgetLeft(isOver) {
+    const over = [...tombs].filter(([, t]) => Number.isFinite(t.joinedAt) && isOver(t.joinedAt)).map(([id]) => id);
+    for (const id of over) forgetPerson(id);
+    return over;
   }
 
   /**
@@ -841,7 +851,7 @@ export function createRoom({
   }
 
   return {
-    join, leave, forgetPerson, setProfile, arm, setInvisible, fromPhone, pick, postClip, setOpener, setNotice, setTimes, letGo,
+    join, leave, forgetPerson, forgetLeft, setProfile, arm, setInvisible, fromPhone, pick, postClip, setOpener, setNotice, setTimes, letGo,
     /** The opener as staff named it ({ track, at }), or null. */
     opener: () => (opener ? { ...opener } : null),
     /** The notice standing ({ text, at }), or null. */

@@ -269,7 +269,7 @@ test('06:00 leaves alone someone who joined after it, and the room they keep ope
   close(ana, ben, cai);
 });
 
-test('a wristband that dropped a minute before 06:00 is not forgotten at 06:00: only one still worn goes back to letters', async () => {
+test('a wristband away at 06:00 does not come back to last night\'s person', async () => {
   let t = new Date(2026, 8, 25, 5, 45).getTime();
   const relay = await relayWith({ clock: () => t });
   const { band, ana, ben } = await pairedWithWatcher('six-dropped');
@@ -278,8 +278,31 @@ test('a wristband that dropped a minute before 06:00 is not forgotten at 06:00: 
   t = new Date(2026, 8, 25, 5, 59).getTime();
   band.ws.close();
   await pause(100);
-  relay.expire(new Date(2026, 8, 25, 6, 1).getTime());
-  assert.equal(relay.bandCount(), 1, 'its record is kept for the hour it is allowed, as before');
+  t = new Date(2026, 8, 25, 6, 1).getTime();
+  relay.expire(t);
+  // Back with its secret, it waits for its owner's phone, as one the relay has no record of does.
+  const back = await wristband(62, { key: band.key, secret: band.secret });
+  assert.equal(back.show.kind, 'waiting');
+  close(back);
+});
+
+test('a wristband away when its room went, back before 06:00, goes back to letters at 06:00', async () => {
+  let t = new Date(2026, 8, 24, 23, 0).getTime();
+  const relay = await relayWith({ clock: () => t, graceMs: 100 });
+  const { band, ana, ben } = await pairedWithWatcher('six-roomless');
+  close(ana, ben);
+  await pause(100);
+  t = new Date(2026, 8, 24, 23, 10).getTime();
+  band.ws.close();
+  await pause(400);   // the grace runs out for both: the room has nobody in it, and goes
+  assert.equal(relay.roomCount(), 0);
+  t = new Date(2026, 8, 24, 23, 30).getTime();
+  const back = await wristband(62, { key: band.key, secret: band.secret });
+  assert.equal(back.show.kind, 'off', 'still theirs tonight: they can come back to it');
+  t = new Date(2026, 8, 25, 6, 1).getTime();
+  relay.expire(t);
+  await back.until((s) => s.kind === 'pairing');
+  close(back);
 });
 
 test('a wristband worn on with its phone gone stays paired to its person for the rest of the same night', async () => {

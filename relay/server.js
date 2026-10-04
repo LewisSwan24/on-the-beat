@@ -1367,10 +1367,10 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // 06:00 ends the night for everyone still in a room from it, phone open or not. A page frozen in a pocket still
     // answers the socket's pings, so an open phone would otherwise keep last night's person, their matches and their
     // wristband in tonight's room for as long as it stayed open. Their phones are told; the app goes back to choosing a
-    // venue, as it does after leaving.
+    // venue, as it does after leaving. Those who left before 06:00 are forgotten with them.
     for (const r of rooms.values()) {
-      const over = r.room.ids().filter((me) => night(r.room.joinedAt(me)) !== night(at));
-      if (!over.length) continue;
+      const lastNight = (t) => night(t) !== night(at);
+      const over = r.room.ids().filter((me) => lastNight(r.room.joinedAt(me)));
       for (const me of over) {
         for (const s of [...r.sockets]) {
           if (s.me !== me) continue;
@@ -1379,10 +1379,16 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
           s.send(JSON.stringify({ t: 'over' }));
         }
         stopGrace(r, me);
-        for (const [ref, c] of r.clips) if (c.by === me) r.clips.delete(ref);
         r.room.forgetPerson(me);
-        const b = bandOf(r.key, me);
-        if (b?.ws) unpairBand(b);
+      }
+      const forgotten = [...over, ...r.room.forgetLeft(lastNight)];
+      if (!forgotten.length) continue;
+      for (const me of forgotten) {
+        for (const [ref, c] of r.clips) if (c.by === me) r.clips.delete(ref);
+        for (const kept of [r.heard, r.sound]) kept.delete(me);
+        // Worn or away: a wristband away now comes back to its owner's phone or to letters, never to last night's person.
+        const theirs = bandOf(r.key, me);
+        if (theirs) unpairBand(theirs);
       }
       push(r);
     }
@@ -1393,7 +1399,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       if (!b.ws || !b.person || b.waiting) continue;
       const r = rooms.get(b.key);
       if (r && phoneOf(r, b.person)) continue;
-      const heard = r?.heard.get(b.person);
+      // With its room gone, it was away when the room went: the last known of it is when it went.
+      const heard = r?.heard.get(b.person) ?? (b.goneAt || undefined);
       if (heard === undefined || night(heard) === night(at)) continue;
       unpairBand(b);
     }

@@ -323,6 +323,26 @@ test('a person forgotten at the end of the night takes everything the room kept 
   assert.ok(handleOf('ben', 'ana') && handleOf('ana', 'ben'), 'and she and ben see each other again');
 });
 
+test('those who left at a time the night says is over are forgotten; a tomb without a time, and anyone here, are kept', () => {
+  const { room, handleOf, tick } = night();
+  const at = Date.UTC(2026, 8, 23, 11, 4);
+  meet(room, handleOf, 'ana', 'cai');
+  room.leave('ana');
+  tick(60_000);
+  room.join('dee');
+  room.leave('dee');
+  const d = room.dump();
+  // A tomb from a build before tombs kept the time.
+  const restored = createRoom({ now: () => at, salt: 'test', restore: { ...d, tombs: [...d.tombs, ['eve', { rev: 3, invisible: true }]] } });
+  const over = (t) => t !== at + 60_000;   // all but dee's join, a minute on
+  assert.deepEqual(restored.forgetLeft(over), ['ana']);
+  const left = restored.dump();
+  assert.deepEqual(left.tombs.map(([id]) => id).sort(), ['dee', 'eve']);
+  assert.deepEqual(left.matches, [], 'her match with cai went with her');
+  assert.equal(restored.has('cai'), true, 'cai is here: only forgetPerson takes someone here');
+  assert.deepEqual(restored.forgetLeft(over), [], 'and nothing twice');
+});
+
 test('block is silent and both ways, and ends a match', () => {
   const { room, handleOf } = night();
   const m = meet(room, handleOf, 'ana', 'ben');
