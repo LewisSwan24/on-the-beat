@@ -1187,7 +1187,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     }).end(readFileSync(file));
   }
 
-  const server = createServer((req, res) => {
+  /** One request, answered. What it throws is caught below it, and costs that request alone. */
+  function serve(req, res) {
     // On every response, a 404, a 304 and a 503 included (§4). HSTS only where the request came in over https, as
     // Fly's proxy says: the relay itself never speaks TLS.
     res.setHeader('x-content-type-options', 'nosniff');
@@ -1198,6 +1199,17 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' }).end(showsNow());
     } else if (url.startsWith('/clip/')) serveClip(req, res, url);
     else serveStatic(res, url);
+  }
+
+  // A request that throws is answered 500, or cut off if its answer had begun, and the relay goes on: one request is
+  // never everyone's night. The log says what was thrown, never the address asked for (it can hold a clip's ticket).
+  const server = createServer((req, res) => {
+    try {
+      serve(req, res);
+    } catch (e) {
+      console.log('http: a request threw (' + (e.code || e.name) + ')');
+      try { if (res.headersSent) res.destroy(); else res.writeHead(500).end(); } catch { res.destroy(); }
+    }
   });
 
   /**
@@ -1257,7 +1269,14 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
       let m;
       try { m = JSON.parse(String(data)); } catch { return; }
-      if (m && typeof m.t === 'string') handle(ws, m);
+      if (!m || typeof m.t !== 'string') return;
+      // A message that throws closes its own socket, as a socket that drops does, and the relay goes on.
+      try {
+        handle(ws, m);
+      } catch (e) {
+        console.log('socket: a ' + (/^[a-z]{1,16}$/.test(m.t) ? m.t : 'message') + ' threw (' + (e.code || e.name) + ')');
+        ws.terminate();
+      }
     });
     ws.on('close', () => {
       if (ws.staff) {

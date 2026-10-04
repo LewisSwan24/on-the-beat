@@ -1083,6 +1083,11 @@ was red-teamed and hardened. A red/blue pass found and closed:
   phone could stop the relay by posting such a clip and fetching it. Now a
   clip is kept only as `video/webm` or `video/mp4` exactly (a `;` and its
   codecs may follow, and are dropped), and anything else is refused.
+  Behind that, a request or a socket message that throws for any reason
+  now costs only itself: the request is answered 500 (or cut off if its
+  answer had begun), the socket is closed as one that dropped, the log
+  says what was thrown and never the address asked for, and the relay goes
+  on. The tests make Node itself throw once to hold both.
 - **Framing, referrers, injected script.** Every response says
   `Referrer-Policy: no-referrer`, and over https `Strict-Transport-Security`
   for a year (Fly's proxy says which; not for subdomains, no preload).
