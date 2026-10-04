@@ -18,9 +18,10 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes } from 'node:crypto';
 import WebSocket from 'ws';
 import { createRelay, WS_PATH } from '../relay/server.js';
+import { INTENTS } from '../relay/cards.js';
 import { HUE } from '../app/copy.js';
 import { codeFrom, pairUrl } from '../app/lib/pairing.js';
-import { CONSTS, FLASH_COLOURS, FLASHES, SOUNDS } from '../app/lib/wrist.js';
+import { CONSTS, FLASH_COLOURS, FLASHES, SOUNDS, cardAfter } from '../app/lib/wrist.js';
 import { TABLE, lines, check } from './wrist-table.js';
 
 const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).digest('hex').slice(0, 32);
@@ -117,6 +118,23 @@ test('the colours on the wrist are the colours on the phone', { skip }, () => {
   const [hues] = speak(['hues']);
   const phone = Object.fromEntries(Object.entries(HUE).map(([id, h]) => [id, { c: h.c.toUpperCase(), g: h.g.toUpperCase() }]));
   assert.deepEqual(JSON.parse(hues), phone);
+});
+
+test('the wrist steps through the cards in their order, then off, then the first again', { skip }, () => {
+  const [cards] = speak(['cards']);
+  const after = Object.fromEntries([...INTENTS.map((id, i) => [id, INTENTS[i + 1] ?? 'off']), ['off', INTENTS[0]]]);
+  assert.deepEqual(JSON.parse(cards), { order: INTENTS, after });
+});
+
+test('with cards closed, the wrist steps over them, as the stand-in does', { skip }, () => {
+  const closings = ['hi', 'song', 'dance', 'hi,song', 'hi,dance', 'song,dance'];
+  const lines = speak(closings.map((c) => 'cards ' + c)).map((l) => JSON.parse(l));
+  closings.forEach((c, i) => {
+    const closed = c.split(',');
+    const after = Object.fromEntries([...INTENTS, 'off'].map((id) => [id, cardAfter(id, closed)]));
+    assert.deepEqual(lines[i], { order: INTENTS, after }, c);
+    assert.ok(!closed.includes(after.off), c + ': off steps to an open card');
+  });
 });
 
 test("the flashes' red and orange are the stand-in's, and red is the phone's own --stop", { skip }, () => {

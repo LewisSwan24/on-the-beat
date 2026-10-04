@@ -133,10 +133,11 @@ test("held only by a wristband, a person leaves at 06:00 on the relay's clock", 
   await pause(50);
   assert.equal(ben.view.near.length, 1, 'not before six');
   t = new Date(2026, 8, 25, 6, 1).getTime();
-  ben.send({ t: 'ping' });
   relay.expire(t);
-  await ben.until((v) => v.near.length === 0);
-  close(ben);
+  // Someone arriving now finds her gone. (ben, there since 05:45, has had his night ended too.)
+  const cai = await phone('six-local');
+  assert.equal(cai.view.near.length, 0);
+  close(ben, cai);
 });
 
 test('06:00 is in nightTz, the venue\'s time zone', async () => {
@@ -152,8 +153,9 @@ test('06:00 is in nightTz, the venue\'s time zone', async () => {
     ben.send({ t: 'ping' });
     relay.expire(t);
     await pause(100);
-    assert.equal(ben.view.near.length === 0, leaves, tz);
-    close(ben);
+    const cai = await phone('six-' + tz);
+    assert.equal(cai.view.near.length === 0, leaves, tz);
+    close(ben, cai);
   }
 });
 
@@ -203,19 +205,71 @@ test('a wristband still worn after 06:00 with its phone gone since the night goe
   close(cai, band);
 });
 
-test('a wristband whose phone is still connected at 06:00 stays paired, however long since that phone spoke', async () => {
+// A phone still connected at 06:00 used to keep last night's person in the room for as long as it stayed open — and a
+// page frozen in a pocket answers the socket's pings, so that could be all day: their matches, their wristband, and a
+// stranger in tonight's room who was not there. 06:00 ends the night for them as it does for everyone else.
+test('06:00 ends the night for someone whose phone is still connected: told, out, their match forgotten, their band freed', async () => {
   let t = new Date(2026, 8, 25, 5, 45).getTime();
   const relay = await relayWith({ clock: () => t });
   const { band, ana, ben } = await pairedWithWatcher('six-phone');
+  ben.send({ t: 'arm', intent: 'hi' });
+  const { near: [toBen] } = await ana.until((v) => v.near.length === 1);
+  const { near: [toAna] } = await ben.until((v) => v.near.length === 1);
+  ana.send({ t: 'wave', handle: toBen.handle });
+  ben.send({ t: 'wave', handle: toAna.handle });
+  await ana.until((v) => v.matches.length === 1);
+  const told = [reply(ana, 'over'), reply(ben, 'over')];
+  t = new Date(2026, 8, 25, 6, 0, 30).getTime();
+  ana.send({ t: 'ping' });   // heard after six, so only the end of her night frees her band, not its own 06:00 rule
+  await pause(50);
   t = new Date(2026, 8, 25, 6, 1).getTime();
-  relay.expire(t);   // ana's socket is open and has said nothing since 05:45
-  await pause(150);
-  assert.notEqual(band.show.kind, 'pairing');
-  assert.equal(relay.roomCount(), 1);
+  relay.expire(t);
+  await Promise.all(told);
+  await band.until((s) => s.kind === 'pairing', 250);
+  assert.equal(relay.roomCount(), 0, 'nothing of last night is kept open by a phone');
+  // The same phone joining again is someone new: nothing of last night comes back.
+  ana.send({ t: 'join', venue: 'six-phone', me: ana.me });
+  const back = await ana.until((v) => v.matches.length === 0);
+  assert.equal(back.me.armed, null);
   close(ana, ben, band);
 });
 
-test('a wristband that dropped a minute before 06:00 is not forgotten at 06:00: only one still worn goes back to letters', async () => {
+test('06:00 leaves alone someone who joined after it, and the room they keep open holds nothing of last night', async () => {
+  let t = new Date(2026, 8, 25, 5, 50).getTime();
+  const relay = await relayWith({ clock: () => t });
+  const ana = await phone('six-early');
+  const ben = await phone('six-early');
+  for (const p of [ana, ben]) p.send({ t: 'arm', intent: 'hi' });
+  const { near: [toBen] } = await ana.until((v) => v.near.length === 1);
+  const { near: [toAna] } = await ben.until((v) => v.near.length === 1);
+  ana.send({ t: 'wave', handle: toBen.handle });
+  ben.send({ t: 'wave', handle: toAna.handle });
+  await ana.until((v) => v.matches.length === 1);
+  t = new Date(2026, 8, 25, 6, 0, 30).getTime();
+  const cai = await phone('six-early');
+  cai.send({ t: 'arm', intent: 'hi' });
+  await cai.until((v) => v.me.armed === 'hi');
+  let over = false;
+  cai.ws.on('message', (d) => { if (JSON.parse(String(d)).t === 'over') over = true; });
+  const told = [reply(ana, 'over'), reply(ben, 'over')];
+  t = new Date(2026, 8, 25, 6, 1).getTime();
+  relay.expire(t);
+  await Promise.all(told);
+  await pause(100);
+  assert.equal(over, false, 'tonight has only just begun for them');
+  assert.equal(relay.roomCount(), 1);
+  cai.send({ t: 'arm', intent: 'song' });
+  await cai.until((v) => v.me.armed === 'song');
+  // The room stayed for cai; ana joining it again finds no match from last night.
+  ana.view = null;   // her last view is from before six
+  ana.send({ t: 'join', venue: 'six-early', me: ana.me });
+  ana.send({ t: 'arm', intent: 'hi' });
+  const back = await ana.until((v) => v.me.armed === 'hi');
+  assert.deepEqual(back.matches, []);
+  close(ana, ben, cai);
+});
+
+test('a wristband away at 06:00 does not come back to last night\'s person', async () => {
   let t = new Date(2026, 8, 25, 5, 45).getTime();
   const relay = await relayWith({ clock: () => t });
   const { band, ana, ben } = await pairedWithWatcher('six-dropped');
@@ -224,8 +278,31 @@ test('a wristband that dropped a minute before 06:00 is not forgotten at 06:00: 
   t = new Date(2026, 8, 25, 5, 59).getTime();
   band.ws.close();
   await pause(100);
-  relay.expire(new Date(2026, 8, 25, 6, 1).getTime());
-  assert.equal(relay.bandCount(), 1, 'its record is kept for the hour it is allowed, as before');
+  t = new Date(2026, 8, 25, 6, 1).getTime();
+  relay.expire(t);
+  // Back with its secret, it waits for its owner's phone, as one the relay has no record of does.
+  const back = await wristband(62, { key: band.key, secret: band.secret });
+  assert.equal(back.show.kind, 'waiting');
+  close(back);
+});
+
+test('a wristband away when its room went, back before 06:00, goes back to letters at 06:00', async () => {
+  let t = new Date(2026, 8, 24, 23, 0).getTime();
+  const relay = await relayWith({ clock: () => t, graceMs: 100 });
+  const { band, ana, ben } = await pairedWithWatcher('six-roomless');
+  close(ana, ben);
+  await pause(100);
+  t = new Date(2026, 8, 24, 23, 10).getTime();
+  band.ws.close();
+  await pause(400);   // the grace runs out for both: the room has nobody in it, and goes
+  assert.equal(relay.roomCount(), 0);
+  t = new Date(2026, 8, 24, 23, 30).getTime();
+  const back = await wristband(62, { key: band.key, secret: band.secret });
+  assert.equal(back.show.kind, 'off', 'still theirs tonight: they can come back to it');
+  t = new Date(2026, 8, 25, 6, 1).getTime();
+  relay.expire(t);
+  await back.until((s) => s.kind === 'pairing');
+  close(back);
 });
 
 test('a wristband worn on with its phone gone stays paired to its person for the rest of the same night', async () => {

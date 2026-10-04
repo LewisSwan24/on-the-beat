@@ -17,7 +17,8 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
   laptop.
 - A laptop with this repository (the bands' console needs it: `pio device
   monitor` from `firmware/`), a power bank for the bands between sets, and
-  the venue's Wi-Fi name and password written down.
+  the name and password of the venue's network for the bands (one channel:
+  *Before doors*, step 3) written down.
 - The staff passcode for the venue's page, on paper, given only to the team
   (see *Before doors*).
 
@@ -47,12 +48,32 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
    staff page. Each team member signs in at `/staff` and taps **NOTIFY THIS
    DEVICE** (on an iPhone: add to Home Screen first).
 3. **Every band joins the venue's Wi-Fi** (console `ssid`/`pass`; kept across
-   restarts) and shows `(on it)`. One caveat from the README: a band hears
-   only bands on its own Wi-Fi channel, so access points spread over several
-   channels split the WHO'S NEAR lists into groups. Markers beacon on every
-   channel and are immune. If the venue's Wi-Fi is a phone hotspot, that is
-   one channel and one group.
-4. **No deploys after this point.** A deploy restarts the one machine
+   restarts) and shows `(on it)`. A band hears only bands on its own Wi-Fi
+   channel, so access points spread over several channels split the bands
+   into groups that never hear each other, and each keeps everyone in the
+   other groups listed: on three channels WHO'S NEAR stops shortening the
+   list for about two thirds of the room. Nobody is hidden by it; near just
+   stops working. So:
+   - **Ask the venue, days before, for a network for the bands on one
+     channel**: an SSID of their own on one channel, an access point of
+     their own for the night, or every point on one channel. The bands need
+     little bandwidth (a report every 10 s, a view on change). A phone
+     hotspot is one channel already.
+   - **Check it at doors**: on each band's console, `near` says `last listen
+     … channel N`. Every band should say the same N. Two numbers mean two
+     groups: move the odd ones to the bands' network, or note it in the
+     night's log.
+   - Markers beacon on every channel and need nothing here. Three ways round
+     a venue that cannot give one channel are drafted in
+     `docs/superpowers/specs/2026-10-04-near-channels-design.md`.
+4. **Tonight's cards**, on the staff page: close any card the night has no
+   room for, before doors rather than during them. LET'S DANCE! wants floor
+   space and a crowd that moves; a seated show or a packed floor is the
+   reason to close it. FIRST SONG? wants a headliner whose opener staff can
+   name when it starts; with nobody to name it, close it. SAY HI suits every
+   room. At least one card stays open; the page will not close the last.
+   What closing does is under *During the night — closing a card*.
+5. **No deploys after this point.** A deploy restarts the one machine
    (~5-60 s of downtime). It carries the night on, but nothing should ship
    mid-show: hold every `flyctl deploy` and `machine restart` until the room
    is empty or the operator says the show is over.
@@ -64,7 +85,7 @@ The shows — doors and set times, quiet corners to meet at, the set list — ar
 deploy, put a file of the same shape at `/data/shows.json` on the volume:
 fly.toml points the relay's `SHOWS` at it. The relay reads the shows only as it
 starts, so a change is a restart, and a *Before doors* job like any other
-(step 4 above): never mid-show.
+(step 5 above): never mid-show.
 
 1. On the laptop, edit a copy of `relay/shows.json` (or fetch the one on the
    volume: `flyctl ssh sftp get /data/shows.json -a on-the-beat`, which will
@@ -398,13 +419,54 @@ minutes of silence, and a paired band holds its person for an hour. If a
 list looks stale, reopening the app reconnects it; usually it reconnects by
 itself first.
 
+## During the night — closing a card
+
+Closing a card mid-show is allowed and quick, and it is felt: *Tonight's
+cards* on the staff page, **CLOSE**, then **CLOSE IT**.
+
+- Everyone showing that card goes off at once, and their phone says why:
+  "The venue closed LET'S DANCE for tonight." A phone open on one of its
+  screens goes home. The home screen lays out only the open cards.
+- Nobody can arm it again from a phone or a band. It lists nobody and takes
+  no new wave, like or dance back; with LET'S DANCE! closed, no clip goes on
+  the floor. Matches already made stay, with their numbers.
+- A band flashed with firmware from 4 Oct 2026 or later steps over closed
+  cards on SIDE. An
+  older band still steps onto one and shows `NOT SENT`, then goes back to
+  what it showed; that is the refusal, not a fault.
+- **OPEN** puts it back for everyone, and anyone can arm it again. Waves,
+  likes and dance backs from before it closed are still there.
+- Two staff screens see each other's changes as they happen. Closing waits
+  for **CLOSE IT**, and a question left open on one screen goes away when the
+  other changes a card.
+
+Closed cards last the night, a restart included, and go at 06:00 with the
+rest of what staff said.
+
+## During the night — naming the first song
+
+When the headliner's first song starts: *First song* on the staff page, tap
+the track (or type it), **NAME IT**, then **SAY IT**.
+
+- Wait until it is recognisable. The moment **SAY IT** goes, every phone
+  shows the answer and every band whose person called it plays a sound and
+  flashes for a minute. **TAKE BACK** clears the answer from phones and
+  bands, but cannot unplay a sound that has already gone.
+- **NOT YET**, or changing the track, drops the question; nothing is sent.
+- A misspelling is fine: picks match whatever their case, accents and
+  punctuation, and **NAME IT INSTEAD** with a better spelling does not tell
+  anyone a second time.
+
+The answer lasts the night, a restart included, and goes at 06:00.
+
 ## If the relay must restart mid-show
 
 `flyctl machine restart -a on-the-beat` (or a deploy, which *Before doors*
 ruled out): ~5-60 s down, then **the night carries on** — people keep their
 rooms, cards, handles, blocks and matches; staff stay signed in with
-tonight's reports; a wristband goes straight back to its person. Lost: the
-clips on LET'S DANCE!, and any pairing still waiting for its YES. Bands
+tonight's reports; a wristband goes straight back to its person; the clips
+on LET'S DANCE! come back from `/data/night-clips/`. Lost: a clip sent in
+the last moment before the stop, and any pairing still waiting for its YES. Bands
 reconnect by themselves; phones reconnect on the next look. The log says
 `night: carried on from /data/night.json — …` with the counts.
 
@@ -416,8 +478,8 @@ sign-in.
 
 ## After
 
-- The night ends by itself at **06:00 venue time**: reports go, staff pages
-  sign out, and the night file is removed once it holds nothing.
+- The night ends by itself at **06:00 venue time**: reports go, every card
+  is open again, staff pages sign out, and the night file is removed once it holds nothing.
 - Collect bands and markers. `marker off` on a marker's console turns it back
   into a wristband (it restarts as one). Charge everything: nobody has run a
   band's battery to empty yet (README, *What is not done*), so treat a night

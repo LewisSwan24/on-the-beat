@@ -6,7 +6,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,13 +67,14 @@ async function logged(fn) {
  * change between a stop and a start.
  */
 function night({ saveEveryMs = 3_600_000, graceMs, file, keys = false } = {}) {
-  const n = { clock: { t: NINE_PM }, file: file ?? join(dir, 'night-' + (files += 1) + '.json'), relay: null, open: false, codes: CODES };
+  const n = { clock: { t: NINE_PM }, file: file ?? join(dir, 'night-' + (files += 1) + '.json'), relay: null, open: false, codes: CODES, opts: {} };
   n.on = helpers(() => n.relay.port);
   n.start = async () => {
     n.relay = await createRelay({
       port: 0, host: '127.0.0.1', root, clock: () => n.clock.t, nightTz: TZ, staffCodes: n.codes,
       nightFile: n.file, saveEveryMs, ...(graceMs ? { graceMs } : {}),
       ...(keys ? { pushKeysFile: n.file.replace(/\.json$/, '-keys.json') } : {}),
+      ...n.opts,
     });
     n.open = true;
     return n.relay;
@@ -297,6 +298,135 @@ test('a restart is logged in counts, never a name, a contact or an id', async ()
   const said = await logged(() => n.restart());
   assert.ok(said.some((l) => /^night: carried on from .+ — 1 rooms, 1 people/.test(l)), said.join('\n'));
   for (const secret of [ana.me, 'Ana', '@ana', 'restart-log']) assert.equal(said.join('\n').includes(secret), false, secret + ' was logged');
+});
+
+// ---------- clips: their video in files beside the night ----------
+
+const clipsOf = (n) => n.file.replace(/\.json$/, '') + '-clips';
+const video = (n, venue, ref) => fetch('http://127.0.0.1:' + n.relay.port + '/clip/' + venue + '/' + ref)
+  .then(async (r) => (r.status === 200 ? Buffer.from(await r.arrayBuffer()) : r.status));
+
+/** Ana on the floor with `floor`, and Ben's dance back to her with `back`: both seen. */
+async function danced(n, venue, floor, back) {
+  const ana = await n.on.phone(venue);
+  const ben = await n.on.phone(venue);
+  ana.send({ t: 'clip', mime: 'video/webm', data: floor.toString('base64') });
+  const [onFloor] = (await ben.until((v) => v.floor.length === 1)).floor;
+  ben.send({ t: 'clip', mime: 'video/webm', data: back.toString('base64'), to: onFloor.handle });
+  await ana.until((v) => v.floor.some((c) => c.toYou));
+  return { ana, ben };
+}
+
+test('a clip on the floor and a dance back come back after a restart, byte for byte', async () => {
+  const n = night();
+  await n.start();
+  const [floor, back] = [randomBytes(3000), randomBytes(2000)];
+  const { ana, ben } = await danced(n, 'restart-clips', floor, back);
+  await n.restart();
+  const benBack = await n.on.phone('restart-clips', { me: ben.me });
+  const anaBack = await n.on.phone('restart-clips', { me: ana.me });
+  const [onFloor] = (await benBack.until((v) => v.floor.length === 1)).floor;
+  assert.deepEqual(await video(n, 'restart-clips', onFloor.ref), floor);
+  const toHer = (await anaBack.until((v) => v.floor.some((c) => c.toYou))).floor.find((c) => c.toYou);
+  assert.deepEqual(await video(n, 'restart-clips', toHer.ref), back);
+});
+
+test('a clip whose file is gone comes back as none, and every file no clip uses is cleared at start', async () => {
+  const n = night();
+  await n.start();
+  const { ana, ben } = await danced(n, 'restart-clips-lost', randomBytes(1500), randomBytes(1500));
+  await n.stop();
+  const dir = clipsOf(n);
+  const [first, second] = readdirSync(dir).sort();
+  rmSync(join(dir, first));                                          // one video lost
+  writeFileSync(join(dir, 'a'.repeat(24)), 'from another night');   // a file nobody uses
+  writeFileSync(join(dir, second + '.part'), 'a write cut short');
+  await n.start();
+  assert.deepEqual(readdirSync(dir), [second], 'only the one still in use is left');
+  const anaBack = await n.on.phone('restart-clips-lost', { me: ana.me });
+  const benBack = await n.on.phone('restart-clips-lost', { me: ben.me });
+  await pause(100);
+  assert.equal(anaBack.view.floor.length + benBack.view.floor.length, 1, 'the clip that lost its video is shown nowhere');
+});
+
+test('a clip past its hour is not brought back, and its file goes', async () => {
+  const n = night();
+  await n.start();
+  await danced(n, 'restart-clips-old', randomBytes(1000), randomBytes(1000));
+  await n.stop();
+  n.clock.t += 3_600_000;
+  await n.start();
+  assert.deepEqual(readdirSync(clipsOf(n)), []);
+});
+
+test("after 06:00 the night's file holds nothing of last night's people, those still in and those who left alike", async () => {
+  const n = night();
+  await n.start();
+  const ana = await n.on.phone('restart-six');
+  const ben = await n.on.phone('restart-six');
+  for (const p of [ana, ben]) p.send({ t: 'sound', on: true });
+  const left = n.on.reply(ben, 'left');
+  ben.send({ t: 'leave' });
+  await left;
+  n.clock.t = Date.UTC(2026, 8, 29, 20, 0, 30);   // 06:00:30 on 30 Sep at the venue
+  const cai = await n.on.phone('restart-six');
+  cai.send({ t: 'sound', on: true });
+  await pause(100);
+  const over = n.on.reply(ana, 'over');
+  n.relay.expire(n.clock.t + 30_000);
+  await over;
+  await n.stop();
+  const [room] = n.saved().rooms;
+  assert.deepEqual(room.heard.map(([id]) => id), [personOf(cai.me)]);
+  assert.deepEqual(room.sound.map(([id]) => id), [personOf(cai.me)]);
+  assert.deepEqual(room.room.tombs, [], 'ben left before six, and goes with it');
+});
+
+test('a clip replaced, or gone at its hour, takes its file with it', async () => {
+  const n = night();
+  await n.start();
+  const ana = await n.on.phone('restart-clips-swap');
+  for (let i = 0; i < 3; i += 1) ana.send({ t: 'clip', mime: 'video/webm', data: randomBytes(800).toString('base64') });
+  await ana.until((v, p) => p.view.me.clip);
+  await until(() => readdirSync(clipsOf(n)).length === 1);
+  n.relay.expire(n.clock.t + 3_600_000);
+  await until(() => readdirSync(clipsOf(n)).length === 0);
+});
+
+test("past every room's cap together, the newest clips come back and the oldest stay behind", async () => {
+  const n = night();
+  await n.start();
+  const ana = await n.on.phone('restart-clips-cap');
+  const ben = await n.on.phone('restart-clips-cap');
+  const cai = await n.on.phone('restart-clips-cap');
+  ana.send({ t: 'clip', mime: 'video/webm', data: randomBytes(1000).toString('base64') });
+  await cai.until((v) => v.floor.length === 1);
+  n.clock.t += 1000;
+  const newest = randomBytes(1000);
+  ben.send({ t: 'clip', mime: 'video/webm', data: newest.toString('base64') });
+  await cai.until((v) => v.floor.length === 2);
+  await n.stop();
+  n.opts = { allClipsMax: 1500 };   // room for one of them
+  await n.start();
+  const caiBack = await n.on.phone('restart-clips-cap', { me: cai.me });
+  for (const p of [ana, ben]) await n.on.phone('restart-clips-cap', { me: p.me });
+  const { floor } = await caiBack.until((v) => v.floor.length === 1);
+  assert.deepEqual(await video(n, 'restart-clips-cap', floor[0].ref), newest);
+});
+
+test('a night file with nowhere beside it for clips still carries the night, with its clips in memory only', async () => {
+  const n = night();
+  await n.start();
+  await n.on.phone('restart-clips-none');
+  await n.stop();
+  rmSync(clipsOf(n), { recursive: true, force: true });
+  writeFileSync(clipsOf(n), 'a file where the folder would be');
+  const said = await logged(() => n.start());
+  assert.ok(said.includes('clips: in memory only (no folder beside the night file)'), said.join('\n'));
+  const ana = await n.on.phone('restart-clips-none');
+  ana.send({ t: 'clip', mime: 'video/webm', data: randomBytes(500).toString('base64') });
+  await ana.until((v) => v.me.clip);
+  assert.equal(n.relay.save(), 'written');
 });
 
 // ---------- §3: wristbands and staff ----------

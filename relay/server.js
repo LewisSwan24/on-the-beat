@@ -22,7 +22,7 @@ import { createMeter, formatLoad, startLine } from './load.js';
 import { nightOf } from './night.js';
 import { originAllowed } from './origin.js';
 import { checkCode, entryPrint, isEntry } from './staff.js';
-import { openNight } from './store.js';
+import { openClips, openNight } from './store.js';
 import { createPusher, isPushService, loadKeys, subscriptionOf } from './push.js';
 
 export const WS_PATH = '/api/ws';
@@ -263,6 +263,14 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   const printOf = (key) => (staffEntries.has(key) ? entryPrint(staffEntries.get(key)) : null);
   // The night's file, if it has one (docs/superpowers/specs/2026-09-29-restart-persistence-design.md §2).
   const store = nightFile ? openNight(nightFile) : null;
+  // Tonight's clips, one file each in a folder beside it: night.json's are in night-clips/.
+  const disk = store ? openClips(nightFile.replace(/\.json$/, '') + '-clips') : null;
+  if (store && !disk) console.log('clips: in memory only (no folder beside the night file)');
+  /** A room's clips: kept on disk as they come, and taken off it as they go, whichever way they go. */
+  class Clips extends Map {
+    set(ref, c) { super.set(ref, c); disk?.write(ref, c.buf); return this; }
+    delete(ref) { const had = super.delete(ref); if (had) disk?.remove(ref); return had; }
+  }
   const saved = readNight();
   const here = fileURLToPath(new URL('..', import.meta.url));
   const dist = root ?? join(here, 'dist');
@@ -325,7 +333,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
       // sound: each person's sound switch, as their phone last said it. Leaving forgets it; the grace does not.
       // The room reads the relay's clock: a wave's number is the time it was made, so it only goes up.
-      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), now, ledger: handles }), sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(), sound: new Map(), staff: new Set() });
+      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), now, ledger: handles }), sockets: new Set(), clips: new Clips(), left: new Map(), heard: new Map(), sound: new Map(), staff: new Set() });
     }
     return rooms.get(key);
   }
@@ -515,6 +523,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const room = rooms.get(b.key)?.room;
     if (!room?.has(b.person)) return refuse('no room');
     if (m.basis !== room.revOf(b.person)) return refuse('changed');
+    // A card the venue closed tonight. A band reads any no but `changed` as NOT SENT.
+    if (m.intent && room.closed()?.cards.includes(m.intent)) return refuse('closed');
     if (now() - b.setAt < SET_GAP_MS) return refuse('too fast');
     b.setAt = now();
     room.setInvisible(b.person, false, 'band');
@@ -772,7 +782,10 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
    */
   function keepClip(r, id, mime, data, slot) {
     const buf = Buffer.from(String(data || ''), 'base64');
-    if (!buf.length || buf.length > CLIP_MAX || !/^video\/(webm|mp4)/.test(String(mime))) return null;
+    // Kept as one of the two types and nothing of what followed: it is served as a header, where a character a header
+    // cannot hold would throw out of the request and stop the relay.
+    const type = /^video\/(webm|mp4)(?:;|$)/.exec(String(mime));
+    if (!buf.length || buf.length > CLIP_MAX || !type) return null;
     const drop = (room, ref, c) => {
       room.clips.delete(ref);
       if (c.slot === 'floor' && room.room.has(c.by)) {
@@ -789,7 +802,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       all -= c.buf.length;
     }
     const ref = randomBytes(12).toString('hex');
-    r.clips.set(ref, { mime: String(mime).split(';')[0], buf, by: id, slot, at: now() });
+    r.clips.set(ref, { mime: 'video/' + type[1], buf, by: id, slot, at: now() });
     return ref;
   }
 
@@ -892,10 +905,19 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (r?.staff.has(ws) && r.room.setTimes(m.times)) push(r);
   }
 
-  /** What staff said for the venue (its opener, notice and times), to its signed-in staff sockets not yet told it. */
+  /**
+   * A staff socket closes cards for tonight, or opens them all again with []: every phone there stops laying them
+   * out, and anyone showing one goes off. The room takes only a list of its cards that leaves one open.
+   */
+  function closedBy(ws, m) {
+    const r = rooms.get(ws.staff.key);
+    if (r?.staff.has(ws) && r.room.setClosed(m.cards)) push(r);
+  }
+
+  /** What staff said for the venue (its opener, notice, times and closed cards), to its staff sockets not yet told it. */
   function saidTo(r, sockets = r.staff) {
     if (!sockets.size) return;
-    const said = { opener: r.room.opener(), notice: r.room.notice(), times: r.room.times() };
+    const said = { opener: r.room.opener(), notice: r.room.notice(), times: r.room.times(), closed: r.room.closed() };
     for (const [t, value] of Object.entries(said)) {
       const text = JSON.stringify({ t, [t]: value });
       for (const ws of sockets) {
@@ -988,13 +1010,14 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // A phone of theirs was heard: any message, pings included (rule 2).
     if (ws.r && ws.me) ws.r.heard.set(ws.me, now());
     if (m.t === 'ping') { ws.send('{"t":"pong"}'); return; }
-    // A signed-in staff socket only marks reports, names the opener, sends a notice, moves the times, hands over its
-    // device's subscription, or signs out: what a phone or a wristband would say is ignored.
+    // A signed-in staff socket only marks reports, names the opener, sends a notice, moves the times, closes cards,
+    // hands over its device's subscription, or signs out: what a phone or a wristband would say is ignored.
     if (ws.staff) {
       if (m.t === 'handled') handledBy(ws, m);
       if (m.t === 'opener') openerBy(ws, m);
       if (m.t === 'notice') noticeBy(ws, m);
       if (m.t === 'times') timesBy(ws, m);
+      if (m.t === 'closed') closedBy(ws, m);
       if (m.t === 'push') pushFrom(ws, m);
       if (m.t === 'signout') signOutFrom(ws);
       return;
@@ -1090,9 +1113,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         const to = m.to ? String(m.to) : null;
         const ref = keepClip(r, me, m.mime, m.data, to ? 'to:' + to : 'floor');
         if (!ref) { ws.send(JSON.stringify({ t: 'error', why: 'clip refused' })); return; }
-        if (!to) room.postClip(me, ref);
-        else if (room.danceBack(me, to, ref) === false) {
-          // They are gone, blocked or invisible. Keep nothing for nobody.
+        if (!to ? room.postClip(me, ref) === false : room.danceBack(me, to, ref) === false) {
+          // They are gone, blocked or invisible, or LET'S DANCE! is closed tonight. Keep nothing for nobody.
           r.clips.delete(ref);
           ws.send(JSON.stringify({ t: 'error', why: 'clip refused' }));
           return;
@@ -1165,7 +1187,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     }).end(readFileSync(file));
   }
 
-  const server = createServer((req, res) => {
+  /** One request, answered. What it throws is caught below it, and costs that request alone. */
+  function serve(req, res) {
     // On every response, a 404, a 304 and a 503 included (§4). HSTS only where the request came in over https, as
     // Fly's proxy says: the relay itself never speaks TLS.
     res.setHeader('x-content-type-options', 'nosniff');
@@ -1176,6 +1199,17 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' }).end(showsNow());
     } else if (url.startsWith('/clip/')) serveClip(req, res, url);
     else serveStatic(res, url);
+  }
+
+  // A request that throws is answered 500, or cut off if its answer had begun, and the relay goes on: one request is
+  // never everyone's night. The log says what was thrown, never the address asked for (it can hold a clip's ticket).
+  const server = createServer((req, res) => {
+    try {
+      serve(req, res);
+    } catch (e) {
+      console.log('http: a request threw (' + (e.code || e.name) + ')');
+      try { if (res.headersSent) res.destroy(); else res.writeHead(500).end(); } catch { res.destroy(); }
+    }
   });
 
   /**
@@ -1235,7 +1269,14 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
       let m;
       try { m = JSON.parse(String(data)); } catch { return; }
-      if (m && typeof m.t === 'string') handle(ws, m);
+      if (!m || typeof m.t !== 'string') return;
+      // A message that throws closes its own socket, as a socket that drops does, and the relay goes on.
+      try {
+        handle(ws, m);
+      } catch (e) {
+        console.log('socket: a ' + (/^[a-z]{1,16}$/.test(m.t) ? m.t : 'message') + ' threw (' + (e.code || e.name) + ')');
+        ws.terminate();
+      }
     });
     ws.on('close', () => {
       if (ws.staff) {
@@ -1318,7 +1359,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // A venue with a staff page keeps tonight's reports for its team once everyone has gone; 06:00 clears them.
     if (staffEntries.has(r.key) && r.room.hasReports()) return;
     // And what its staff said for tonight, so times moved before doors are there when the doors open.
-    if (r.room.opener() || r.room.notice() || r.room.times()) return;
+    if (r.room.opener() || r.room.notice() || r.room.times() || r.room.closed()) return;
     for (const b of bands.values()) if (b.key === r.key && b.ws) return;
     rooms.delete(r.key);
   }
@@ -1337,13 +1378,41 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       bands.delete(b.id);
     }
     // Someone held only by their wristband leaves an hour after a phone of theirs
-    // was last heard, or when the night ends at 06:00, whichever is first.
+    // was last heard, or when the night ends at 06:00 (below), whichever is first.
     for (const r of [...rooms.values()]) {
       for (const me of r.room.ids()) {
         if (phoneOf(r, me) || r.left.has(me) || !bandOf(r.key, me)?.ws) continue;
         const heard = r.heard.get(me) ?? 0;
-        if (at - heard >= bandAloneMs || night(heard) !== night(at)) leaveRoom(r, me);
+        if (at - heard >= bandAloneMs) leaveRoom(r, me);
       }
+    }
+    // 06:00 ends the night for everyone still in a room from it, phone open or not. A page frozen in a pocket still
+    // answers the socket's pings, so an open phone would otherwise keep last night's person, their matches and their
+    // wristband in tonight's room for as long as it stayed open. Their phones are told; the app goes back to choosing a
+    // venue, as it does after leaving. Those who left before 06:00 are forgotten with them.
+    for (const r of rooms.values()) {
+      const lastNight = (t) => night(t) !== night(at);
+      const over = r.room.ids().filter((me) => lastNight(r.room.joinedAt(me)));
+      for (const me of over) {
+        for (const s of [...r.sockets]) {
+          if (s.me !== me) continue;
+          r.sockets.delete(s);
+          s.r = null;
+          s.send(JSON.stringify({ t: 'over' }));
+        }
+        stopGrace(r, me);
+        r.room.forgetPerson(me);
+      }
+      const forgotten = [...over, ...r.room.forgetLeft(lastNight)];
+      if (!forgotten.length) continue;
+      for (const me of forgotten) {
+        for (const [ref, c] of r.clips) if (c.by === me) r.clips.delete(ref);
+        for (const kept of [r.heard, r.sound]) kept.delete(me);
+        // Worn or away: a wristband away now comes back to its owner's phone or to letters, never to last night's person.
+        const theirs = bandOf(r.key, me);
+        if (theirs) unpairBand(theirs);
+      }
+      push(r);
     }
     // A wristband still worn when the night ends, with no phone of its person's here and none heard since, goes back to
     // four letters, as one waiting for its owner does. Otherwise it stays paired to last night's person for as long as it
@@ -1352,7 +1421,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       if (!b.ws || !b.person || b.waiting) continue;
       const r = rooms.get(b.key);
       if (r && phoneOf(r, b.person)) continue;
-      const heard = r?.heard.get(b.person);
+      // With its room gone, it was away when the room went: the last known of it is when it went.
+      const heard = r?.heard.get(b.person) ?? (b.goneAt || undefined);
       if (heard === undefined || night(heard) === night(at)) continue;
       unpairBand(b);
     }
@@ -1383,7 +1453,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         ws.close(4004, 'expired');
       }
       if (r.room.forgetReports((t) => night(t) !== tonight)) push(r);
-      // What staff said for last night (its opener, a notice, moved times) is not tonight's.
+      // What staff said for last night (its opener, a notice, moved times, closed cards) is not tonight's.
       if (r.room.letGo((t) => night(t) !== tonight)) push(r);
     }
     for (const r of [...rooms.values()]) gcRoom(r);
@@ -1395,7 +1465,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   function dumpNight() {
     return {
       staffKey: staffKey.toString('hex'),
-      rooms: [...rooms.values()].map((r) => ({ key: r.key, room: r.room.dump(), heard: [...r.heard], sound: [...r.sound] })),
+      rooms: [...rooms.values()].map((r) => ({
+        key: r.key, room: r.room.dump(), heard: [...r.heard], sound: [...r.sound],
+        // The video is in its own file; what the night needs to serve it again is here.
+        clips: [...r.clips].map(([ref, c]) => [ref, { mime: c.mime, by: c.by, slot: c.slot, at: c.at }]),
+      })),
       bands: [...bands.values()].filter((b) => b.person || b.waiting).map((b) => ({
         id: b.id, old: b.old, key: b.key, person: b.person, secretHash: b.secretHash, everWs: b.everWs, live: !!b.ws,
         goneAt: b.goneAt, claimedAt: b.claimedAt, waiting: b.waiting, waitingAt: b.waitingAt, quiet: b.quiet, battery: b.battery,
@@ -1441,6 +1515,42 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   }
 
   /**
+   * Each saved room's clips whose video is on disk whole, within the hour and the caps, as a Clips for that room. A clip
+   * whose file is missing, cut short or too big comes back as no clip at all; past every room's cap together, the oldest
+   * stay behind. Nothing here writes: the files are already there.
+   */
+  function clipsBack(saved) {
+    const all = saved.flatMap((e, i) => (Array.isArray(e.clips) ? e.clips : []).flatMap((pair) => {
+      const [ref, c] = Array.isArray(pair) ? pair : [];
+      if (!disk || typeof ref !== 'string' || !/^[a-f0-9]{24}$/.test(ref) || !c || typeof c.by !== 'string') return [];
+      if (!/^video\/(webm|mp4)$/.test(c.mime) || !(c.slot === 'floor' || /^to:./.test(c.slot))) return [];
+      if (!Number.isFinite(c.at) || now() - c.at >= CLIP_TTL_MS) return [];
+      let buf = null;
+      try { buf = disk.read(ref); } catch { /* unreadable is as good as gone */ }
+      return buf?.length && buf.length <= CLIP_MAX ? [[i, ref, { mime: c.mime, buf, by: c.by, slot: c.slot, at: c.at }]] : [];
+    }));
+    const each = saved.map(() => new Clips());
+    let bytes = 0;
+    for (const [i, ref, c] of all.sort((a, b) => b[2].at - a[2].at)) {
+      if (bytes + c.buf.length > allClipsMax) continue;
+      bytes += c.buf.length;
+      Map.prototype.set.call(each[i], ref, c);   // already on disk: not written again
+    }
+    return each;
+  }
+
+  /** At start: every file in the clips folder that no clip carried on is using, from a stop cut short or another night. */
+  function clearClips() {
+    if (!disk) return;
+    const using = new Set([...rooms.values()].flatMap((r) => [...r.clips.keys()]));
+    try {
+      for (const name of disk.names()) if (!using.has(name)) disk.removeName(name);
+    } catch (e) {
+      console.log('clips: cannot clear the folder (' + (e.code || e.name) + ')');   // never a reason not to start
+    }
+  }
+
+  /**
    * The night read at start (§2), built whole and only then taken: a file that fails half way leaves nothing
    * behind. No socket is open yet, so everyone starts the usual grace from now, and a wristband that was worn
    * counts as gone from now: it could not reach a relay that was not there.
@@ -1449,10 +1559,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     let built;
     let ended = 0;   // sign-ins made under another entry than their venue's now, or under none on record (§1)
     try {
+      const back = clipsBack(saved.rooms);
       built = {
-        rooms: saved.rooms.map((e) => ({
-          key: String(e.key), room: createRoom({ spots: spotsFor(e.key), now, restore: e.room, ledger: handles }),
-          sockets: new Set(), clips: new Map(), left: new Map(), heard: new Map(e.heard), sound: new Map(e.sound), staff: new Set(),
+        rooms: saved.rooms.map((e, i) => ({
+          key: String(e.key), room: createRoom({ spots: spotsFor(e.key), now, restore: e.room, ledger: handles, clipKept: (ref) => back[i].has(ref) }),
+          sockets: new Set(), clips: back[i], left: new Map(), heard: new Map(e.heard), sound: new Map(e.sound), staff: new Set(),
         })),
         bands: saved.bands.map((e) => Object.assign(makeBand(String(e.id), null), {
           old: !!e.old, key: e.key, person: e.person, secretHash: e.secretHash, everWs: !!e.everWs,
@@ -1518,6 +1629,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   const keeper = store ? setInterval(() => save(), saveEveryMs) : null;
 
   if (saved) restoreNight(saved);
+  clearClips();
 
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({
@@ -1561,7 +1673,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
           clearTimeout(r.due);
         }
         for (const ws of wss.clients) ws.terminate();
-        wss.close(() => server.close(() => done()));
+        // A clip still being written lands before the relay is called closed: the next start looks for it.
+        wss.close(() => server.close(() => Promise.resolve(disk?.settled()).finally(() => done())));
       }),
     }));
   });

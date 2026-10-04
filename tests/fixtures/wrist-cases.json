@@ -1460,6 +1460,32 @@
         { "at": "2000", "show": "SONG", "rev": 3, "with": { "calledIt": { "n": 1.5 } } },
         { "at": "3000", "show": "QUIET", "rev": 4, "with": { "calledIt": { "n": 1791000000000 } } }
       ]
+    },
+    {
+      "name": "a card the venue closed tonight is stepped over: from OFF, SAY HI, then LET'S DANCE!, then OFF; one chosen is sent",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "OFF", "rev": 3, "with": { "closed": "song" } },
+        { "at": "1000", "press": 2, "face": { "small": "SIDE TO CHANGE" } },
+        { "at": "2000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT", "ink": "hi" } },
+        { "at": "3000", "press": 2, "face": { "big": "LET'S DANCE!", "small": "SIDE: NEXT", "ink": "dance" } },
+        { "at": "4000", "press": 2, "face": { "big": "OFF", "small": "SIDE: NEXT" } },
+        { "at": "5000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT", "ink": "hi" } },
+        { "at": "6000", "press": 2, "face": { "big": "LET'S DANCE!", "small": "SIDE: NEXT", "ink": "dance" } },
+        { "at": "6100+COMMIT_MS", "sent": [{ "t": "set", "intent": "dance", "basis": 3 }], "face": { "big": "LET'S DANCE!", "small": "SENDING" } }
+      ]
+    },
+    {
+      "name": "out of NOT NOW the first step is the first card the venue has open",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "QUIET", "rev": 6, "with": { "closed": "hi" } },
+        { "at": "1000", "press": 2, "face": { "big": "NOT NOW", "small": "SIDE TO CHANGE" }, "downSounds": [] },
+        { "at": "2000", "press": 2, "face": { "big": "FIRST SONG?", "small": "HOLD SIDE TO SHOW", "ink": "song" }, "downSounds": [] },
+        { "at": "3000", "key2": "down" },
+        { "at": "3000+HOLD_MS", "sent": [{ "t": "set", "intent": "song", "basis": 6 }], "face": { "big": "FIRST SONG?", "small": "SENDING" } },
+        { "at": "3000+HOLD_MS", "key2": "up" }
+      ]
     }
   ]
 }

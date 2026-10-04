@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { ServerResponse } from 'node:http';
 import WebSocket from 'ws';
 import { createRelay, WS_PATH, BAND_ALONE_MS, bandIdOf, personOf, venueKey } from '../relay/server.js';
 import { helpers, newKey, pause } from './relay-harness.js';
@@ -82,6 +83,62 @@ test('leaving the venue takes you out of the room straight away; a dropped socke
   await ben.until((v) => v.near.length === 1);
   await new Promise((r) => setTimeout(r, 300));
   assert.equal(ben.view.near.length, 1, 'a locked screen is not leaving: cai stays for the grace period');
+  close(ana, ben);
+});
+
+test('a request that throws is answered 500, and the relay goes on', async () => {
+  const real = ServerResponse.prototype.writeHead;
+  let once = true;
+  ServerResponse.prototype.writeHead = function (...args) {
+    if (once && this.req?.url === '/api/shows') { once = false; throw new TypeError('thrown for the test'); }
+    return real.apply(this, args);
+  };
+  try {
+    assert.equal((await fetch(url('/api/shows'), { signal: AbortSignal.timeout(2000) })).status, 500);
+  } finally {
+    ServerResponse.prototype.writeHead = real;
+  }
+  assert.equal((await fetch(url('/api/shows'))).status, 200);
+});
+
+test('a message that throws closes its own socket, and the relay goes on', async () => {
+  const ana = await phone('throws');
+  const ben = await phone('throws');
+  const real = WebSocket.prototype.send;
+  let once = true;
+  WebSocket.prototype.send = function (data, ...rest) {
+    if (once && String(data).includes('clip refused')) { once = false; throw new TypeError('thrown for the test'); }
+    return real.call(this, data, ...rest);
+  };
+  const closed = new Promise((resolve, reject) => {
+    ana.ws.once('close', resolve);
+    setTimeout(() => reject(new Error('the socket that threw was left open')), 2000);
+  });
+  try {
+    ana.send({ t: 'clip', mime: 'image/png', data: randomBytes(64).toString('base64') });
+    await closed;
+  } finally {
+    WebSocket.prototype.send = real;
+  }
+  ben.send({ t: 'arm', intent: 'hi' });
+  await ben.until((v) => v.me.armed === 'hi');
+  const cai = await phone('throws');
+  await cai.until((v) => v.near.length === 1, 3000);
+  close(ben, cai);
+});
+
+test('a clip is kept only as video/webm or video/mp4, so its served type is one of the two and nothing more', async () => {
+  const ana = await phone('mime-guard');
+  const ben = await phone('mime-guard');
+  for (const mime of ['video/webm' + String.fromCodePoint(13, 10) + 'x-said: so', 'video/mp4x', 'video/webm codecs', 'video/webmx;codecs=vp8']) {
+    const refused = reply(ana, 'error');
+    ana.send({ t: 'clip', mime, data: randomBytes(64).toString('base64') });
+    assert.equal((await refused).why, 'clip refused', JSON.stringify(mime));
+  }
+  ana.send({ t: 'clip', mime: 'video/mp4; codecs="avc1"', data: randomBytes(64).toString('base64') });
+  const { floor: [tile] } = await ben.until((v) => v.floor.length === 1);
+  const res = await fetch(url('/clip/mime-guard/' + tile.ref));
+  assert.equal(res.headers.get('content-type'), 'video/mp4');
   close(ana, ben);
 });
 

@@ -28,3 +28,9 @@ html, body { background: var(--ink-0); }
 .staff-times { border-color: var(--line-2); }
 .staff-time-row { display: grid; grid-template-columns: 5.5em minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
 .staff-time-row .staff-input { height: 44px; }
+.staff-card-row { align-items: center; justify-content: space-between; padding: 6px 0; }
+.staff-card-row > .body { min-width: 7.5em; }
+.staff-card-row > .small { flex: 1; color: var(--text-2); }
+
+/* Read aloud, not shown: what the relay took (Staff.jsx Said). */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

@@ -5,7 +5,7 @@ import { pairUrl } from '../lib/pairing.js';
 import { qrMatrix, qrPath } from '../lib/qr.js';
 import { toHex } from '../lib/sha256.js';
 import { createSpeaker } from '../lib/speaker.js';
-import { FLASH_COLOURS, HOLD_MS, WAKE_MS, createWrist } from '../lib/wrist.js';
+import { FLASH_COLOURS, HOLD_MS, WAKE_MS, createWrist, lit as litFace } from '../lib/wrist.js';
 import { Back, Ghost, Icon } from '../ui.jsx';
 
 /**
@@ -15,7 +15,7 @@ import { Back, Ghost, Icon } from '../ui.jsx';
 export function BandFace({ show, awake, battery, scale = 2, pairAt = null }) {
   const s = show || { kind: 'off' };
   const hue = HUE[s.intent];
-  const lit = hue && (s.kind === 'hi' || s.kind === 'song' || s.kind === 'dance' || s.kind === 'meet');
+  const lit = litFace(s);
   const bg = s.kind === 'test' ? '#FFFFFF'
     : lit ? `radial-gradient(120% 90% at 50% 38%, ${hue.c} 0%, ${hue.g} 100%)` : '#000000';
   return (

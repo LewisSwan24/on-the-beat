@@ -102,3 +102,22 @@ test("a tap's seq is above the last one and never behind the clock", () => {
   assert.equal(nextSeq(100, 50), 101);
   assert.equal(nextSeq(100, 5000), 5000);
 });
+
+test('a card the venue closed tonight: off, off its screen, told why, and with no UNPAIR — the wrist did nothing', () => {
+  const f = follow(phone({ armed: 'dance', screen: 'floor' }), view({ armed: null, by: 'staff' }));
+  assert.deepEqual([f.armed, f.screen, f.clearStack], [null, 'home', true]);
+  assert.deepEqual(f.toast, { text: FOLLOW_SAY.closed('dance'), unpair: false });
+  assert.equal(f.toast.text, "The venue closed LET'S DANCE for tonight.");
+  assert.equal(follow(phone({ armed: null }), view({ armed: null, by: 'staff' })).toast, null, 'nothing was on');
+});
+
+test('on a screen of a card the venue closed, armed or not, the phone goes home; a screen of an open card stays', () => {
+  const cards = ['hi', 'song'];
+  const idle = follow(phone({ armed: null, screen: 'floor' }), { ...view({ armed: null }), cards });
+  assert.deepEqual([idle.screen, idle.clearStack, idle.toast], ['home', true, null]);
+  const open = follow(phone({ armed: null, screen: 'wall' }), { ...view({ armed: null }), cards });
+  assert.deepEqual([open.screen, open.clearStack], ['wall', false]);
+  const quiet = follow(phone({ armed: null, screen: 'floor' }), { ...view({ armed: null, invisible: true }), cards });
+  assert.equal(quiet.screen, 'quiet', 'NOT NOW still wins');
+  assert.equal(follow(phone({ armed: null, screen: 'floor' }), view({ armed: null })).screen, 'floor', 'a view that names no cards closes none');
+});

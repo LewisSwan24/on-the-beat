@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoom, BANDS, MARKS, HEARD_MS } from '../relay/room.js';
+import { createRoom, closedOf, BANDS, MARKS, HEARD_MS } from '../relay/room.js';
 
 let channel = 1;
 /**
@@ -262,6 +262,85 @@ test('NOT NOW: an invisible person is in nobody\'s lists and sees nobody', () =>
   assert.deepEqual(room.viewFor('ana').near, []);
   room.setInvisible('ana', false);
   assert.equal(room.viewFor('ben').wall.length, 1, 'and it comes back only when she turns it on');
+});
+
+test('a yes needs what its card asks of the one it is for: a pick to like, a dance to dance back to', () => {
+  const { room, handleOf } = night();
+  room.arm('cai', 'hi');   // so ana and ben have a handle for cai, who has no pick and has not danced
+  const cai = handleOf('ana', 'cai');
+  assert.ok(cai);
+  assert.equal(room.like('ana', cai), false, 'cai has no pick to like');
+  assert.equal(room.danceBack('ana', cai, 'clip-ana'), false, 'cai has not danced');
+  room.postClip('cai', 'clip-cai');
+  assert.equal(room.danceBack('ana', cai, ''), false, 'a dance back is a clip');
+  assert.equal(room.danceBack('ana', cai, 'clip-ana'), null);
+  room.pick('cai', 'Treasure');
+  assert.equal(room.like('ana', cai), null);
+});
+
+test('a block takes every yes between the two, both ways, out of what the room keeps', () => {
+  const { room, handleOf } = night();
+  for (const p of ['ana', 'ben']) {
+    room.arm(p, 'hi');
+    room.pick(p, 'Treasure');
+    room.postClip(p, 'clip-' + p);
+  }
+  room.wave('ana', handleOf('ana', 'ben'));
+  room.like('ben', handleOf('ben', 'ana'));
+  room.danceBack('ana', handleOf('ana', 'ben', 'floor'), 'back-ana');
+  const kept = () => { const d = room.dump(); return [...d.waves.map(([k]) => k), ...d.likes, ...d.dances]; };
+  assert.deepEqual(kept().sort(), ['ana>ben', 'ana>ben', 'ben>ana']);
+  room.block('ben', handleOf('ben', 'ana'));
+  assert.deepEqual(kept(), []);
+});
+
+test('a person forgotten at the end of the night takes everything the room kept of them, and comes back with nothing', () => {
+  const { room, handleOf } = night();
+  meet(room, handleOf, 'ana', 'cai');
+  for (const p of ['ana', 'cai']) room.pick(p, 'Treasure');
+  room.like('cai', handleOf('cai', 'ana'));
+  room.arm('ben', 'hi');
+  const [toBen, toAna] = [handleOf('ana', 'ben'), handleOf('ben', 'ana')];
+  room.block('ben', toAna);
+  room.block('ana', toBen);
+  room.setInvisible('ana', true);
+  const of = (list) => list.filter((k) => k.split('>').includes('ana'));
+  const kept = (d) => [
+    ...of(d.waves.map(([k]) => k)), ...of(d.likes),
+    ...d.matches.filter((m) => m.a === 'ana' || m.b === 'ana').map(() => 'match'),
+    ...d.blocks.flatMap(([id, ids]) => ids.map((x) => id + '#' + x)).filter((k) => k.split('#').includes('ana')),
+  ];
+  assert.deepEqual(kept(room.dump()).sort(), ['ana#ben', 'ana>cai', 'ben#ana', 'cai>ana', 'cai>ana', 'match']);
+  room.forgetPerson('ana');
+  assert.equal(room.has('ana'), false);
+  const d = room.dump();
+  assert.deepEqual(kept(d), [], 'no waves, yeses, matches or blocks, either way');
+  assert.deepEqual(d.tombs.filter(([id]) => id === 'ana'), [], 'nothing of how she left');
+  room.join('ana');
+  room.arm('ana', 'hi');
+  assert.equal(room.viewFor('ana').me.invisible, false, 'she comes back seen, not as she left');
+  assert.deepEqual(room.viewFor('ana').matches, []);
+  assert.ok(handleOf('ben', 'ana') && handleOf('ana', 'ben'), 'and she and ben see each other again');
+});
+
+test('those who left at a time the night says is over are forgotten; a tomb without a time, and anyone here, are kept', () => {
+  const { room, handleOf, tick } = night();
+  const at = Date.UTC(2026, 8, 23, 11, 4);
+  meet(room, handleOf, 'ana', 'cai');
+  room.leave('ana');
+  tick(60_000);
+  room.join('dee');
+  room.leave('dee');
+  const d = room.dump();
+  // A tomb from a build before tombs kept the time.
+  const restored = createRoom({ now: () => at, salt: 'test', restore: { ...d, tombs: [...d.tombs, ['eve', { rev: 3, invisible: true }]] } });
+  const over = (t) => t !== at + 60_000;   // all but dee's join, a minute on
+  assert.deepEqual(restored.forgetLeft(over), ['ana']);
+  const left = restored.dump();
+  assert.deepEqual(left.tombs.map(([id]) => id).sort(), ['dee', 'eve']);
+  assert.deepEqual(left.matches, [], 'her match with cai went with her');
+  assert.equal(restored.has('cai'), true, 'cai is here: only forgetPerson takes someone here');
+  assert.deepEqual(restored.forgetLeft(over), [], 'and nothing twice');
 });
 
 test('block is silent and both ways, and ends a match', () => {
@@ -527,6 +606,23 @@ test('the opener, once named, is in every view; cut to a track\'s length, and an
   assert.deepEqual(room.opener(), { track: 'Grenade', at: 2000 });
 });
 
+test('the same song spelled better keeps when it was named; another song is named anew', () => {
+  let t = 1000;
+  const room = createRoom({ now: () => t, salt: 'o' });
+  room.join('ana');
+  room.setOpener('desire lines');
+  t = 5000;
+  assert.equal(room.setOpener('Desire Lines'), true, 'the words change');
+  assert.deepEqual(room.viewFor('ana').opener, { track: 'Desire Lines', at: 1000 }, 'the moment does not: no phone or band hears it twice');
+  t = 9000;
+  assert.equal(room.setOpener('Desire Line'), true);
+  assert.deepEqual(room.opener(), { track: 'Desire Line', at: 9000 }, 'a different song is a new naming');
+  room.setOpener('');
+  t = 12000;
+  room.setOpener('Desire Line');
+  assert.equal(room.opener().at, 12000, 'taken back and named again is a new naming');
+});
+
 // ---------- what else the venue's staff say: a notice, and the show's times moved ----------
 
 test('a notice from staff is in every view, one line of at most 140 characters, and an empty one takes it down', () => {
@@ -603,10 +699,83 @@ test('a notice and moved times are carried across a restart; a dump from before 
   assert.deepEqual([v.notice, v.times], [null, null]);
 });
 
+test('staff close only cards there are, never all of them; [] opens them all again', () => {
+  assert.deepEqual(closedOf(['dance', 'hi', 'dance']), ['hi', 'dance'], 'each once, in the table order');
+  assert.deepEqual(closedOf([]), []);
+  for (const bad of [['hi', 'song', 'dance'], ['nope'], 'hi', null, [1], ['constructor']]) assert.equal(closedOf(bad), null);
+});
+
+test('a closed card: whoever showed it goes off, it cannot be armed, it lists nobody and takes no yes', () => {
+  const { room, handleOf } = night();
+  for (const p of ['ana', 'ben']) { room.pick(p, 'Treasure'); room.arm(p, 'song'); }
+  const wall = handleOf('ana', 'ben', 'wall');
+  room.arm('cai', 'hi');
+  const rev = room.revOf('ana');
+  assert.equal(room.setClosed(['song']), true);
+  assert.equal(room.setClosed(['song']), false, 'the same list changes nothing');
+  assert.equal(room.setClosed(['hi', 'song', 'dance']), false);
+  const v = room.viewFor('ana');
+  assert.deepEqual([v.me.armed, v.me.by, room.revOf('ana')], [null, 'staff', rev + 1]);
+  assert.equal(room.armedOf('cai'), 'hi', 'an open card stays on');
+  assert.deepEqual([v.cards, v.wall], [['hi', 'dance'], []]);
+  room.arm('ana', 'song');
+  assert.equal(room.armedOf('ana'), null);
+  assert.equal(room.fromPhone('ana', { t: 'arm', intent: 'song', seq: 1, basis: room.revOf('ana') }), 'changed');
+  assert.equal(room.fromPhone('ana', { t: 'arm', intent: 'song', seq: 2 }), 'changed', 'with no basis too');
+  // A copy re-said after a reconnect is dropped quietly, as any showing copy is (rule 3): nothing to refuse.
+  assert.equal(room.fromPhone('ana', { t: 'arm', intent: 'song', seq: 1, again: true }), null);
+  assert.equal(room.fromPhone('ana', { t: 'arm', intent: 'song', seq: 9, again: true }), null);
+  assert.equal(room.like('ana', wall), false);
+  assert.equal(room.postClip('ana', null), true, 'taking a clip down is always allowed');
+  room.setClosed(['dance']);
+  assert.equal(room.postClip('ana', 'clip-ana'), false);
+  assert.equal(room.like('ana', wall), null, 'song is open again');
+  assert.deepEqual(room.viewFor('ana').cards, ['hi', 'song']);
+  assert.deepEqual(room.closed(), { cards: ['dance'], at: room.closed().at });
+});
+
+test('closed cards are carried across a restart and go when the night ends; a dump from before them has none', () => {
+  let t = 5000;
+  const now = () => t;
+  const room = createRoom({ now });
+  room.join('ana');
+  room.setClosed(['hi']);
+  const back = createRoom({ now, restore: JSON.parse(JSON.stringify(room.dump())) });
+  assert.deepEqual(back.viewFor('ana').cards, ['song', 'dance']);
+  assert.deepEqual(back.closed(), { cards: ['hi'], at: 5000 });
+  for (const closed of [undefined, { cards: ['hi', 'song', 'dance'], at: 1 }, { cards: ['later'], at: 1 }, { cards: ['hi'] }, 'hi']) {
+    const old = JSON.parse(JSON.stringify(room.dump()));
+    old.closed = closed;
+    assert.equal(createRoom({ now, restore: old }).closed(), null, JSON.stringify(closed));
+  }
+  const later = JSON.parse(JSON.stringify(room.dump()));
+  later.closed = { cards: ['hi', 'later'], at: 7 };
+  assert.deepEqual(createRoom({ now, restore: later }).closed(), { cards: ['hi'], at: 7 }, 'a card this build lacks is dropped');
+  t = 6000;
+  assert.equal(back.letGo((at) => at < 5000), false);
+  assert.equal(back.letGo((at) => at < 6000), true);
+  assert.deepEqual(back.viewFor('ana').cards, ['hi', 'song', 'dance']);
+});
+
 // ---------- restart spec §1: a room carried across a restart ----------
 
 /** A room as a restart brings it back: its dump, through JSON, made again on the same clock. */
-const carried = (room, now) => createRoom({ now, restore: JSON.parse(JSON.stringify(room.dump())) });
+const carried = (room, now, clipKept) => createRoom({ now, clipKept, restore: JSON.parse(JSON.stringify(room.dump())) });
+
+test('a room carried across a restart with its videos keeps each clip whose video came back, and only those', () => {
+  const room = createRoom();
+  for (const id of ['ana', 'ben', 'cai']) room.join(id);
+  room.postClip('ana', 'clip-of-ana');
+  room.postClip('cai', 'clip-of-cai');
+  const toAna = room.viewFor('ben').floor.find((c) => c.ref === 'clip-of-ana').handle;
+  room.danceBack('ben', toAna, 'clip-of-ben');
+  assert.deepEqual(room.viewFor('ana').floor.map((c) => [c.ref, c.toYou]).sort(), [['clip-of-ben', true], ['clip-of-cai', false]]);
+  const again = carried(room, Date.now, (ref) => ref !== 'clip-of-cai');   // cai's video was lost
+  assert.equal(again.viewFor('ana').me.clip, 'clip-of-ana', 'her own clip is still hers');
+  assert.deepEqual(again.viewFor('ana').floor.map((c) => [c.ref, c.toYou]), [['clip-of-ben', true]], "Ben's dance to her, and not cai's lost clip");
+  assert.equal(again.viewFor('cai').me.clip, null);
+  assert.deepEqual(again.viewFor('ben').floor.map((c) => c.ref), ['clip-of-ana'], 'the floor as it was, less what was lost');
+});
 
 test('the opener is carried across a restart, and a dump from before there was one has none', () => {
   const now = () => 5000;
@@ -679,15 +848,14 @@ test('a room carried across a restart shows everyone what it did, and goes on fr
   assert.equal(again.viewFor('cai').me.rev, room.viewFor('cai').me.rev, "Cai's rev goes on from his tomb");
 });
 
-test('a room carried across a restart drops every clip, and a dance back sent before it still makes the match', () => {
+test('a room carried across a restart without its videos drops every clip, and a dance back sent before it still makes the match', () => {
   const room = createRoom();
   for (const id of ['ana', 'ben']) room.join(id);
   room.pick('ben', 'Treasure');
   room.postClip('ana', 'clip-of-ana');
   const [onFloor] = room.viewFor('ben').floor;              // Ana dancing, on Ben's floor
   assert.equal(room.danceBack('ben', onFloor.handle, 'clip-of-ben'), null, 'a yes, not returned yet');
-  assert.equal(JSON.stringify(room.dump()).includes('clip-of'), false, 'no clip ref is written');
-  const again = carried(room, Date.now);
+  const again = carried(room, Date.now);   // the relay found none of their videos
   assert.equal(again.viewFor('ana').me.clip, null, 'her own clip is gone');
   assert.deepEqual(again.viewFor('ana').floor, [], "Ben's dance to her went with its clip");
   const [ben] = again.viewFor('ana').wall;                   // Ben, by his answer

@@ -733,6 +733,20 @@ void markers() {
   CHECK(markPower("20") == 80 && markPower("2") == 8 && markPower("8") == 32 && markPower("08") == 32);
   for (const char* no : {"1", "21", "0", "", "-5", "8.5", "x", "020", "8 "}) CHECK(markPower(no) == -1);
 
+  // `channel <n>`: 1 to 13 joins only there, 0 any channel as before.
+  CHECK(wifiChannel("0") == 0 && wifiChannel("1") == 1 && wifiChannel("6") == 6 && wifiChannel("13") == 13 && wifiChannel("06") == 6);
+  for (const char* no : {"14", "", "-1", "6.0", "x", "006", "6 ", "99"}) CHECK(wifiChannel(no) == -1);
+  // Pinned, a band joins the strongest point with its network's name on that channel, and no other.
+  {
+    const std::vector<SeenPoint> seen = {
+        {"venue", -40, 1}, {"venue", -70, 6}, {"venue", -55, 6}, {"other", -30, 6}, {"venue", -60, 11}};
+    CHECK(pickPinned(seen, "venue", 6) == 2);
+    CHECK(pickPinned(seen, "venue", 1) == 0);
+    CHECK(pickPinned(seen, "venue", 13) == -1);
+    CHECK(pickPinned(seen, "nobody", 6) == -1);
+    CHECK(pickPinned({}, "venue", 6) == -1);
+  }
+
   // Its face is dark; a key lights it for WAKE_MS with what it is, in the screen's alphabet.
   Marker m(1);
   CHECK(!m.lit(0) && !m.lit(WAKE_MS));
@@ -838,6 +852,11 @@ std::string answer(const Command& c) {
   if (c.verb == "hold") return HOLD_FRAME;
   if (c.verb == "refuse") return refuseFrame(c.arg);
   if (c.verb == "ping") return PING_FRAME;
+  auto cardWordsJson = [] {
+    std::string out = "{";
+    for (const Hue& h : CARDS) out += std::string(out.size() > 1 ? "," : "") + quote(h.id) + ":" + quote(h.words);
+    return out + "}";
+  };
   if (c.verb == "consts") {
     // Every constant the table's times are written in, by name, as app/lib/wrist.js CONSTS has them.
     return "{\"WAKE_MS\":" + std::to_string(WAKE_MS) + ",\"HOLD_MS\":" + std::to_string(HOLD_MS) +
@@ -850,8 +869,7 @@ std::string answer(const Command& c) {
            ",\"LIGHT_FULL\":" + std::to_string(LIGHT_FULL) +
            ",\"LIGHT_DIM\":" + std::to_string(LIGHT_DIM) + ",\"LIGHT_PAIR\":" + std::to_string(LIGHT_PAIR) +
            ",\"LIGHT_AWAKE\":" + std::to_string(LIGHT_AWAKE) + ",\"LIGHT_OFF\":" + std::to_string(LIGHT_OFF) +
-           ",\"CARD_WORDS\":{\"hi\":" + quote(cardWords("hi")) + ",\"song\":" + quote(cardWords("song")) +
-           ",\"dance\":" + quote(cardWords("dance")) + "}}";
+           ",\"CARD_WORDS\":" + cardWordsJson() + "}";
   }
   if (c.verb == "sounds") {
     // SOUNDS, as app/lib/wrist.js has it: {"tick":[[1800,25]],...}
@@ -878,9 +896,19 @@ std::string answer(const Command& c) {
   }
   if (c.verb == "hues") {
     std::string out = "{";
-    for (const Hue& h : HUES)
+    for (const Hue& h : CARDS)
       out += std::string(out.size() > 1 ? "," : "") + quote(h.id) + ":{\"c\":" + quote(hex(h.c)) + ",\"g\":" + quote(hex(h.g)) + "}";
     return out + "}";
+  }
+  if (c.verb == "cards") {
+    // CARDS in order, and where SIDE steps from each: ["hi","song","dance"] and {"hi":"song",...,"off":"hi"}. The arg
+    // is a show's closed cards ("song,dance"), which SIDE steps over.
+    std::string order = "[", steps = "{";
+    for (const Hue& h : CARDS) {
+      order += std::string(order.size() > 1 ? "," : "") + quote(h.id);
+      steps += std::string(steps.size() > 1 ? "," : "") + quote(h.id) + ":" + quote(cardAfter(h.id, c.arg));
+    }
+    return "{\"order\":" + order + "],\"after\":" + steps + ",\"off\":" + quote(cardAfter("off", c.arg)) + "}}";
   }
   if (c.verb == "relay") {
     const Relay r = parseRelay(c.arg);

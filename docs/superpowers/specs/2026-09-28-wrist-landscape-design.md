@@ -72,7 +72,8 @@ said "with no setting": that part was measured and dropped (§2).
 
 **Amended 28 Sep 2026, after the bands were worn.** As first approved, this
 section turned the face from the accelerometer: gravity across the short
-side, 0.35 g held 500 ms. That was built (commits `1c99510` to `31543b0`) and
+side, 0.35 g held 500 ms. That was built (28 Sep 2026; those commits were
+later squashed into one a day) and
 worn, and it cannot work for a watch:
 
 - Read with the owner wearing the StickS3 in the clip on his left wrist,

@@ -37,14 +37,15 @@ function Notice({ notice, onHide }) {
   );
 }
 
-/** S3 — where the night is, and three cards that each arm one thing. */
-export function Home({ show, phase, line, armed, ci, setCi, onArm, onOpen, onHow, band, onBand, notice, onHideNotice }) {
+/** S3 — where the night is, and the cards open tonight, each arming one thing. `open`: their ids, or all of them. */
+export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm, onOpen, onHow, band, onBand, notice, onHideNotice }) {
   const deck = useRef(null);
   const [w, setW] = useState(393);
   const [drag, setDrag] = useState({ on: false, dx: 0 });
   const down = useRef(null);
   const pi = Math.max(0, PHASES.indexOf(phase));
-  const list = cards(show?.act);
+  const list = cards(show?.act).filter((c) => !open || open.includes(c.id));
+  const ci = Math.min(chosen, list.length - 1);   // a card closed while it was the one in front
 
   useLayoutEffect(() => {
     const el = deck.current;
@@ -59,12 +60,12 @@ export function Home({ show, phase, line, armed, ci, setCi, onArm, onOpen, onHow
   useEffect(() => {
     const onKey = (e) => {
       if (e.target instanceof HTMLInputElement) return;
-      if (e.key === 'ArrowRight') { e.preventDefault(); setCi(Math.min(2, ci + 1)); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); setCi(Math.min(list.length - 1, ci + 1)); }
       if (e.key === 'ArrowLeft') { e.preventDefault(); setCi(Math.max(0, ci - 1)); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [ci, setCi]);
+  }, [ci, setCi, list.length]);
 
   // A tap must cause no re-render between pointerdown and pointerup: a
   // re-render swaps the node and the browser then fires no click at all.
@@ -80,7 +81,7 @@ export function Home({ show, phase, line, armed, ci, setCi, onArm, onOpen, onHow
     down.current = null;
     if (!drag.on) return;
     let next = ci;
-    if (drag.dx < -34) next = Math.min(2, ci + 1);
+    if (drag.dx < -34) next = Math.min(list.length - 1, ci + 1);
     if (drag.dx > 34) next = Math.max(0, ci - 1);
     setDrag({ on: false, dx: 0 });
     setCi(next);

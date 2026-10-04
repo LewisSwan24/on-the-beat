@@ -222,6 +222,19 @@ never becomes a match.
     with a restart and not a deploy (`docs/show-night.md`). A file that is
     missing or bad leaves this list, and the log says which; a bad entry is
     dropped and named, and never leaves the relay with no shows.
+  - `relay/cards.js` is the cards, in order: each one's id, short name,
+    hue, band words and screens. What the relay lets a person arm, the
+    phone's carousel, hues and routes, and the wristband's words, colours
+    and SIDE order all come from it; `firmware/src/band_logic.h` `CARDS` is
+    the firmware's copy. What a card does once armed (a wave, a like, a
+    dance back) is its play in `relay/room.js`: who may be sent its yes,
+    what the room keeps of one, and the list a phone sees. A yes each way
+    is a match, and a block takes every card's yes away, through the one
+    table. `tests/cards.test.js` and `tests/firmware.test.js` hold
+    everything to it, so a card added there is either complete or red:
+    words idle and armed, an icon in the subset font, `--id` and `--id-g`
+    in the stylesheet, its screens, its play and its own list, and the same
+    table in the firmware.
 - **`app/`** — React, built by Vite into `dist/`, installable as a PWA.
   - `lib/net.js`: on every join the phone says again what it is (name, armed
     card, NOT NOW, pick), because the relay may have restarted without its
@@ -313,10 +326,31 @@ Every report reaches the venue's own team at `/staff`
   also be typed. Nothing goes until *SAVE TIMES*, and the relay takes only five
   clock times in the night's order. Every phone's phase bar and countdown
   follow at once, with a toast saying what moved, and the venue list shows the
-  moved times to anyone choosing a show. *BACK AS LISTED* undoes it.
-- **What staff say lasts the night.** The first song, a notice and moved
-  times stay with nobody in the venue yet, so times moved before doors are
-  there when they open; a restart keeps them; 06:00 takes all of them back. A
+  moved times to anyone choosing a show. *BACK AS LISTED* undoes it. When
+  two staff screens are open and one saves while the other is part way
+  through a change, the other keeps its change and says so: *SAVE TIMES*
+  puts it instead, *UNDO* shows what was saved.
+- **Putting the first song's spelling right.** Naming the same song again,
+  spelled better (`desire lines`, then `Desire Lines`), changes the words
+  everywhere but not when it was named: no phone is told twice, Tonight's
+  line is corrected in place, and no wristband plays it again. Another song
+  is a new naming. Each panel also says aloud, for a screen reader, what
+  the relay took.
+- **Closing a card for tonight.** *Tonight's cards* lists the cards, each
+  open or closed. *CLOSE* asks once, since whoever is showing that card goes
+  off; the last open card cannot be closed, and *OPEN* puts one back. Phones
+  lay out only the open cards, and a phone whose card closed says so: "The
+  venue closed LET'S DANCE for tonight." A closed card cannot be armed from
+  a phone or a wristband, lists nobody, and takes no wave, like or dance
+  back; with LET'S DANCE! closed nothing goes on the floor. The wristband's
+  show names the closed cards (`closed: "song,dance"`, only when there are
+  some), and SIDE steps over them, out of NOT NOW too. A band flashed before
+  that knew the field skips it, still steps through every card, and shows
+  NOT SENT on a closed one, as it does for any refusal.
+- **What staff say lasts the night.** The first song, a notice, moved
+  times and closed cards stay with nobody in the venue yet, so times moved
+  before doors are there when they open; a restart keeps them; 06:00 takes
+  all of them back. A
   staff screen signed out at 06:00 cannot say anything more, even in the
   moment before its socket closes.
 
@@ -549,6 +583,20 @@ that was taken.
   connected and was last heard before it, goes back to four letters, so it
   does not carry last night's person into the next night; the room it was
   keeping open can then go.
+- **06:00 ends the night for everyone still in a room from it**, phone open
+  or not. A page frozen in a pocket still answers the socket's pings, so an
+  open phone used to keep last night's person in the room, with their
+  matches and their wristband, for as long as it stayed open. Now the relay
+  tells each such phone the night is over, forgets everything the room kept
+  of that person (matches, yeses, blocks, waves), and their wristband goes
+  back to four letters. The app goes back to choosing a venue and says so;
+  its own record of the night stays on Tonight. Someone who joined after
+  06:00 is not touched. Those who left before 06:00 are forgotten with them,
+  so a room kept open past six, in memory and in the night's file, holds
+  nothing of last night. A wristband out of reach at 06:00 is let go as well:
+  back on, it waits for its owner's phone and then shows letters, as one the
+  relay has no record of does; and one away when its room went, worn again
+  before six, goes back to letters at six.
 - **After a relay restart** the wristband comes back with its secret and goes
   straight back to its person: the relay carried its record across (*Always
   on*). A relay that comes back without its night — no file, or one another
@@ -578,7 +626,7 @@ a dead socket. Its two buttons work as above.
 ```
 cd firmware
 pio run -t upload       # build it and flash it over USB
-pio device monitor      # its console: ssid, pass, relay, show, forget, press, hold, face, snap, turn, near, marker
+pio device monitor      # its console: ssid, pass, channel, relay, show, forget, press, hold, face, snap, turn, near, marker
 
 pio run -e m5sticks3 -t upload    # the same, for a StickS3
 ```
@@ -762,7 +810,9 @@ read back from the picture with jsQR, the scanner the app uses.
 - **FIRST SONG? gets its answer.** The canvas asks for a pick and never says
   what opened. The owner chose on 3 Oct 2026 that the venue's staff name it:
   the staff page has a *First song* panel with the night's setlist as chips,
-  *NAME IT*, and *TAKE BACK* for a mistake. Every phone at the venue then
+  *NAME IT*, and *TAKE BACK* for a mistake. *NAME IT* asks once first —
+  *SAY IT* or *NOT YET* — because a wristband that called it has sounded
+  before a take back can reach it; changing the track asks again. Every phone at the venue then
   shows `THE OPENER WAS` above its own pick, *You called it.* or *Not this
   time.*, and how many here called it, never who; the wall marks a matching
   pick `CALLED IT`, which is no more than the pick on that row already says.
@@ -1026,6 +1076,18 @@ was red-teamed and hardened. A red/blue pass found and closed:
 - **MIME confusion.** Every served response — the app, a built asset, a clip,
   the shows feed — carries `X-Content-Type-Options: nosniff`, so a browser
   takes the declared type and never guesses one.
+- **A clip's type as a header** (4 Oct 2026). A clip was kept with whatever
+  type its phone sent, so long as it began `video/webm` or `video/mp4`, and
+  that type was served as its `Content-Type`. A type with a line break in it
+  made Node throw while writing the header, outside any handler, and one
+  phone could stop the relay by posting such a clip and fetching it. Now a
+  clip is kept only as `video/webm` or `video/mp4` exactly (a `;` and its
+  codecs may follow, and are dropped), and anything else is refused.
+  Behind that, a request or a socket message that throws for any reason
+  now costs only itself: the request is answered 500 (or cut off if its
+  answer had begun), the socket is closed as one that dropped, the log
+  says what was thrown and never the address asked for, and the relay goes
+  on. The tests make Node itself throw once to hold both.
 - **Framing, referrers, injected script.** Every response says
   `Referrer-Policy: no-referrer`, and over https `Strict-Transport-Security`
   for a year (Fly's proxy says which; not for subdomains, no preload).
@@ -1153,9 +1215,11 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   file on the machine's own volume, but it is still one small machine: more
   people than it holds needs more than one, and one volume means a failed
   drive takes the relay down until a new volume is made (*Always on*). Clips
-  are not carried across a restart. A phone left connected past 06:00 still
-  keeps its venue's room, and so last night's matches, until it closes: only
-  a wristband's hold on a room ends with the night. A phone that used a
+  are carried across a restart as files beside the night's
+  (`/data/night-clips/`, one a clip, gone with the clip at its hour, 40 MB
+  at most together); a clip still being written when the machine stops is
+  lost, and anything left in the folder that no clip uses is cleared at the
+  next start. A phone that used a
   tunnel address starts over at the fixed one: a browser keeps the app's
   storage per address.
   **How many one machine holds** was measured with `scripts/load.mjs` — a
@@ -1215,7 +1279,13 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   while the phone with no band kept both; one band beaconing again brought
   both back in 9 s. A band gone quiet hid nobody. The Plus, face dark, drew
   59.2 mA beaconing and listening and 61.2 mA with neither, the mean of a
-  minute each: no cost the reading can show. A crowd is still only modelled.
+  minute each: no cost the reading can show. On 4 Oct 2026 the same run on two
+  StickC Plus bands, with stand-ins and a third phone with no band, gave the
+  same: each heard the other on channel 11 at -35 to -37 dBm, both told to
+  listen without beaconing hid each other 25 s later while the phone with no
+  band kept both, both beaconing again brought them back in 8 s, and one band
+  with near off for 50 s, its beacon count standing still, hid nobody. A crowd
+  is still only modelled.
   Bodies and reflections on a real floor may differ from the model; ranking
   the strongest was chosen because it leans on them least, and a walk
   through a venue is the check.
@@ -1224,6 +1294,13 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   band hears only bands on its own channel, so a venue whose access points
   use several splits its bands into groups, each of which keeps the others
   listed. Markers do not have this problem: they beacon on every channel.
+  Three ways round it are drafted in
+  `docs/superpowers/specs/2026-10-04-near-channels-design.md`: the runbook
+  asks the venue for one channel for the bands, and since 4 Oct 2026 a band
+  can be held to one with `channel <n>` at its console (built, and
+  run on the StickC Plus against its hotspot: off the Wi-Fi when held to a
+  channel the hotspot is not on, joined when held to its own; two access
+  points of one name on two channels still untried).
 - **Markers have met two bands, not a room.** On 27 Sep 2026 the StickC
   Plus, made `marker bar` at its console, sent 338 beacons in 13 s on
   channels 1 to 13, none lost or refused, each sweep about 30 ms. The
@@ -1264,8 +1341,15 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   face hold went NOT NOW and a side hold came back. With the phone locked for
   over two minutes, SAY HI chosen on the band reached the other person's
   WHO'S NEAR, and the phone woke with it still armed and no toast saying a tap
-  failed — but its socket stayed open all the while, so a band holding its
-  person with the phone truly gone is still untried. After a relay restart
+  failed — but its socket stayed open all the while. On 4 Oct 2026 the
+  phone was truly gone: the StickC Plus, paired through the Fly relay to a
+  stand-in on SAY HI, had that phone's tab closed outright, and a second
+  person with no band, watching from the same venue, still saw them on SAY
+  HI three minutes later, past the two-minute grace. From the wrist alone,
+  FIRST SONG? took them off that list and SAY HI put them back under the same
+  handle; a face hold hid them and a press onto a card then a side hold
+  showed them again. The band-alone hour itself was not waited out. The
+  phone, opened again, found the card the wrist had chosen. After a relay restart
   the band waited with `OPEN YOUR PHONE` until the phone claimed it back
   without letters, and when the laptop's own internet dropped for 80 s both
   bands found the relay again by themselves. Two wrists met: both showed
@@ -1379,7 +1463,11 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   and played the jingle in the same second, and both phones showed the
   match. The physical buttons, and the three blue flashes seen by eye, are
   left for a person. Answering from the wrist is only waving back: a like
-  needs the other person's pick, which the wrist never shows.
+  needs the other person's pick, which the wrist never shows. On 4 Oct 2026
+  two StickC Plus bands did it again from their consoles with SOUND on: a
+  phone's wave gave the other band `hello` and `1 waiting`, `press face` and
+  `hold side` waved back, and `MEET 96` came to both bands and both phones in
+  the same second, with the jingle on both.
 - **Found each other has run on the real bands from their consoles, not yet
   by hand.** On 26 Sep 2026, through the Fly relay, two stand-in phones with
   SOUND off paired the StickS3 and the StickC Plus (each YES only once the
@@ -1390,7 +1478,15 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   `hi (found 65)`, both faces lost the number, and both phones had the same
   found time. With SOUND off nothing could show that the `found` sound and
   flash played on the hardware; they, and the buttons pressed by hand, still
-  need someone there. Saying it by bumping two wristbands together, with the
+  need someone there. On 4 Oct 2026 two StickC Plus bands, SOUND on, said it
+  from their consoles after `MEET 96`: the first `hold side` on each did
+  nothing but answer the meeting's call (a fresh MEET calls until a key is
+  pressed, and that key only answers), so found took a second hold on each.
+  One said found and showed `FOUND: WAITING` while the other's phone showed
+  nothing; the other's gave both bands `hi (found 96)` and the `found` sound
+  in their logs, and both phones one found time. Whether a wearer will hold
+  twice, or think the first hold said it, is for someone wearing one to
+  tell. Saying it by bumping two wristbands together, with the
   motion sensor, is a later change, after a spike shows a fist bump can be
   told apart from two people dancing to the same beat.
 - **The timings are guesses until worn** — six seconds awake, 1.5 s holds,

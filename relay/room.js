@@ -44,8 +44,10 @@
 // tested without a network.
 
 import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { trackKey } from './band.js';
+import { INTENTS } from './cards.js';
 
-export const INTENTS = ['hi', 'song', 'dance'];
+export { INTENTS };
 export const BANDS = ['in this room', 'near the bar', 'by the stage', 'somewhere out the back'];
 export const SPOTS = ["by the merch stand — it's the quietest corner", 'at the end of the bar, by the water', 'by the cloakroom'];
 
@@ -88,6 +90,16 @@ const nightMinsOf = (hhmm) => {
 };
 
 /** The five times, each HH:MM and none before the one ahead of it in the night, or null. */
+/**
+ * The cards a venue closed for tonight, as staff sent them: known ids, each once, in the table's order, never every
+ * card. [] for none closed; null for anything else, which changes nothing.
+ */
+export function closedOf(list) {
+  if (!Array.isArray(list) || !list.every((id) => INTENTS.includes(id))) return null;
+  const ids = INTENTS.filter((id) => list.includes(id));
+  return ids.length < INTENTS.length ? ids : null;
+}
+
 export function timesOf(t) {
   if (!t || typeof t !== 'object') return null;
   const out = {};
@@ -125,6 +137,9 @@ export function createRoom({
   // A room's dump() from before a restart: the room comes back as it was
   // (docs/superpowers/specs/2026-09-29-restart-persistence-design.md §1).
   restore = null,
+  // Which of the restored dump's clip refs came back with their video: the others restore as no clip, as every one did
+  // before clips were kept across a restart.
+  clipKept = () => false,
   // The budget of held handles this room spends from (handleLedger): a relay gives all its rooms the one, and a room made
   // alone gets its own.
   ledger = handleLedger(),
@@ -137,7 +152,7 @@ export function createRoom({
   // the last wave b was sent, so a wristband that kept the number it last called for is called by the next.
   const waves = new Map();
   const latest = new Map();   // id -> the number of the last wave they were sent; outlives leave()
-  const likes = new Set();    // 'a>b': a liked b's pick (FIRST SONG?)
+  const likes = new Map();    // 'a>b' -> true: a liked b's pick (FIRST SONG?)
   const dances = new Map();   // 'a>b' -> clip ref: a danced back to b (LET'S DANCE!)
   const matches = new Map();  // pairKey -> match
   // id -> what the room keeps of someone who left tonight: their last rev, so a
@@ -151,6 +166,9 @@ export function createRoom({
   let notice = null;
   // The show's times as the venue's staff moved them: the five, and when, or null while they stand as listed.
   let times = null;
+  // The cards the venue's staff closed for tonight, and when: { cards, at }, or null while every card is open.
+  let closed = null;
+  const isClosed = (id) => !!closed?.cards.includes(id);
   let nextReport = 1;
   let nextMatch = 1;
   // Near: what each person's wristband heard, never shown to anyone. 'a>b' -> [{ at, rssi }], a's band
@@ -165,13 +183,18 @@ export function createRoom({
 
   if (restore) {
     if (!Number.isInteger(restore.nextReport) || !Number.isInteger(restore.nextMatch)) throw new TypeError('not a room dump');
-    for (const p of restore.people) people.set(p.id, { ...p, clip: null });
+    const kept = (ref) => (typeof ref === 'string' && clipKept(ref) ? ref : null);
+    // A floor clip comes back only if its video did.
+    const floorOf = (c) => (c && kept(c.ref) && Number.isFinite(c.at) ? { ref: c.ref, at: c.at } : null);
+    for (const p of restore.people) people.set(p.id, { ...p, clip: floorOf(p.clip) });
     for (const [id, ids] of restore.blocks) blocks.set(id, new Set(ids));
     for (const [k, n] of restore.waves) waves.set(k, n);
     for (const [id, n] of restore.latest) latest.set(id, n);
-    for (const k of restore.likes) likes.add(k);
-    // A dance back comes back as the yes it was; its clip does not.
+    for (const k of restore.likes) likes.set(k, true);
+    // A dance back comes back as the yes it was, and with its clip only if its video did. A file from before clips
+    // were kept has no danceClips.
     for (const k of restore.dances) dances.set(k, null);
+    for (const [k, ref] of Array.isArray(restore.danceClips) ? restore.danceClips : []) if (dances.has(k)) dances.set(k, kept(ref));
     for (const m of restore.matches) matches.set(pairKey(m.a, m.b), m);
     for (const [id, tomb] of restore.tombs) tombs.set(id, tomb);
     reports.push(...restore.reports);
@@ -185,6 +208,10 @@ export function createRoom({
     if (n && typeof n.text === 'string' && n.text && Number.isFinite(n.at)) notice = { text: clip(n.text, NOTICE_MAX), at: n.at };
     const t = timesOf(restore.times);
     if (t && Number.isFinite(restore.times.at)) times = { ...t, at: restore.times.at };
+    // Nor closed cards. A card the file names that this build does not have is not closed here.
+    const c = restore.closed;
+    const shut = c && Array.isArray(c.cards) ? closedOf(c.cards.filter((id) => INTENTS.includes(id))) : null;
+    if (shut?.length && Number.isFinite(c.at)) closed = { cards: shut, at: c.at };
   }
 
   // A handle is a function of the salt and the two ids alone, and a push asks for P*P of them (every person's view of
@@ -239,12 +266,37 @@ export function createRoom({
   /** Leaving the room ends broadcasting. Matches, yeses, blocks and NOT NOW stay for the night. */
   function leave(id) {
     const p = people.get(id);
-    if (p) tombs.set(id, { rev: p.rev, invisible: p.invisible });
+    if (p) tombs.set(id, { rev: p.rev, invisible: p.invisible, joinedAt: p.joinedAt });
     people.delete(id);
     // Their handles go with them: the ones they were shown, and everyone else's of them.
     ledger.held -= handles.get(id)?.size ?? 0;
     handles.delete(id);
     for (const row of handles.values()) if (row.delete(id)) ledger.held -= 1;
+  }
+
+  /**
+   * Their night is over: they leave, and everything the room kept of them goes with it — matches, yeses either way,
+   * blocks either way, waves, and how they left. A person forgotten and joined again starts with nothing.
+   */
+  function forgetPerson(id) {
+    leave(id);
+    tombs.delete(id);
+    latest.delete(id);
+    blocks.delete(id);
+    for (const ids of blocks.values()) ids.delete(id);
+    const theirs = (k) => k.split('>').includes(id);
+    for (const map of [waves, likes, dances]) for (const k of [...map.keys()]) if (theirs(k)) map.delete(k);
+    for (const [k, m] of [...matches]) if (m.a === id || m.b === id) matches.delete(k);
+  }
+
+  /**
+   * Everyone who has left and last joined at a time `isOver` says belongs to a night that has ended, forgotten as
+   * forgetPerson forgets: their ids. A tomb from before tombs kept the time is kept, as every tomb was.
+   */
+  function forgetLeft(isOver) {
+    const over = [...tombs].filter(([, t]) => Number.isFinite(t.joinedAt) && isOver(t.joinedAt)).map(([id]) => id);
+    for (const id of over) forgetPerson(id);
+    return over;
   }
 
   /**
@@ -275,6 +327,7 @@ export function createRoom({
     const p = people.get(id);
     if (!p) return;
     const armed = INTENTS.includes(intent) ? intent : null;
+    if (armed && isClosed(armed)) return;   // closed tonight: refused where it came from (fromPhone, the relay's set)
     changed(p, armed, armed ? false : p.invisible, by);
   }
 
@@ -301,8 +354,8 @@ export function createRoom({
     const hides = m.t === 'invisible' ? !!m.on : !INTENTS.includes(m.intent);
     if (m.again) {
       if (!news || !hides) return null;
-    } else if (!hides && Number.isInteger(m.basis) && m.basis !== p.rev) {
-      return 'changed';
+    } else if (!hides && (isClosed(m.intent) || (Number.isInteger(m.basis) && m.basis !== p.rev))) {
+      return 'changed';   // the rev moved, or the venue closed that card tonight
     }
     if (m.t === 'invisible') setInvisible(id, m.on, 'phone');
     else arm(id, m.intent, 'phone');
@@ -313,7 +366,9 @@ export function createRoom({
   function setOpener(track) {
     const t = clip(track, TRACK_MAX);
     if ((opener?.track || '') === t) return false;
-    opener = t ? { track: t, at: now() } : null;
+    // The same song spelled better keeps its moment, so no phone or band is told it twice.
+    const same = opener && t && trackKey(opener.track) === trackKey(t);
+    opener = t ? { track: t, at: same ? opener.at : now() } : null;
     return true;
   }
 
@@ -341,12 +396,25 @@ export function createRoom({
     return true;
   }
 
-  /** The night ends: what staff said for it (the opener, a notice, moved times) goes if `isOld(when it was said)`. */
+  /**
+   * The venue's staff close cards for tonight, or open them all again with []. Anyone showing a card that closes goes
+   * off, said by staff. False when the list is not one (closedOf) or changes nothing.
+   */
+  function setClosed(list) {
+    const ids = closedOf(list);
+    if (!ids || ids.join() === (closed?.cards ?? []).join()) return false;
+    closed = ids.length ? { cards: ids, at: now() } : null;
+    for (const p of people.values()) if (isClosed(p.armed)) changed(p, null, p.invisible, 'staff');
+    return true;
+  }
+
+  /** The night ends: what staff said for it (the opener, a notice, moved times, closed cards) goes if `isOld(when it was said)`. */
   function letGo(isOld) {
     let gone = false;
     if (opener && isOld(opener.at)) { opener = null; gone = true; }
     if (notice && isOld(notice.at)) { notice = null; gone = true; }
     if (times && isOld(times.at)) { times = null; gone = true; }
+    if (closed && isOld(closed.at)) { closed = null; gone = true; }
     return gone;
   }
 
@@ -357,14 +425,16 @@ export function createRoom({
     if ((p.pick || '') === t) return;
     p.pick = t || null;
     // A like was for an answer. A changed answer takes its likes with it.
-    for (const k of [...likes]) if (k.endsWith('>' + id)) likes.delete(k);
+    for (const k of [...likes.keys()]) if (k.endsWith('>' + id)) likes.delete(k);
   }
 
   /** A clip for the floor, seen by everyone in the room. */
   function postClip(id, ref) {
     const p = people.get(id);
-    if (!p) return;
+    if (!p) return false;
+    if (ref && isClosed('dance')) return false;   // nobody's floor tonight
     p.clip = ref ? { ref: String(ref), at: now() } : null;
+    return true;
   }
 
   function matchIfMutual(has, a, b, intent) {
@@ -401,21 +471,68 @@ export function createRoom({
     return t;
   }
 
-  // Each yes answers false when it was refused, null when it was taken and is
-  // not returned yet, and the match when it just made one.
+  // ---------- each card's yes ----------
+  //
+  // What someone may send a card's wearer once it is armed: who may be sent one (may), what is kept of it (yeses,
+  // 'a>b' -> what it carries, set by take), and the list a phone sees of the people it is for (list, made by rows).
+  // A yes each way is a match. Every card in relay/cards.js has its play here; tests/cards.test.js holds the two
+  // together, so a card added there without one fails.
+  const plays = {
+    // SAY HI: a wave, to someone showing blue.
+    hi: {
+      yeses: waves,
+      may: (viewer, t) => people.get(t).armed === 'hi',
+      take: (viewer, t) => {
+        const k = viewer + '>' + t;
+        // A second wave keeps the first one's number: it is not newer.
+        if (waves.has(k)) return;
+        const n = Math.max(now(), (latest.get(t) ?? 0) + 1);
+        latest.set(t, n);
+        waves.set(k, n);
+      },
+      // Who is showing blue, as a band and at most a pick — and whether they waved at you.
+      list: 'near',
+      rows: (id, others, row) => blueOf(id, others).map((p) => ({
+        ...row(p), pick: p.pick, waved: waves.has(id + '>' + p.id), wavedAtYou: waves.has(p.id + '>' + id),
+      })),
+    },
+    // FIRST SONG?: a like, for an answer.
+    song: {
+      yeses: likes,
+      may: (viewer, t) => !!people.get(t).pick,
+      take: (viewer, t) => { likes.set(viewer + '>' + t, true); },
+      // Everyone's answer, liked as an answer, never as a face.
+      list: 'wall',
+      rows: (id, others, row) => others.filter((p) => p.pick).map((p) => ({
+        ...row(p), pick: p.pick, liked: likes.has(id + '>' + p.id),
+      })),
+    },
+    // LET'S DANCE!: a dance back, your own five seconds, straight to someone who danced where you could see.
+    dance: {
+      yeses: dances,
+      may: (viewer, t, ref) => !!ref && !!(people.get(t).clip || dances.has(t + '>' + viewer)),
+      take: (viewer, t, ref) => { dances.set(viewer + '>' + t, String(ref)); },
+      // Five seconds each. One sent straight to you comes first, and says so.
+      list: 'floor',
+      rows: (id, others, row) => others.flatMap((p) => {
+        const toYou = dances.get(p.id + '>' + id);
+        if (!toYou && !p.clip) return [];
+        return [{ ...row(p), ref: toYou ?? p.clip.ref, toYou: !!toYou, dancedBack: dances.has(id + '>' + p.id) }];
+      }).sort((a, b) => b.toYou - a.toYou),
+    },
+  };
 
-  function wave(viewer, h) {
+  // A yes answers false when it was refused, null when it was taken and is not returned yet, and the match when it
+  // just made one.
+  function yes(card, viewer, h, what) {
+    const play = plays[card];
     const t = target(viewer, h);
-    if (!t || people.get(t).armed !== 'hi') return false;
-    const k = viewer + '>' + t;
-    // A second wave keeps the first one's number: it is not newer.
-    if (!waves.has(k)) {
-      const n = Math.max(now(), (latest.get(t) ?? 0) + 1);
-      latest.set(t, n);
-      waves.set(k, n);
-    }
-    return matchIfMutual((x) => waves.has(x), viewer, t, 'hi');
+    if (!t || isClosed(card) || !play.may(viewer, t, what)) return false;
+    play.take(viewer, t, what);
+    return matchIfMutual((k) => play.yeses.has(k), viewer, t, card);
   }
+
+  const wave = (viewer, h) => yes('hi', viewer, h);
 
   /** Has the person behind this handle waved at the viewer? */
   function wavedAtYou(viewer, h) {
@@ -423,25 +540,14 @@ export function createRoom({
     return !!t && waves.has(t + '>' + viewer);
   }
 
-  function like(viewer, h) {
-    const t = target(viewer, h);
-    if (!t || !people.get(t).pick) return false;
-    likes.add(viewer + '>' + t);
-    return matchIfMutual((k) => likes.has(k), viewer, t, 'song');
-  }
+  const like = (viewer, h) => yes('song', viewer, h);
 
   function unlike(viewer, h) {
     const t = resolve(viewer, h);
     if (t) likes.delete(viewer + '>' + t);
   }
 
-  /** Dance back: your own five seconds, straight to someone who danced where you could see. */
-  function danceBack(viewer, h, ref) {
-    const t = target(viewer, h);
-    if (!t || !ref || !(people.get(t).clip || dances.has(t + '>' + viewer))) return false;
-    dances.set(viewer + '>' + t, String(ref));
-    return matchIfMutual((k) => dances.has(k), viewer, t, 'dance');
-  }
+  const danceBack = (viewer, h, ref) => yes('dance', viewer, h, ref);
 
   /** Instant, silent, and permanent for tonight. Also ends any match between them. */
   function block(viewer, h) {
@@ -450,11 +556,7 @@ export function createRoom({
     if (!blocks.has(viewer)) blocks.set(viewer, new Set());
     blocks.get(viewer).add(t);
     matches.delete(pairKey(viewer, t));
-    for (const k of [viewer + '>' + t, t + '>' + viewer]) {
-      waves.delete(k);
-      likes.delete(k);
-      dances.delete(k);
-    }
+    for (const k of [viewer + '>' + t, t + '>' + viewer]) for (const play of Object.values(plays)) play.yeses.delete(k);
     return true;
   }
 
@@ -694,25 +796,16 @@ export function createRoom({
         armed: me.armed, invisible: me.invisible, pick: me.pick, band: me.band, name: me.name, clip: me.clip?.ref ?? null,
         rev: me.rev, seq: me.seq, by: me.by, fresh: me.by === 'relay',
       },
-      // SAY HI: who is showing blue, as a band and at most a pick — and whether they waved at you.
-      near: blueOf(id, others).map((p) => ({
-        ...row(p), pick: p.pick, waved: waves.has(id + '>' + p.id), wavedAtYou: waves.has(p.id + '>' + id),
-      })),
-      // FIRST SONG?: everyone's answer, liked as an answer, never as a face.
-      wall: others.filter((p) => p.pick).map((p) => ({
-        ...row(p), pick: p.pick, liked: likes.has(id + '>' + p.id),
-      })),
-      // And, once the venue's staff name it, the answer: the same for everyone.
+      // Each card's list: near, wall and floor (plays, above).
+      // A card the venue closed tonight lists nobody.
+      ...Object.fromEntries(Object.entries(plays).map(([card, play]) => [play.list, isClosed(card) ? [] : play.rows(id, others, row)])),
+      // The cards open here tonight, in their order: the ones a phone lays out and a person may arm.
+      cards: INTENTS.filter((c) => !isClosed(c)),
+      // And, once the venue's staff name FIRST SONG?'s answer: the same for everyone.
       opener: opener ? { ...opener } : null,
       // What the venue's staff told everyone here, and the show's times if they moved them: the same for everyone.
       notice: notice ? { ...notice } : null,
       times: times ? { ...times } : null,
-      // LET'S DANCE!: five seconds each. One sent straight to you comes first, and says so.
-      floor: others.flatMap((p) => {
-        const toYou = dances.get(p.id + '>' + id);
-        if (!toYou && !p.clip) return [];
-        return [{ ...row(p), ref: toYou ?? p.clip.ref, toYou: !!toYou, dancedBack: dances.has(id + '>' + p.id) }];
-      }).sort((a, b) => b.toYou - a.toYou),
       matches: [...matches.values()].filter((m) => m.a === id || m.b === id).map((m) => {
         const other = m.a === id ? m.b : m.a;
         const both = m.keep[m.a] && m.keep[m.b];
@@ -737,12 +830,14 @@ export function createRoom({
   function dump() {
     return {
       salt,
-      people: [...people.values()].map((p) => ({ ...p, clip: null })),
+      people: [...people.values()].map((p) => ({ ...p })),
       blocks: [...blocks].map(([id, ids]) => [id, [...ids]]),
       waves: [...waves],
       latest: [...latest],
-      likes: [...likes],
+      likes: [...likes.keys()],
       dances: [...dances.keys()],
+      // Kept apart from `dances`, so a build from before clips were kept reads this dump as it always did.
+      danceClips: [...dances].filter(([, ref]) => ref),
       matches: [...matches.values()],
       tombs: [...tombs],
       reports: reports.slice(),
@@ -751,22 +846,32 @@ export function createRoom({
       opener,
       notice,
       times,
+      closed,
     };
   }
 
   return {
-    join, leave, setProfile, arm, setInvisible, fromPhone, pick, postClip, setOpener, setNotice, setTimes, letGo,
+    join, leave, forgetPerson, forgetLeft, setProfile, arm, setInvisible, fromPhone, pick, postClip, setOpener, setNotice, setTimes, letGo,
     /** The opener as staff named it ({ track, at }), or null. */
     opener: () => (opener ? { ...opener } : null),
     /** The notice standing ({ text, at }), or null. */
     notice: () => (notice ? { ...notice } : null),
     /** The times as staff moved them (the five, and at), or null. */
     times: () => (times ? { ...times } : null),
-    wave, wavedAtYou, wavesAt, like, unlike, danceBack, block, report, keep, found, heard, nearTick, viewFor, dump,
+    /** The cards staff closed tonight ({ cards, at }), or null while every card is open. */
+    closed: () => (closed ? { cards: [...closed.cards], at: closed.at } : null),
+    setClosed,
+    wave, wavedAtYou, wavesAt, like, unlike, danceBack, block,
+    /** The cards that have a yes here, in their order (tests/cards.test.js holds them to relay/cards.js). */
+    played: () => Object.keys(plays),
+    report, keep, found, heard, nearTick, viewFor, dump,
     /** How many handles the room holds now (a count for the tests, so the ones of people who left are seen to go). */
-    handlesHeld: () => { let n = 0; for (const row of handles.values()) n += row.size; return n; },    /** For the relay: who is here, so it knows whose view to push. */
+    handlesHeld: () => { let n = 0; for (const row of handles.values()) n += row.size; return n; },
+    /** For the relay: who is here, so it knows whose view to push. */
     ids: () => [...people.keys()],
     has: (id) => people.has(id),
+    /** When someone here was made in this room, or null for someone not here. */
+    joinedAt: (id) => people.get(id)?.joinedAt ?? null,
     /** The rev a wristband's `set` must name (rule 1), or null for someone not here. */
     revOf: (id) => people.get(id)?.rev ?? null,
     /** What a wristband's wave back needs its person to show: SAY HI. */

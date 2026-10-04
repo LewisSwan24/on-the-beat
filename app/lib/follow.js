@@ -10,10 +10,11 @@
 // re-said after a reconnect, and carries the view's own seq, so a re-said fact
 // the phone learned from the relay is never news to it (relay rule 3).
 
+import { CARDS } from '../../relay/cards.js';
 import { HUE } from '../copy.js';
 
 /** Arriving on one of these arms its card, as the canvas does. */
-export const INTENT_OF = { beacon: 'hi', near: 'hi', pick: 'song', wall: 'song', camera: 'dance', floor: 'dance' };
+export const INTENT_OF = Object.fromEntries(CARDS.flatMap((c) => c.screens.map((screen) => [screen, c.id])));
 
 export const FOLLOW_SAY = {
   armed: (intent) => 'Armed from your wristband: ' + HUE[intent].label,
@@ -23,6 +24,7 @@ export const FOLLOW_SAY = {
   away: 'You were away a while, so your card went off.',
   lost: 'That didn’t go through — tap again',
   changed: 'Something changed — check and tap again.',
+  closed: (intent) => 'The venue closed ' + HUE[intent].label + ' for tonight.',
 };
 
 /**
@@ -50,6 +52,12 @@ export function follow(phone, view) {
   };
   const cardMoved = armed !== (phone.armed ?? null);
   const quietMoved = invisible !== !!phone.invisible;
+  // On a screen of a card the venue has just closed: back home, with nothing of it behind.
+  const card = INTENT_OF[phone.screen];
+  if (card && Array.isArray(view.cards) && !view.cards.includes(card)) {
+    out.screen = 'home';
+    out.clearStack = true;
+  }
   if (!cardMoved && !quietMoved) return out;
 
   out.clearStack = true;
@@ -60,6 +68,8 @@ export function follow(phone, view) {
   const toast = (text, unpair = false) => { out.toast = { text, unpair }; };
   if (me.fresh && phone.armed && !armed) {
     toast(FOLLOW_SAY.away);
+  } else if (me.by === 'staff' && phone.armed && !armed) {
+    toast(FOLLOW_SAY.closed(phone.armed));
   } else if (me.by === 'band') {
     // Going dark from the wrist says itself: the quiet screen, as before.
     if (!invisible && quietMoved) toast(armed ? FOLLOW_SAY.backOn(armed) : FOLLOW_SAY.visible, true);
