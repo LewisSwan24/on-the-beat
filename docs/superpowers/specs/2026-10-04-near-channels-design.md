@@ -37,6 +37,8 @@ built for them alone is enough.
 
 - Costs: nothing in the code; a line in `docs/show-night.md` "Before doors"
   and a check that the bands' network is on one channel.
+- Done 4 Oct 2026: `docs/show-night.md` *Before doors*, step 3, asks the
+  venue for it and checks it at doors with the console's `near`.
 - Limits: it depends on the venue's IT, and many venues will not change a
   production network for a night.
 

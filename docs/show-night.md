@@ -17,7 +17,8 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
   laptop.
 - A laptop with this repository (the bands' console needs it: `pio device
   monitor` from `firmware/`), a power bank for the bands between sets, and
-  the venue's Wi-Fi name and password written down.
+  the name and password of the venue's network for the bands (one channel:
+  *Before doors*, step 3) written down.
 - The staff passcode for the venue's page, on paper, given only to the team
   (see *Before doors*).
 
@@ -47,11 +48,24 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
    staff page. Each team member signs in at `/staff` and taps **NOTIFY THIS
    DEVICE** (on an iPhone: add to Home Screen first).
 3. **Every band joins the venue's Wi-Fi** (console `ssid`/`pass`; kept across
-   restarts) and shows `(on it)`. One caveat from the README: a band hears
-   only bands on its own Wi-Fi channel, so access points spread over several
-   channels split the WHO'S NEAR lists into groups. Markers beacon on every
-   channel and are immune. If the venue's Wi-Fi is a phone hotspot, that is
-   one channel and one group.
+   restarts) and shows `(on it)`. A band hears only bands on its own Wi-Fi
+   channel, so access points spread over several channels split the bands
+   into groups that never hear each other, and each keeps everyone in the
+   other groups listed: on three channels WHO'S NEAR stops shortening the
+   list for about two thirds of the room. Nobody is hidden by it; near just
+   stops working. So:
+   - **Ask the venue, days before, for a network for the bands on one
+     channel**: an SSID of their own on one channel, an access point of
+     their own for the night, or every point on one channel. The bands need
+     little bandwidth (a report every 10 s, a view on change). A phone
+     hotspot is one channel already.
+   - **Check it at doors**: on each band's console, `near` says `last listen
+     … channel N`. Every band should say the same N. Two numbers mean two
+     groups: move the odd ones to the bands' network, or note it in the
+     night's log.
+   - Markers beacon on every channel and need nothing here. Three ways round
+     a venue that cannot give one channel are drafted in
+     `docs/superpowers/specs/2026-10-04-near-channels-design.md`.
 4. **Tonight's cards**, on the staff page: close any card the night has no
    room for, before doors rather than during them. LET'S DANCE! wants floor
    space and a crowd that moves; a seated show or a packed floor is the
