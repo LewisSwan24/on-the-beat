@@ -1291,8 +1291,10 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   Three ways round it are drafted in
   `docs/superpowers/specs/2026-10-04-near-channels-design.md`: the runbook
   asks the venue for one channel for the bands, and since 4 Oct 2026 a band
-  can be held to one with `channel <n>` at its console (built and compiled,
-  not yet flashed or tried on a second network).
+  can be held to one with `channel <n>` at its console (built, and
+  run on the StickC Plus against its hotspot: off the Wi-Fi when held to a
+  channel the hotspot is not on, joined when held to its own; two access
+  points of one name on two channels still untried).
 - **Markers have met two bands, not a room.** On 27 Sep 2026 the StickC
   Plus, made `marker bar` at its console, sent 338 beacons in 13 s on
   channels 1 to 13, none lost or refused, each sweep about 30 ms. The

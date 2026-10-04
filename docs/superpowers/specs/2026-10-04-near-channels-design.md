@@ -59,13 +59,23 @@ channel before connecting to AP", `esp_wifi_types.h`, `sta.channel`), so a
 band given a channel alone would still join a point on any other. Only an
 address (`bssid_set`) holds it to one point.
 
-- Built 4 Oct 2026, not yet on a band: `wifiChannel()` and `pickPinned()` in
+- Built 4 Oct 2026: `wifiChannel()` and `pickPinned()` in
   `band_logic.h`, held by the host checks (four mutations, all caught); the
   scan and join in `main.cpp`'s `startWifi()`; console `channel`, with no
   number saying the setting and the channel it is on now; `forget` clears
   it. Both envs compile. The scan holds the loop a few hundred ms each time
   it runs, which is only when joining. The relay is unchanged: the
   same-channel rule already does the right thing.
+- Run on the StickC Plus the same day, by its console, on his Y70 hotspot
+  (which the laptop's `netsh wlan show networks mode=bssid` put on channel
+  11; it had been on 6 hours before, so a phone hotspot moves): `channel 1`
+  and `channel 6` each left it off the Wi-Fi, saying `no Y70 on channel N`
+  and scanning again every 15 s, each scan about 0.3 s; it kept `channel 1`
+  across a reset (a new address on the air proved the reboot); `channel 11`
+  joined Y70 and the relay (`on it now: 11`); `channel 0` joined again in
+  0.1 s and the relay in 7 s. Not yet tried: two access points of one name
+  on two channels, which is the case it exists for. The band was left on
+  `channel 0`.
 - Limits: the bands lean on a third of the venue's access points. Where a
   part of the floor has no point on that channel, a band there joins nothing
   and is offline (its person keeps the phone, as with any band offline).
