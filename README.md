@@ -1283,6 +1283,8 @@ everyone's lists, and a block cuts both directions and outlives leaving.
   band hears only bands on its own channel, so a venue whose access points
   use several splits its bands into groups, each of which keeps the others
   listed. Markers do not have this problem: they beacon on every channel.
+  Three ways round it, none built, are drafted in
+  `docs/superpowers/specs/2026-10-04-near-channels-design.md`.
 - **Markers have met two bands, not a room.** On 27 Sep 2026 the StickC
   Plus, made `marker bar` at its console, sent 338 beacons in 13 s on
   channels 1 to 13, none lost or refused, each sweep about 30 ms. The
