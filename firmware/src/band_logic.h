@@ -1506,6 +1506,8 @@ class Wrist {
   void setAir(const std::string& air) { air_ = air; }
   /** Whether to beacon and listen: on the relay, paired, and not in NOT NOW. */
   bool nearOn() const { return link_.up() && !secret_.empty() && current() != "notnow"; }
+  /** Somebody's: paired, or a phone asking about its number right now. A band nobody's turns itself off (IDLE_OFF_MS). */
+  bool owned() const { return !secret_.empty() || show_.kind == "check"; }
 
   /** A battery reading. Low at 15% or below, again only after 20%; very low at 5% or below, again only after 10%. */
   void setBattery(int level, uint32_t now) {
@@ -1575,6 +1577,14 @@ class Wrist {
       if (!whole) react("tick");
       else if (soundOn_) due_.push_back("tick");
     }
+    settle(now);
+  }
+
+  /** Both keys went down together: the power-off hold (PowerOff below). Neither does anything of its own after. */
+  void bothDown(uint32_t now) {
+    advance(now);
+    k1_.fired = k2_.fired = true;
+    awayKey_ = false;
     settle(now);
   }
 
@@ -2315,8 +2325,113 @@ inline Command readCommand(const std::string& line) {
 constexpr uint32_t PRESS_MS = 120;
 constexpr uint32_t PRESS_HOLD_MS = HOLD_MS + 200;
 
+// ---------- turning the band off ----------
+//
+// A band left on in a bag drains all week: Wi-Fi, the beacon and the socket never rest. Off is the power chip's own
+// off (the AXP192 on a StickC Plus, the M5PM1 on a StickS3): nothing runs and nothing drains but the chip, and the
+// power button turns the band on again, as a phone's does. Two ways there: FACE and SIDE held together for
+// OFF_HOLD_MS, which no bump in a crowd does and which every band has; and, on a StickC Plus, a hold of the power
+// button, whose short press turns the face over. The relay is told first, so the phone says OFF, not out of reach.
+//
+// Not while it is plugged in. On USB the power chip turns itself straight back on: a StickC Plus told to power off
+// on a cable was back on the relay, with a new address, within twenty seconds (5 Oct 2026). Plugged in, it charges
+// and drains nothing, so the face says to unplug it first, and it stays on.
+//
+// And by itself: a band nobody has paired, off its cable, with no key pressed for IDLE_OFF_MS, turns itself off.
+// One forgotten in a bag after the show drains half an hour, not the night (his pick, 5 Oct 2026). A marker never
+// does: it is nobody's by design, and it has a night to beacon through.
+
+constexpr uint32_t OFF_HOLD_MS = 3000;  // FACE and SIDE held together this long turn the band off
+constexpr uint32_t OFF_BAR_MS = 300;    // the hold shows its bar from here, as KEEP HOLDING does
+constexpr uint32_t OFF_SAY_MS = 600;    // the relay has this long to hear the off before the socket is let go
+constexpr uint32_t OFF_SHOW_MS = 2500;  // POWER OFF, and how to turn it on, stays this long before the power goes
+constexpr uint32_t IDLE_OFF_MS = 30u * 60u * 1000u;  // nobody's, unplugged and untouched this long: off by itself
+
+inline std::string offFrame() { return "{\"t\":\"off\"}"; }
+
+class PowerOff {
+ public:
+  /**
+   * Both keys as read now. True on the read where both went down: the Wrist is told then (bothDown), so that
+   * neither key's own press or hold happens. Let go of either before OFF_HOLD_MS and nothing more happens.
+   */
+  bool keys(bool face, bool side, uint32_t now, bool plugged = false) {
+    if (going_) return false;
+    if (!(face && side)) {
+      both_ = spent_ = false;
+      return false;
+    }
+    if (!both_) {
+      both_ = true;
+      since_ = now;
+      return true;
+    }
+    if (!spent_ && now - since_ >= OFF_HOLD_MS) {
+      spent_ = true;  // one hold, one answer: still held after UNPLUG, it does not ask again
+      start(now, plugged);
+    }
+    return false;
+  }
+  /**
+   * Whether the band was in use just now: paired or being paired, plugged in, a key down, or a console line. A band
+   * that has been none of those for IDLE_OFF_MS turns itself off; the next tick says so (idleDue).
+   */
+  void used(uint32_t now) { usedAt_ = now; }
+  bool idleDue(uint32_t now) const { return !going_ && now - usedAt_ >= IDLE_OFF_MS; }
+
+  /** Off from elsewhere: the power button's hold, or `off` on the console. Plugged in, it only says to unplug. */
+  void start(uint32_t now, bool plugged = false) {
+    if (going_) return;
+    if (plugged) {
+      refusedAt_ = now;
+      refused_ = true;
+      return;
+    }
+    going_ = true;
+    at_ = now;
+    said_ = false;
+  }
+  bool going() const { return going_; }
+  /** The off frame, once: true on the first ask after the off began. */
+  bool sayOff() {
+    if (!going_ || said_) return false;
+    said_ = true;
+    return true;
+  }
+  /** The socket is let go once the relay has had time to hear the off, so it never sees a band merely lost. */
+  bool dropDue(uint32_t now) const { return going_ && now - at_ >= OFF_SAY_MS; }
+  bool cutDue(uint32_t now) const { return going_ && now - at_ >= OFF_SHOW_MS; }
+  /** Whether the face is this hold's: past OFF_BAR_MS of both held, saying to unplug, or going off. */
+  bool showing(uint32_t now) const {
+    return going_ || unplugFace(now) || (both_ && !spent_ && now - since_ >= OFF_BAR_MS);
+  }
+
+  Screen face(uint32_t now) const {
+    Screen f;
+    f.ink = "white";
+    f.light = LIGHT_AWAKE;
+    f.big = "POWER OFF";
+    if (!going_ && unplugFace(now)) {
+      f.big = "UNPLUG";
+      f.small = "TO TURN IT OFF";
+    } else if (going_) {
+      f.small = "POWER BUTTON: ON";
+    } else {
+      f.small = "KEEP HOLDING";
+      f.bar = std::min<int>(99, static_cast<int>((now - since_) * 100 / OFF_HOLD_MS));
+    }
+    return f;
+  }
+
+ private:
+  bool unplugFace(uint32_t now) const { return refused_ && now - refusedAt_ < OFF_SHOW_MS; }
+
+  bool both_ = false, spent_ = false, going_ = false, said_ = false, refused_ = false;
+  uint32_t since_ = 0, at_ = 0, refusedAt_ = 0, usedAt_ = 0;
+};
+
 struct KeyPress {
-  int key = 0;  // 1 the face, 2 the side; 0 when the line is not a press
+  int key = 0;  // 1 the face, 2 the side, 3 both at once; 0 when the line is not a press
   uint32_t ms = 0;
 };
 
@@ -2324,8 +2439,9 @@ inline KeyPress pressFor(const Command& c) {
   KeyPress p;
   if (c.verb != "press" && c.verb != "hold") return p;
   const std::string which = upper(trim(c.arg));
-  p.key = which == "FACE" ? 1 : which == "SIDE" ? 2 : 0;
-  if (p.key) p.ms = c.verb == "hold" ? PRESS_HOLD_MS : PRESS_MS;
+  p.key = which == "FACE" ? 1 : which == "SIDE" ? 2 : which == "BOTH" ? 3 : 0;
+  // Both at once is only ever a hold, and the power-off one: a band so held from the console turns off.
+  if (p.key) p.ms = p.key == 3 ? OFF_HOLD_MS + 200 : c.verb == "hold" ? PRESS_HOLD_MS : PRESS_MS;
   return p;
 }
 
@@ -2347,6 +2463,7 @@ inline std::string faceLine(const Screen& s) {
 inline std::string saidLine(const std::string& frame) {
   if (frame == "DROP") return "the relay went quiet; trying again";
   if (frame == HOLD_FRAME) return "NOT NOW, from the wrist";
+  if (frame == offFrame()) return "turning off, told the relay";
   if (frame.rfind("{\"t\":\"wave\"", 0) == 0) return "a wave back from the wrist";
   if (frame.rfind("{\"t\":\"found\"", 0) == 0) return "found, from the wrist";
   if (frame.rfind("{\"t\":\"refuse\"", 0) == 0) return "the check turned away, from the wrist";

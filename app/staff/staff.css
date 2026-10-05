@@ -27,7 +27,12 @@ html, body { background: var(--ink-0); }
 .staff-notice { border-color: var(--warn); }
 .staff-times { border-color: var(--line-2); }
 .staff-time-row { display: grid; grid-template-columns: 5.5em minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
-.staff-time-row .staff-input { height: 44px; }
+.staff-time-row .staff-input { height: 44px; padding: 0 12px; }
+/* A phone in 12-hour time needs the whole row for "07:00 PM": side by side, the field cut it to "07:00 P". */
+@media (max-width: 480px) {
+  .staff-time-row { grid-template-columns: minmax(0, 1fr) auto auto; row-gap: 4px; }
+  .staff-time-row > label { grid-column: 1 / -1; }
+}
 .staff-card-row { align-items: center; justify-content: space-between; padding: 6px 0; }
 .staff-card-row > .body { min-width: 7.5em; }
 .staff-card-row > .small { flex: 1; color: var(--text-2); }

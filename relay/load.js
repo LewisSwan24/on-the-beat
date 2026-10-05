@@ -39,7 +39,7 @@ export function parseLoad(line) {
 
 /**
  * The line said once at start: the ceiling V8 puts on this process's heap and the memory the machine has. Every
- * capacity figure in the README came from a laptop; this is what the machine the relay really runs on allows.
+ * capacity figure in docs/not-done.md came from a laptop; this is what the machine the relay really runs on allows.
  */
 export function startLine({ heapLimit = getHeapStatistics().heap_size_limit, total = totalmem(), node = process.version } = {}) {
   return 'load: node ' + node + ', heap limit ' + mb(heapLimit) + ' MB on a machine with ' + mb(total) + ' MB';

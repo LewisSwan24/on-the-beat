@@ -30,7 +30,7 @@ test('fly.toml reads tonight\'s shows from the volume, so they change with a res
 
 test('fly.toml holds the phone app at the framing rule until an iPhone has tried its full policy', () => {
   // The switch that lets a deploy go out without the app's policy (relay/server.js, APP_CSP). Turning the policy on is
-  // this line removed or set to "full", and this test changed with it, after the iPhone try (README, "What is not done").
+  // this line removed or set to "full", and this test changed with it, after the iPhone try (docs/not-done.md).
   assert.match(fly, /^\s*APP_CSP = "framing-only"$/m);
 });
 

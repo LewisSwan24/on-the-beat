@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cardOf } from '../relay/cards.js';
-import { HUE, PROMISES, matchName, someone } from './copy.js';
+import { BAND_OFF, HOW, HUE, PROMISES, REPORT, matchName, someone, teamHere } from './copy.js';
 import { SOUND_SAY, soundRow } from './lib/bandsound.js';
 import { battery, buzz, toBase64 } from './lib/device.js';
 import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
@@ -12,7 +12,7 @@ import { phaseLine, phaseOf } from './lib/phase.js';
 import { refusalWords } from './lib/refusals.js';
 import { saveCard } from './lib/vcard.js';
 import * as store from './lib/store.js';
-import { WAVES_HOW, buzzes, newWaves } from './lib/waved.js';
+import { WAVES_HOW, WAVE_SAY, buzzes, newWaves, unlooked } from './lib/waved.js';
 import { Bar, Home } from './screens/Home.jsx';
 import { Beacon, Near, WristBeacon } from './screens/Hi.jsx';
 import { Pair, bandLine } from './screens/Band.jsx';
@@ -123,7 +123,8 @@ export default function App() {
     if (!band || band.live) setBandAwaySince(null);
     else setBandAwaySince((t) => t ?? Date.now());
   }, [band?.live, !!band]);
-  const bandShown = band ? { ...band, offline: !band.live && bandAwaySince !== null && now - bandAwaySince >= 120_000 } : null;
+  // Turned off on the wrist is not away: it says OFF at once, and never OFFLINE.
+  const bandShown = band ? { ...band, offline: !band.live && !band.off && bandAwaySince !== null && now - bandAwaySince >= 120_000 } : null;
 
   const say = useCallback((text, action = null) => {
     clearTimeout(toastTimer.current);
@@ -308,10 +309,24 @@ export default function App() {
     if (!fresh.length) return;
     for (const r of fresh) known.add(r.handle);
     update((prev) => store.noteWaves(prev, fresh.map((r) => r.handle)));
-    if (buzzes(fresh, view)) buzz([90]);
+    if (buzzes(fresh, view)) {
+      buzz([90]);
+      // A buzz alone is easy to miss in a loud room: say it, and where to look, unless WHO'S NEAR is already open.
+      if (screen !== 'near') say(WAVE_SAY, { label: "SEE WHO'S NEAR", fg: 'var(--hi)', onTap: () => go('near') });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
   useEffect(() => { wavesSeen.current = null; }, [night?.me]);
+
+  // WHO'S NEAR open is a wave looked at: its dot on SAY HI goes. Kept in the night, so a reload does not bring it back.
+  const looked = night?.state?.wavesLooked;
+  const waveDot = unlooked(view, looked).length > 0;
+  useEffect(() => {
+    if (screen !== 'near') return;
+    const fresh = unlooked({ near: view.near }, looked);
+    if (fresh.length) setNightState({ wavesLooked: [...(looked || []), ...fresh].slice(-200) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, view.near]);
 
   // FIRST SONG?'s answer, once the venue's staff name it: told once, kept on Tonight, against the pick held when it came.
   useEffect(() => {
@@ -470,21 +485,30 @@ export default function App() {
     setSheet(null);
     say(done);
   };
-  // A few words first, which the venue team sees with the report; none is fine.
-  const report = (handle) => setSheet({
-    title: handle ? 'Report' : 'Report something else', sub: 'goes to the venue team, with the time and the room.', close: 'Cancel',
+  // "Not this one" is a block, and a block cannot be taken back tonight: one tap on a match screen is too easy to make by
+  // mistake, so it asks first. They are not told either way.
+  const notThis = (m) => setSheet({
+    title: 'Block them for tonight?', sub: 'you won’t see each other again tonight. they aren’t told.', close: 'Cancel',
+    rows: [{ icon: 'block', label: 'Block for tonight', fg: 'var(--stop)', onTap: () => {
+      block(m.id, 'okay. you won’t see each other again tonight.'); setStack([]); setScreen('home');
+    } }],
+  });
+  // A few words first, which the venue team sees with the report; none is fine. Where the venue has no team, it says so.
+  const team = teamHere(view);
+  const report = (handle) => setSheet(team ? {
+    title: handle ? 'Report' : 'Report something else', sub: REPORT.goes, close: 'Cancel',
     body: <ReportForm onSend={(why) => {
       net.current?.send({ t: 'report', handle: handle || null, why });
       setSheet(null);
-      say('reported. the venue team has it.');
+      say(REPORT.sent);
     }} />,
-  });
+  } : { title: REPORT.noTeam, sub: REPORT.noTeamSub, close: 'OK', rows: [] });
 
   const personSheet = (handle, title) => setSheet({
     title, sub: 'they are never told either way.', close: 'Cancel',
     rows: [
       { icon: 'block', label: 'Block', sub: 'instant, silent, and permanent for tonight.', fg: 'var(--stop)', onTap: () => block(handle) },
-      { icon: 'flag', label: 'Report', sub: 'goes to the venue team, with the time and the room.', fg: 'var(--stop)', onTap: () => report(handle) },
+      { icon: 'flag', label: 'Report', sub: team ? REPORT.goes : REPORT.noTeamSub, fg: 'var(--stop)', onTap: () => report(handle) },
     ],
   });
 
@@ -492,9 +516,12 @@ export default function App() {
     title: 'How this works', sub: 'four promises. they hold all night.', close: 'Got it',
     rows: [
       ...PROMISES.map((p) => ({ icon: p.icon, label: p.main, sub: p.sub, fg: '#fff', onTap: () => {} })),
+      { icon: 'queue_music', label: HOW.cards, fg: '#fff', onTap: () => {} },
+      { icon: 'favorite', label: HOW.both, fg: '#fff', onTap: () => {} },
       { icon: 'watch', label: 'Hold the face button on your wristband to go invisible. Hold its side button to come back.', fg: '#fff', onTap: () => {} },
       { icon: 'touch_app', label: 'Press the side button to see your card, and again to change it. Your phone follows.', fg: '#fff', onTap: () => {} },
       { icon: 'waving_hand', label: WAVES_HOW, fg: '#fff', onTap: () => {} },
+      { icon: 'watch', label: BAND_OFF.how, fg: '#fff', onTap: () => {} },
     ],
   });
 
@@ -520,8 +547,8 @@ export default function App() {
     rows: [
       ...(bandShown?.offline ? [{ icon: 'link', label: 'PAIR AGAIN', sub: 'it has been away a while. show its letters and pair it again.', fg: '#fff',
         onTap: () => { unpair(); go('pair'); } }] : []),
-      { icon: 'flashlight_on', label: 'TEST THE LIGHT', sub: 'it flashes white for two seconds, and chirps unless its sound is off or it is in NOT NOW.', fg: '#fff',
-        onTap: () => { net.current?.send({ t: 'testLight' }); setSheet(null); say('watch your wrist.'); } },
+      ...(bandShown?.off ? [] : [{ icon: 'flashlight_on', label: 'TEST THE LIGHT', sub: 'it flashes white for two seconds, and chirps unless its sound is off or it is in NOT NOW.', fg: '#fff',
+        onTap: () => { net.current?.send({ t: 'testLight' }); setSheet(null); say('watch your wrist.'); } }]),
       { ...soundRow(s.bandSound), fg: '#fff', onTap: flipSound },
       { icon: 'link_off', label: 'UNPAIR', sub: 'it forgets you, and shows new letters.', fg: 'var(--stop)', onTap: unpair },
     ],
@@ -542,7 +569,8 @@ export default function App() {
           net.current?.say('profile', { t: 'profile', name: s.name, contact });
           net.current?.send({ t: 'keep', match: m.id, on: true });
           setSheet(null);
-          say('kept on your side. if they keep it too, you’ll both see.');
+          // Not "if they keep it too": they may have kept it first, and then both already see it.
+          say('kept on your side.');
         }} />,
       });
       return;
@@ -608,13 +636,13 @@ export default function App() {
     rows: view.matches.map((m) => ({ icon: 'block', label: matchName(m), fg: 'var(--stop)', onTap: () => block(m.id) })),
   });
 
-  const quietReport = () => setSheet({
-    title: 'Report something', sub: 'goes to the venue team, with the time and the room.', close: 'Cancel',
+  const quietReport = () => (!team ? report(null) : setSheet({
+    title: 'Report something', sub: REPORT.goes, close: 'Cancel',
     rows: [
       ...view.matches.map((m) => ({ icon: 'flag', label: matchName(m), fg: 'var(--stop)', onTap: () => report(m.id) })),
       { icon: 'report', label: 'Something else', sub: 'not about anyone here — something the team should know.', fg: 'var(--stop)', onTap: () => report(null) },
     ],
-  });
+  }));
 
   // Ask once a night, when the battery that matters is low: once paired, the wristband's, wherever the phone is (a card can be armed from the wrist); otherwise the phone's, on the beacon.
   useEffect(() => {
@@ -673,8 +701,8 @@ export default function App() {
 
   const barHue = invisible ? null : armed;
   const barFor = {
-    home: { label: armed ? 'OPEN ' + HUE[armed].label : 'TAP A CARD TO ARM', off: !armed, tap: () => armed && go(cardOf(armed).open) },
-    beacon: { label: "WHO'S NEAR", tap: () => go('near') },
+    home: { label: armed ? 'OPEN ' + HUE[armed].label : 'TAP A CARD TO ARM', off: !armed, tap: () => armed && go(cardOf(armed).open), dot: waveDot && armed === 'hi' },
+    beacon: { label: "WHO'S NEAR", tap: () => go('near'), dot: waveDot },
     near: { label: 'POCKET IT', tap: () => go('home') },
     pick: { label: "THAT'S MY PICK", off: !pickText.trim(), tap: savePick },
     wall: { label: 'POCKET IT', tap: () => go('home') },
@@ -718,7 +746,7 @@ export default function App() {
       body = <Home show={show} phase={phase} line={line} armed={invisible ? null : armed} open={view.cards} ci={ci} setCi={setCi}
         notice={notice} onHideNotice={() => setNightState({ noticeHidden: notice.at })}
         band={bandShown} onBand={() => (paired ? bandSheet() : go('pair'))}
-        onArm={(id) => arm(armed === id ? null : id)} onOpen={(id) => go(cardOf(id).open)} onHow={howSheet} />;
+        onArm={(id) => arm(armed === id ? null : id)} onOpen={(id) => go(cardOf(id).open)} onHow={howSheet} dot={waveDot ? 'hi' : null} />;
       break;
     case 'beacon':
       body = paired
@@ -736,9 +764,9 @@ export default function App() {
       break;
     case 'match':
       body = match ? (
-        <Match match={match} number={paired ? match.number : null} onPick={() => go('pick')}
+        <Match match={match} number={match.number} held={!paired} onPick={() => go('pick')}
           onMyWay={() => { say('on your way. ' + matchName(match) + ' has the same hint.'); go('mate', { replace: true }); }}
-          onNotThis={() => { block(match.id, 'okay. you won’t see each other again tonight.'); setStack([]); setScreen('home'); }} />
+          onNotThis={() => notThis(match)} />
       ) : null;
       break;
     case 'camera':
@@ -749,7 +777,7 @@ export default function App() {
     case 'floor': body = <Floor floor={view.floor} mine={view.me?.clip} room={room} onBack={back} onTile={tileSheet} />; break;
     case 'mate':
       body = match ? (
-        <Mate match={match} number={paired && meetingOn(match, now.getTime()) ? match.number : null}
+        <Mate match={match} number={meetingOn(match, now.getTime()) ? match.number : null} held={!paired}
           onBack={back} onFound={() => sayFound(match)} onKeep={(on) => keep(match, on)} onTonight={() => go('tonight')}
           onSave={() => saveContact(tonightCard(match))}
           onMore={() => personSheet(match.id, matchName(match))} />
@@ -773,7 +801,7 @@ export default function App() {
       <div ref={stageRef} className="stage">
         {body}
         {barFor && !invisible ? (
-          <Bar label={barFor.label} hue={barFor.off ? null : barHue} off={barFor.off} onTap={barFor.tap}
+          <Bar label={barFor.label} hue={barFor.off ? null : barHue} off={barFor.off} dot={!!barFor.dot} onTap={barFor.tap}
             onTonight={() => go('tonight')} onNotNow={notNow} />
         ) : <div className="tail" />}
       </div>
@@ -781,7 +809,7 @@ export default function App() {
       {toast ? (
         <div className="toast" role="status" aria-live="polite">
           {toast.text}
-          {toast.action ? <button type="button" className="act" onClick={() => { setToast(null); toast.action.onTap(); }}>{toast.action.label}</button> : null}
+          {toast.action ? <button type="button" className="act" style={toast.action.fg ? { color: toast.action.fg } : undefined} onClick={() => { setToast(null); toast.action.onTap(); }}>{toast.action.label}</button> : null}
         </div>
       ) : null}
     </div>

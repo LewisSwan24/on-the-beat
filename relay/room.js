@@ -171,6 +171,10 @@ export function createRoom({
   const isClosed = (id) => !!closed?.cards.includes(id);
   let nextReport = 1;
   let nextMatch = 1;
+  // A match's id carries this room's own mark, so it is never another night's: a phone keeps its matches by id, and a
+  // relay that lost its night (no NIGHT_FILE, a lost volume) counts from 1 again. A room carried across a restart is the
+  // same room, and keeps its mark; a dump from before there was one gets a new mark, and its count goes on.
+  let era = randomBytes(4).toString('hex');
   // Near: what each person's wristband heard, never shown to anyone. 'a>b' -> [{ at, rssi }], a's band
   // hearing b's — each person's own band only, so a band that lies moves no list but its own person's;
   // id -> { at, ch }, when their band last reported and on which Wi-Fi
@@ -200,6 +204,7 @@ export function createRoom({
     reports.push(...restore.reports);
     nextReport = restore.nextReport;
     nextMatch = restore.nextMatch;
+    if (typeof restore.era === 'string' && /^[0-9a-f]{8}$/.test(restore.era)) era = restore.era;
     // A file from before there was an opener has none.
     const o = restore.opener;
     if (o && typeof o.track === 'string' && o.track && Number.isFinite(o.at)) opener = { track: clip(o.track, TRACK_MAX), at: o.at };
@@ -452,7 +457,7 @@ export function createRoom({
     const used = new Set([...matches.values()].map((m) => m.spot));
     const spot = spots.find((s) => !used.has(s)) ?? spots[(nextMatch - 1) % spots.length];
     const m = {
-      id: 'm' + nextMatch++, a, b, intent, at: now(), spot, number,
+      id: 'm' + nextMatch++ + '-' + era, a, b, intent, at: now(), spot, number,
       names: { [a]: people.get(a).name, [b]: people.get(b).name },
       bands: { [a]: people.get(a).band, [b]: people.get(b).band },
       picks: { [a]: people.get(a).pick, [b]: people.get(b).pick },
@@ -843,6 +848,7 @@ export function createRoom({
       reports: reports.slice(),
       nextReport,
       nextMatch,
+      era,
       opener,
       notice,
       times,

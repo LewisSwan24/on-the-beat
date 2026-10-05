@@ -343,6 +343,33 @@ test('those who left at a time the night says is over are forgotten; a tomb with
   assert.deepEqual(restored.forgetLeft(over), [], 'and nothing twice');
 });
 
+test("a match's id is never another night's: a room made again, as by a relay that lost its night, counts afresh but never repeats one", () => {
+  // A phone keeps its matches by id (app/lib/store.js noteMatch). Before 5 Oct 2026 a relay restarted without its
+  // night counted from m1 again, and a phone laid its new match over the old m1: the old name went, and the new
+  // match was taken as one already seen and never shown.
+  const ids = new Set();
+  for (let i = 0; i < 20; i += 1) {
+    const { room, handleOf } = night();
+    ids.add(meet(room, handleOf, 'ana', 'ben').id);
+  }
+  assert.equal(ids.size, 20);
+  // Carried across a restart, a room keeps its ids, and its next ones are new still.
+  const { room, handleOf } = night();
+  const first = meet(room, handleOf, 'ana', 'ben').id;
+  const back = createRoom({ salt: 'test', restore: room.dump() });
+  assert.equal(back.viewFor('ana').matches[0].id, first);
+  room.arm('cai', 'hi');
+  const again = createRoom({ salt: 'test', restore: room.dump() });
+  again.arm('cai', 'hi');
+  again.arm('ana', 'hi');
+  const h = (v, t) => again.viewFor(v).near.find((p) => p.band === again.viewFor(t).me.band)?.handle;
+  again.wave('ana', h('ana', 'cai'));
+  again.wave('cai', h('cai', 'ana'));
+  const ids2 = again.viewFor('ana').matches.map((m) => m.id);
+  assert.equal(ids2.length, 2);
+  assert.equal(new Set(ids2).size, 2);
+});
+
 test('block is silent and both ways, and ends a match', () => {
   const { room, handleOf } = night();
   const m = meet(room, handleOf, 'ana', 'ben');
@@ -843,7 +870,9 @@ test('a room carried across a restart shows everyone what it did, and goes on fr
     r.join('cai');
   }
   same('as the night goes on');
-  assert.equal(again.viewFor('dan').matches[0].id, 'm2', 'the next match takes the next id');
+  assert.match(again.viewFor('dan').matches[0].id, /^m2-[0-9a-f]{8}$/, 'the next match takes the next id');
+  assert.equal(again.viewFor('dan').matches[0].id.slice(3), again.viewFor('ana').matches.find((m) => m.id.startsWith('m1-')).id.slice(3),
+    'with the mark the room had before the restart');
   assert.equal(again.staffReports(tag)[0].id, 'r2', 'the next report takes the next id');
   assert.equal(again.viewFor('cai').me.rev, room.viewFor('cai').me.rev, "Cai's rev goes on from his tomb");
 });

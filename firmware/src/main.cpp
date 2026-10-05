@@ -69,6 +69,12 @@ int pinned = 0;   // `channel`: the one Wi-Fi channel this band joins on, or 0 f
 Relay relay;
 
 Wrist* wrist = nullptr;  // made in setup(), once the radio is on and the key is truly random
+PowerOff off;            // FACE and SIDE held together, the power button held on a Plus, or `off` on the console
+
+/** On a USB cable: the power chip would only turn the band straight back on (PowerOff in band_logic.h). */
+bool plugged() { return M5.Power.getVBUSVoltage() > 4000; }
+bool onCable = true;        // as last read, once a second, for the idle turn-off
+uint32_t cableReadAt = 0;
 bool keyA = false, keyB = false;  // KEY1 (BtnA, the face) and KEY2 (BtnB, the side), as last read
 uint32_t consoleKeyUntil[3] = {0, 0, 0};  // KEY1 and KEY2 pressed from the console: down until then; 0 is up
 BatteryReport batteryReport;
@@ -156,6 +162,7 @@ QueueHandle_t events = nullptr;  // socket task -> loop
 QueueHandle_t outbox = nullptr;  // loop -> socket task
 std::mutex relayLock;            // the loop writes `relay`; the socket task copies it under this
 std::atomic<bool> relayChanged{false};
+std::atomic<bool> socketDone{false};  // turning off: the socket is let go and never opened again
 
 void post(uint8_t kind, const uint8_t* text = nullptr, size_t length = 0) {
   Event e;
@@ -243,7 +250,7 @@ void socketTask(void*) {
         socket_.setReconnectInterval(RETRY_MS);
       }
     }
-    if (mine.ok && WiFi.status() == WL_CONNECTED) socket_.loop();
+    if (mine.ok && WiFi.status() == WL_CONNECTED && !socketDone) socket_.loop();
     else if (socket_.isConnected()) socket_.disconnect();
     Out o;
     while (xQueueReceive(outbox, &o, 0) == pdTRUE) {
@@ -774,8 +781,7 @@ void paint(const Screen& s) {
   }
 }
 
-void draw(uint32_t now) {
-  const Screen s = wrist->face(now);
+void drawScreen(const Screen& s) {
   // The picture is drawn again only when it changes and can be seen. A change
   // of light alone (a flash's off step, the meeting's blink, a face going to
   // sleep) only turns the backlight, so a blink that goes on all night never
@@ -795,6 +801,8 @@ void draw(uint32_t now) {
     M5.Display.setBrightness(s.light);
   }
 }
+
+void draw(uint32_t now) { drawScreen(off.showing(now) ? off.face(now) : wrist->face(now)); }
 
 /**
  * `face` on a marker's console: what its screen shows, read back, so a test
@@ -839,6 +847,11 @@ void snap() {
 
 /** A marker's face: dark, and what it is while a key has lit it. */
 void drawMarker(uint32_t now) {
+  if (off.showing(now)) {
+    drawScreen(off.face(now));
+    return;
+  }
+  if (drawn.find('|') != std::string::npos) drawn.clear();  // a power-off hold let go: the marker's face again
   const bool on = marker->lit(now);
   if (on && drawn != "marker") {
     drawn = "marker";
@@ -897,7 +910,8 @@ void soundReleased(void*, const void* data, uint8_t) {
  * either, so once the speaker is quiet its buffer is free.
  */
 void playSounds() {
-  for (std::string& name : wrist->sounds()) soundDue = std::move(name);
+  if (wrist)
+    for (std::string& name : wrist->sounds()) soundDue = std::move(name);
   if (soundDue.empty()) return;
   if (!speaker) {
     soundDue.clear();
@@ -931,6 +945,8 @@ void help() {
       "  forget                  back to what it was built with\n"
       "  press face|side         a press, as a finger makes it\n"
       "  hold face|side          a hold, let go just after it counts\n"
+      "  hold both               face and side together, as long as it takes to turn the band off\n"
+      "  off                     turn it off now; its power button turns it on again\n"
       "  face                    what the screen shows now\n"
       "  snap                    the screen, as one line of base64 for a script\n"
       "  turn usb-left|usb-right  which side is up (kept); on a StickC Plus the power button turns it over too\n"
@@ -944,6 +960,7 @@ void helpMarker() {
   Serial.println(
       "  show                    which marker, and its beacons\n"
       "  press face|side         light its face, as a finger does\n"
+      "  off                     turn it off now; its power button turns it on again\n"
       "  face                    what its screen shows now\n"
       "  snap                    the screen, as one line of base64 for a script\n"
       "  turn usb-left|usb-right  which side is up (kept); on a StickC Plus the power button turns it over too\n"
@@ -988,6 +1005,7 @@ void run(const Command& c) {
     else if (c.verb == "power") setMarkPower(trim(c.arg));
     else if (c.verb == "snap") snap();
     else if (c.verb == "turn") setTurn(trim(c.arg));
+    else if (c.verb == "off") off.start(millis(), plugged());
     else helpMarker();
     return;
   }
@@ -1028,15 +1046,19 @@ void run(const Command& c) {
   } else if (c.verb == "press" || c.verb == "hold") {
     const KeyPress p = pressFor(c);
     if (!p.key) {
-      Serial.println("press face, press side, hold face or hold side");
+      Serial.println("press face, press side, hold face, hold side or hold both");
       return;
     }
     // Down from the next read of the keys, and up after p.ms, through the same edges as the buttons.
-    consoleKeyUntil[p.key] = millis() + p.ms;
-    Serial.printf("%s the %s for %u ms\n", c.verb == "hold" ? "holding" : "pressing", p.key == 1 ? "face" : "side",
-                  static_cast<unsigned>(p.ms));
+    for (int k = 1; k <= 2; ++k)
+      if (p.key & k) consoleKeyUntil[k] = millis() + p.ms;
+    Serial.printf("%s the %s for %u ms\n", c.verb == "hold" ? "holding" : "pressing",
+                  p.key == 3 ? "face and the side" : p.key == 1 ? "face" : "side", static_cast<unsigned>(p.ms));
+  } else if (c.verb == "off") {
+    off.start(millis(), plugged());
   } else if (c.verb == "face") {
-    Serial.println(faceLine(wrist->face(millis())).c_str());
+    const uint32_t now = millis();
+    Serial.println(faceLine(off.showing(now) ? off.face(now) : wrist->face(now)).c_str());
   } else if (c.verb == "snap") {
     snap();
   } else if (c.verb == "sound") {
@@ -1079,6 +1101,7 @@ void run(const Command& c) {
 }
 
 void console() {
+  if (Serial.available() > 0) off.used(millis());  // someone at the console is using the band
   while (Serial.available() > 0) {
     const int c = Serial.read();
     if (c == '\n' || c == '\r') {
@@ -1207,13 +1230,49 @@ void setup() {
   report();
 }
 
+/**
+ * Turning off, once it has begun: the relay is told, so the phone says OFF; the
+ * socket is let go so it does not wait on a band that went quiet; the face says
+ * how to turn it on; then the power chip cuts the power. Nothing else runs.
+ */
+bool offLetGo = false;
+void goingOff(uint32_t now) {
+  if (off.sayOff()) {
+    Serial.println("power off: its power button turns it on");
+    if (!marker) {
+      sendFrame(offFrame());
+      soundDue = "down";
+    }
+  }
+  flushOut();
+  if (off.dropDue(now) && !offLetGo) {
+    offLetGo = true;
+    socketDone = true;
+  }
+  playSounds();
+  drawScreen(off.face(now));
+  if (off.cutDue(now)) {
+    Serial.flush();
+    M5.Display.setBrightness(0);
+    M5.Power.powerOff();
+  }
+}
+
 void loop() {
   M5.update();
   const uint32_t now = millis();
   console();
   readBattery(now);
   if (axp && M5.BtnPWR.wasClicked()) turnTo(!usbRight);  // on the Plus a short press turns the face over, a marker's too
+  if (axp && M5.BtnPWR.wasHold()) off.start(now, plugged());  // and a hold turns it off, as a phone's does
+  if (off.going()) {
+    goingOff(now);
+    delay(10);
+    return;
+  }
   if (marker) {
+    if (M5.BtnA.isPressed() && M5.BtnB.isPressed()) off.keys(true, true, now, plugged());
+    else off.keys(false, false, now);
     if (M5.BtnA.isPressed() || M5.BtnB.isPressed()) marker->press(now);
     markerTick(now);
     drawMarker(now);
@@ -1230,6 +1289,17 @@ void loop() {
   const bool a = M5.BtnA.isPressed() || fromConsole(1), b = M5.BtnB.isPressed() || fromConsole(2);
   if (a != keyA) { keyA = a; a ? wrist->keyDown(1, now) : wrist->keyUp(1, now); }
   if (b != keyB) { keyB = b; b ? wrist->keyDown(2, now) : wrist->keyUp(2, now); }
+  if (off.keys(a, b, now, a && b && plugged())) wrist->bothDown(now);  // after the edges: a key that went down this time is let go too
+  // Nobody's, off its cable and untouched for IDLE_OFF_MS: it turns itself off. The cable is read once a second.
+  if (now - cableReadAt >= 1000) {
+    cableReadAt = now;
+    onCable = plugged();
+  }
+  if (a || b || onCable || wrist->owned()) off.used(now);
+  if (off.idleDue(now)) {
+    Serial.println("nobody's, unplugged and untouched for 30 minutes: turning off");
+    off.start(now);
+  }
   watchWifi(now);
   wrist->setWifi(WiFi.status() == WL_CONNECTED);
   wrist->tick(now);

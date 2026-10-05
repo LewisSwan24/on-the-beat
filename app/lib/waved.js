@@ -19,3 +19,16 @@ export const WAVED_LINE = "Waved — they'll be told";
 
 /** "How this works": the wristband's part in a wave. */
 export const WAVES_HOW = 'Someone waving shows on your wristband: press its face to see, and hold its side to wave back.';
+
+/**
+ * The waves waiting at you that WHO'S NEAR has not shown yet: a dot on SAY HI until it has. A wristband shows its own,
+ * so only without a live one; a wave gone (waved back, or they left) takes its dot with it.
+ */
+export function unlooked(view, looked) {
+  if (view?.me?.wristband?.live) return [];
+  const known = new Set(looked);
+  return (view?.near || []).filter((r) => r.wavedAtYou && !r.waved && !known.has(r.handle)).map((r) => r.handle);
+}
+
+/** The toast for a new wave on a phone with no live wristband to call it. */
+export const WAVE_SAY = 'Someone near you waved.';

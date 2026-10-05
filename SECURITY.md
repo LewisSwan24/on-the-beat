@@ -23,8 +23,8 @@ Useful in a report: what you did, what you saw, and which part it touches —
 
 ## What is already known
 
-README's [Abuse resistance](README.md#abuse-resistance) lists what has been
+[Abuse resistance](docs/abuse-resistance.md) lists what has been
 tried against the build and what each fix is, and
-[What is not done](README.md#what-is-not-done) lists the limits that are known
+[What is not done](docs/not-done.md) lists the limits that are known
 and open. A report of something on either list is still welcome if it shows
 the problem is worse than written there.

@@ -1,6 +1,6 @@
 # Rehearsal night — the run-sheet
 
-Everything in the README's *What is not done* that is waiting on a person: a
+Everything in *What is not done* (docs/not-done.md) that is waiting on a person: a
 hand on a button, an ear, an eye, a phone that is not Chrome's fake camera, a
 room that is not a desk. This sheet puts those checks in the order they happen
 on the day, with what to do, what counts as a pass, and where the answer is
@@ -16,7 +16,7 @@ laptop with this repository. **Two bands is a limit.** A marker is a band told
 turns, and step 16 cannot be settled with two at all.
 
 **How a step ends.**
-- *Pass*: replace the "not yet" claim in the README bullet named under *Then*
+- *Pass*: replace the "not yet" claim in the bullet in docs/not-done.md named under *Then*
   with the date and what was seen, in the bullet's own style: numbers, not
   adjectives.
 - *Fail*: write down exactly what happened — the console line, the face, the
@@ -56,7 +56,7 @@ the relay since.
 - **Do**: plug it in and type `show` at its console, on a Wi-Fi it knows.
 - **Passes when** it says `relay https://on-the-beat.fly.dev (on it)`.
 - A silent console most likely means it is not running the band firmware:
-  flash it from `firmware/` (README, *The wristband's firmware*), then `show`
+  flash it from `firmware/` (docs/wristband.md, *The wristband's firmware*), then `show`
   again. If it runs the firmware and still will not reach the relay, read the
   console's reason before anything else; the Origin check is the first thing
   to rule out.
@@ -89,7 +89,7 @@ a minute or two before a phone looks the address up.
   `APP_POLICY` in `relay/server.js` with a test before any deploy.
 - **Then** turn it on: delete the `APP_CSP` line in `fly.toml` (or write
   `"full"`), change the test in `tests/deploy.test.js` that pins it, run the
-  suite, and deploy (step 4). Record the try in the README bullet *The phone
+  suite, and deploy (step 4). Record the try in the docs/not-done.md bullet *The phone
   app's Content-Security-Policy is written and locally proven, not yet live*,
   in *Abuse resistance* (*Framing, referrers, injected script* ends on the
   policy waiting for an iPhone), and in
@@ -100,7 +100,7 @@ a minute or two before a phone looks the address up.
 The owner's call, between nights: `npm run image-check` first (it rehearses
 the image build without Docker and fails on a mistake a deploy would only show
 once it had started), then `flyctl deploy --ha=false --remote-only`
-ships everything on main since the last deploy (README, *Run it*): the shows
+ships everything on main since the last deploy (docs/running.md): the shows
 override, the relay's own load lines, the pages' own fonts, and the app's
 policy only once `fly.toml` no longer holds it back (step 3). The override
 changes nothing until a file is on the volume.
@@ -108,7 +108,7 @@ changes nothing until a file is on the volume.
 - **Do**, after the deploy: put the rehearsal venue's real list at
   `/data/shows.json` and restart (*Changing tonight's shows* in
   `docs/show-night.md`); make the venue's line with `npm run staff-code`, set
-  `STAFF_CODES` and restart (README, *The staff page*).
+  `STAFF_CODES` and restart (docs/staff-page.md).
 - **Passes when** `https://on-the-beat.fly.dev/api/shows` lists the venue, the
   log says `shows: N from /data/shows.json`, the start of the log says
   `app policy: the framing rule only (APP_CSP=framing-only)` (or `full`, once
@@ -134,7 +134,7 @@ on-the-beat` shows exactly one machine, started.
 
 One band is a marker (`marker bar`, `marker stage` or `marker back` at its
 console, on a wall charger where it will stand on the night); the other is
-carried. This is the check the README asks for in *Markers have met two bands,
+carried. This is the check docs/not-done.md asks for in *Markers have met two bands,
 not a room*.
 
 - **Do**: with PlatformIO's python (the one with pyserial), on the walking
@@ -278,7 +278,7 @@ what was missed.
 - **Passes when** each face reads at a glance on the wrist with no twisting of
   the arm, and the Plus's face button does what *The wristband* says. For each
   of the timings, the wearer says whether it feels right: six seconds awake
-  (`WAKE_MS`), a 1.5 s hold (`HOLD_MS`), three seconds before a chosen card is
+  (`WAKE_MS`), a 1.5 s hold (`HOLD_MS`), 3 s before a chosen card is
   sent (`COMMIT_MS`), ten seconds waiting for the relay (`CONFIRM_MS`). All
   are named constants in `firmware/src/band_logic.h`.
 - **Then** *The band never turns itself, and the StickS3 turns only from a
@@ -339,14 +339,14 @@ two bands, not with a room of people.
 
 ### 19. Close the night
 
-- Write each result into its README bullet, in the style the bullets already
+- Write each result into its bullet in docs/not-done.md, in the style the bullets already
   have.
 - Read the night's `load:` lines (`flyctl logs -a on-the-beat --no-tail`) and
   write down the most people on at once, the worst loop lag, and the most heap
   and rss against their limits, and whether any line read `cpu` stuck near 6%
   beside a loop lag of seconds (the shared CPU's quota, `docs/show-night.md`,
   *The Fly machine's CPU is a quota*). They are the first figures from the
-  machine itself, whatever the crowd was; the README's capacity bullet says
+  machine itself, whatever the crowd was; the capacity bullet in docs/not-done.md says
   what they are next to.
 - Collect the bands; `marker off` on any marker; charge everything.
 - The night file goes by itself at 06:00 venue time. Run `npm run preflight`

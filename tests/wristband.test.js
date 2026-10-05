@@ -1,5 +1,5 @@
 // ON THE BEAT — who a wristband is, pairing with a check, and the wrist's own `set`.
-// One test per guard; each was mutation-checked (README, Abuse resistance).
+// One test per guard; each was mutation-checked (docs/abuse-resistance.md).
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';

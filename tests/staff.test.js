@@ -117,6 +117,14 @@ test('a venue with no staff page says so, whatever it is called', async () => {
   assert.equal(s.lists.length, 0, 'no list without a sign-in');
 });
 
+test('a phone is told whether its venue has a staff page, so a report is never said to reach a team that is not there', async () => {
+  const { phone } = await start();
+  const ana = await phone('staff-venue');
+  const eve = await phone('moth-club-kayo-lane');
+  assert.equal(ana.view.team, true);
+  assert.equal(eve.view.team, false);
+});
+
 test('a wrong passcode is refused and counted: past five a socket and twenty an address, even the right one waits', async () => {
   const { staff } = await start();
   const s = await staff({ ip: '203.0.113.200' });

@@ -112,6 +112,8 @@ h1 { margin: 0; font-weight: 400; }
   --c: #fff; --g: transparent;
   width: 100%; height: 56px; border-radius: 16px; background: var(--ink-2); border: 1.5px solid var(--c);
   color: var(--c); font: var(--action); letter-spacing: .08em; display: flex; align-items: center; justify-content: center; gap: 7px;
+  /* Words that wrap, on a narrow phone, stay centred and off the border. */
+  padding: 0 12px; text-align: center; line-height: 1.2;
   box-shadow: 0 0 30px -12px var(--g); transition: transform var(--fast) var(--ease), border-color var(--base) var(--ease), color var(--base) var(--ease), opacity var(--base) var(--ease);
 }
 .cta.plain { border-color: var(--line); color: #fff; box-shadow: none; }
@@ -292,6 +294,8 @@ h1 { margin: 0; font-weight: 400; }
 .bar .side span:last-child { font: var(--nav); letter-spacing: .07em; }
 .bar .cta { flex: 1; min-width: 0; box-shadow: 0 0 28px -14px var(--g); }
 .bar .cta.idle { border-color: rgba(255,255,255,.34); color: #fff; box-shadow: none; }
+/* 320px wide (an iPhone SE): tighter gaps, so the action keeps room for its words. */
+@media (max-width: 359px) { .bar { gap: 6px; padding-left: 10px; padding-right: 10px; } }
 
 /* ---------- sheet and toast ---------- */
 .sheet-wrap { position: absolute; inset: 0; z-index: 40; display: flex; flex-direction: column; justify-content: flex-end; }
@@ -348,3 +352,10 @@ h1 { margin: 0; font-weight: 400; }
 .viewfinder video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .viewfinder .aim { position: absolute; inset: 17%; border-radius: 18px; border: 2px solid var(--hi); box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .38); }
 .viewfinder .off { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 24px; }
+
+/* Someone waved and WHO'S NEAR has not shown it yet: a blue dot on SAY HI, on a phone with no live wristband. */
+.wavedot { position: absolute; top: 14px; right: 14px; width: 12px; height: 12px; border-radius: 50%; background: var(--hi); box-shadow: 0 0 0 3px var(--ink-2), 0 0 14px var(--hi); pointer-events: none; }
+.bar .cta .wavedot { top: -4px; right: -4px; box-shadow: 0 0 0 3px #000, 0 0 12px var(--hi); }
+.bar .cta { position: relative; }
+@media (prefers-reduced-motion: no-preference) { .wavedot { animation: wavedot 1.6s ease-in-out infinite; } }
+@keyframes wavedot { 50% { transform: scale(1.25); } }

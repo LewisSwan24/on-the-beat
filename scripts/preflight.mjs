@@ -218,7 +218,7 @@ export async function preflight(base = DEFAULT_RELAY, { timeoutMs = 8000, roots 
   checks.push(await run('app policy', async () => {
     const csp = app.headers['content-security-policy'];
     if (csp === APP_POLICY) return ['ok', 'the full app policy is live'];
-    if (csp === FRAMING_ONLY) return ['note', 'the framing rule only: held there on purpose (fly.toml, APP_CSP=framing-only) until an iPhone Safari try has passed (README, "What is not done")'];
+    if (csp === FRAMING_ONLY) return ['note', 'the framing rule only: held there on purpose (fly.toml, APP_CSP=framing-only) until an iPhone Safari try has passed (docs/not-done.md)'];
     if (!csp) return ['fail', 'no Content-Security-Policy on the app'];
     return ['note', 'a policy that is not this repository\'s APP_POLICY (a deploy from another commit?): ' + csp.slice(0, 60) + '...'];
   }));

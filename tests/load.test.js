@@ -3,7 +3,7 @@
 // their heard reports flow, and the stage's numbers come out as JSON
 // (scripts/load.mjs). A smoke test of the rig, not of the relay's limits:
 // the sizes here are tiny, and the ceilings are measured by hand
-// (docs/show-night.md, README "What is not done").
+// (docs/show-night.md, docs/not-done.md).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

@@ -998,6 +998,112 @@ void turning() {
   CHECK(toBase64(edge, 5) == "/wAQ++8=");
 }
 
+void power() {
+  // FACE and SIDE held together for OFF_HOLD_MS turn the band off; one key alone never does.
+  CHECK(OFF_HOLD_MS > HOLD_MS && OFF_BAR_MS < OFF_HOLD_MS && OFF_SAY_MS < OFF_SHOW_MS);
+  CHECK(offFrame() == "{\"t\":\"off\"}");
+  PowerOff p;
+  CHECK(!p.keys(true, false, 0) && !p.keys(false, true, 50) && !p.showing(50));
+  CHECK(p.keys(true, true, 100));        // both down: the Wrist is told, once
+  CHECK(!p.keys(true, true, 101));
+  CHECK(!p.showing(100 + OFF_BAR_MS - 1) && p.showing(100 + OFF_BAR_MS));
+  const Screen holding = p.face(100 + OFF_HOLD_MS / 2);
+  CHECK(holding.big == "POWER OFF" && holding.small == "KEEP HOLDING" && holding.bar == 50 && holding.light == LIGHT_AWAKE);
+  p.keys(true, true, 100 + OFF_HOLD_MS - 1);
+  CHECK(!p.going());
+  p.keys(true, true, 100 + OFF_HOLD_MS);
+  CHECK(p.going() && !p.keys(true, true, 100 + OFF_HOLD_MS + 1));
+  const Screen gone = p.face(100 + OFF_HOLD_MS);
+  CHECK(gone.big == "POWER OFF" && gone.small == "POWER BUTTON: ON" && gone.bar == -1);
+  // The relay is told once; the socket goes after OFF_SAY_MS, the power after OFF_SHOW_MS.
+  const uint32_t at = 100 + OFF_HOLD_MS;
+  CHECK(p.sayOff() && !p.sayOff());
+  CHECK(!p.dropDue(at + OFF_SAY_MS - 1) && p.dropDue(at + OFF_SAY_MS));
+  CHECK(!p.cutDue(at + OFF_SHOW_MS - 1) && p.cutDue(at + OFF_SHOW_MS));
+  // Let go of either key before the end, and the hold starts again from nothing.
+  PowerOff q;
+  q.keys(true, true, 0);
+  q.keys(true, false, OFF_HOLD_MS - 10);
+  CHECK(!q.showing(OFF_HOLD_MS - 10));
+  CHECK(q.keys(true, true, OFF_HOLD_MS));
+  q.keys(true, true, 2 * OFF_HOLD_MS - 1);
+  CHECK(!q.going() && !q.sayOff());
+  // The power button's hold, or `off` on the console, starts it at once.
+  PowerOff r;
+  r.start(500);
+  CHECK(r.going() && r.showing(500) && r.cutDue(500 + OFF_SHOW_MS));
+  // Plugged in, the chip would turn itself straight back on: the face says to unplug, and the band stays on.
+  PowerOff u;
+  u.keys(true, true, 0, true);
+  u.keys(true, true, OFF_HOLD_MS, true);
+  CHECK(!u.going() && !u.sayOff() && u.showing(OFF_HOLD_MS));
+  const Screen unplug = u.face(OFF_HOLD_MS);
+  CHECK(unplug.big == "UNPLUG" && unplug.small == "TO TURN IT OFF" && unplug.bar == -1);
+  // Still held, it does not ask again, and the face goes back to the wrist's once it has been read.
+  u.keys(true, true, OFF_HOLD_MS + OFF_SHOW_MS, true);
+  CHECK(!u.going() && !u.showing(OFF_HOLD_MS + OFF_SHOW_MS));
+  // Let go and held again, unplugged now: off.
+  u.keys(false, false, 10000);
+  CHECK(u.keys(true, true, 10001));
+  u.keys(true, true, 10001 + OFF_HOLD_MS);
+  CHECK(u.going());
+  PowerOff v;
+  v.start(0, true);
+  CHECK(!v.going() && v.showing(0) && v.face(0).big == "UNPLUG");
+
+  // Both down on the wrist: FACE's own hold (NOT NOW) never fires, and letting go does nothing.
+  Wrist w("000102030405060708090a0b0c0d0e0f");
+  w.linkUp(0);
+  w.frame("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"armed\":null,\"rev\":1}}", 0);
+  w.take();
+  // Pings go on whatever the keys do: what matters is that nothing else is said.
+  const auto said = [&w]() {
+    std::vector<std::string> v = w.take();
+    v.erase(std::remove(v.begin(), v.end(), std::string(PING_FRAME)), v.end());
+    return v;
+  };
+  w.keyDown(1, 1000);
+  w.keyDown(2, 1200);
+  w.bothDown(1200);
+  w.tick(1000 + HOLD_MS + 500);
+  CHECK(said().empty());
+  CHECK(w.face(1000 + HOLD_MS + 500).bar == -1);
+  w.heard(1000 + OFF_HOLD_MS);  // the relay still answers: a drop for silence is not what this is about
+  w.keyUp(1, 1000 + OFF_HOLD_MS);
+  w.keyUp(2, 1000 + OFF_HOLD_MS);
+  w.tick(1000 + OFF_HOLD_MS + COMMIT_MS + 100);
+  CHECK(said().empty());
+
+  // Nobody's, unplugged and untouched for IDLE_OFF_MS, it turns itself off; any use starts the count again.
+  CHECK(IDLE_OFF_MS == 30u * 60u * 1000u);
+  PowerOff idle;
+  CHECK(!idle.idleDue(IDLE_OFF_MS - 1) && idle.idleDue(IDLE_OFF_MS));
+  idle.used(IDLE_OFF_MS - 1);
+  CHECK(!idle.idleDue(2 * IDLE_OFF_MS - 2) && idle.idleDue(2 * IDLE_OFF_MS - 1));
+  idle.start(2 * IDLE_OFF_MS);
+  CHECK(!idle.idleDue(3 * IDLE_OFF_MS));  // once going, it is not asked again
+  // The count is across the clock's wrap, as every other one is.
+  PowerOff wrap;
+  wrap.used(0xFFFFFFFFu - 1000);
+  CHECK(!wrap.idleDue(IDLE_OFF_MS - 2000) && wrap.idleDue(IDLE_OFF_MS));
+  // Paired, or on the check, is somebody's; a band showing only its letters is nobody's.
+  Wrist mine("000102030405060708090a0b0c0d0e0f");
+  mine.linkUp(0);
+  CHECK(!mine.owned());
+  mine.frame("{\"t\":\"show\",\"show\":{\"kind\":\"check\",\"big\":\"42\",\"rev\":1}}", 0);
+  CHECK(mine.owned());
+  mine.frame("{\"t\":\"paired\",\"secret\":\"" + std::string(32, 'a') + "\"}", 0);
+  mine.frame("{\"t\":\"show\",\"show\":{\"kind\":\"off\",\"armed\":null,\"rev\":2}}", 0);
+  CHECK(mine.owned());
+  mine.frame("{\"t\":\"show\",\"show\":{\"kind\":\"pairing\",\"code\":\"ABCD\",\"rev\":3}}", 0);
+  CHECK(!mine.owned());
+
+  // `hold both` on the console holds both keys long enough to turn the band off.
+  const KeyPress both = pressFor(readCommand("hold both"));
+  CHECK(both.key == 3 && both.ms > OFF_HOLD_MS);
+  CHECK(pressFor(readCommand("press both")).key == 3);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1024,6 +1130,7 @@ int main(int argc, char** argv) {
   hearing();
   markers();
   turning();
+  power();
   std::printf("ok: %d checks\n", checks);
   return 0;
 }

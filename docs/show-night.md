@@ -4,7 +4,7 @@ One page for the night itself: what to carry, what to set before doors, how to
 read the room while it runs, and what to do when something misbehaves. It
 assumes the relay at **https://on-the-beat.fly.dev** (one Fly machine in
 Sydney, one volume carrying the night) and wristbands flashed from this
-repository's `firmware/`. The product's own manual is the README; this is the
+repository's `firmware/`. The product's own manual is the README and the rest of docs/; this is the
 short version for a dark room and a long night. The first night with people is
 a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
 
@@ -276,7 +276,7 @@ about a second late for as long as the room stays that keen. A calm 100 or a
 keen 50 does not run out in a night. The answer for a bigger or keener room is
 a machine with a performance CPU for that night (`[[vm]]` in `fly.toml`; a
 cost and a deploy, so a decision first) or a second venue id on a second
-relay, which nothing automates yet (README, *What is not done*). Fly's page
+relay, which nothing automates yet (docs/not-done.md). Fly's page
 gives a new machine 5 s of balance and says nothing of what a restart does to
 it, so leave a couple of hours between a deploy and doors until that is known.
 
@@ -482,7 +482,7 @@ sign-in.
   is open again, staff pages sign out, and the night file is removed once it holds nothing.
 - Collect bands and markers. `marker off` on a marker's console turns it back
   into a wristband (it restarts as one). Charge everything: nobody has run a
-  band's battery to empty yet (README, *What is not done*), so treat a night
+  band's battery to empty yet (docs/not-done.md), so treat a night
   on its own cell as unproven and keep USB handy.
 - If the venue runs again tomorrow, nothing else is owed: the relay starts a
   new night on its own.

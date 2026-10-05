@@ -7,7 +7,7 @@
 // you (docs/superpowers/specs/2026-09-29-staff-security-design.md §2): three groups of four, shown once on stderr
 // and kept nowhere. A passcode typed is never shown, not as it is typed and not in what is printed. stdout gets
 // one line, `"<venue>": "scrypt$..."`; the questions go to stderr. Put each venue's line between STAFF_CODES's
-// braces and set it on the relay (README, "The staff page"). The relay restarts when the secret is set, and
+// braces and set it on the relay (docs/staff-page.md). The relay restarts when the secret is set, and
 // every sign-in made under a venue's old passcode ends with it.
 
 import { createInterface } from 'node:readline';

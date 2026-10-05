@@ -1,5 +1,5 @@
 // ON THE BEAT — the relay decides: who is in the room, and which re-said fact counts.
-// One test per guard; each was mutation-checked (README, Abuse resistance).
+// One test per guard; each was mutation-checked (docs/abuse-resistance.md).
 
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';

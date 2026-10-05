@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { HUE } from '../copy.js';
+import { BAND_OFF, HUE } from '../copy.js';
 import { CODE_LETTERS, cleanCode } from '../../relay/band.js';
 import { pairUrl } from '../lib/pairing.js';
 import { qrMatrix, qrPath } from '../lib/qr.js';
@@ -152,7 +152,7 @@ export function Pair({ error, initial, pending, onCode, onScan, onSkip, onBack }
 
 /** The wristband sheet's body: how full it is, and whether it can hear the relay. */
 export const bandLine = (band) => (band
-  ? (band.offline ? 'OFFLINE — away for a while' : [band.battery != null ? band.battery + '% battery' : null, band.live ? null : 'not connected right now'].filter(Boolean).join(' · '))
+  ? band.off ? BAND_OFF.line : (band.offline ? 'OFFLINE — away for a while' : [band.battery != null ? band.battery + '% battery' : null, band.live ? null : 'not connected right now'].filter(Boolean).join(' · '))
   : '');
 
 /**

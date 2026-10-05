@@ -1,5 +1,5 @@
 // ON THE BEAT — the relay's own load line: said once at start, and once a minute while anyone is connected.
-// Counts and sizes only. README "What is not done" has every capacity number from a laptop; this is what the
+// Counts and sizes only. docs/not-done.md has every capacity number from a laptop; this is what the
 // real machine says about itself, and the rig (scripts/load.mjs) reads the same line.
 
 import { test } from 'node:test';

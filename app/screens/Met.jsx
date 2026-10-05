@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { HUE, hueVars, matchName, spotShort } from '../copy.js';
+import { HUE, MEET, hueVars, matchName, spotShort } from '../copy.js';
 import { reducedMotion } from '../lib/device.js';
 import { FOUND_MINE, foundBoth, metCount, metItem } from '../lib/found.js';
 import { PHASES, hhmm, phaseOf, timesOf } from '../lib/phase.js';
@@ -7,7 +7,7 @@ import { tonightKey } from '../lib/store.js';
 import { Back, Cta, Ghost, Icon, More, Pill } from '../ui.jsx';
 
 /** S8 — you both said yes. Now a name, and where to meet. */
-export function Match({ match, number, onMyWay, onNotThis, onPick }) {
+export function Match({ match, number, held, onMyWay, onNotThis, onPick }) {
   const full = 'Meet ' + match.spot + '.';
   const [typed, setTyped] = useState(reducedMotion() ? full : '');
   useEffect(() => {
@@ -30,7 +30,8 @@ export function Match({ match, number, onMyWay, onNotThis, onPick }) {
     <div className="scr" style={{ justifyContent: 'center', padding: '0 24px', animation: 'none' }}>
       {number ? (
         <div className="lede" style={{ marginBottom: 16, textAlign: 'center' }}>
-          Look for the wristband showing <span style={{ font: 'var(--display-l)', color: (HUE[match.intent] || HUE.hi).c }}>{number}</span>
+          {MEET.look} <span style={{ font: 'var(--display-l)', color: (HUE[match.intent] || HUE.hi).c }}>{number}</span>
+          {held ? <div className="small" style={{ marginTop: 6 }}>{MEET.held}</div> : null}
         </div>
       ) : null}
       <div className="match" style={hueVars(match.intent)}>
@@ -74,7 +75,7 @@ function SaveCard({ onSave, label }) {
   );
 }
 
-export function Mate({ match, number, onBack, onMore, onFound, onKeep, onTonight, onSave }) {
+export function Mate({ match, number, held, onBack, onMore, onFound, onKeep, onTonight, onSave }) {
   const name = matchName(match);
   const hue = HUE[match.intent] || HUE.hi;
   return (
@@ -93,7 +94,8 @@ export function Mate({ match, number, onBack, onMore, onFound, onKeep, onTonight
       </div>
       {number ? (
         <div className="lede" style={{ marginBottom: 14 }}>
-          Look for the wristband showing <span style={{ font: 'var(--display-l)', color: hue.c }}>{number}</span>
+          {MEET.look} <span style={{ font: 'var(--display-l)', color: hue.c }}>{number}</span>
+          {held ? <div className="small" style={{ marginTop: 6 }}>{MEET.held}</div> : null}
         </div>
       ) : null}
       {match.foundAt ? (

@@ -312,7 +312,7 @@ test('left to itself the relay holds 40 MB of video at most: the margin a 207 MB
 });
 
 // One socket used to be able to send a clip frame (up to 1.2 MB) as fast as its frame budget let any message through, 20 a
-// second: 24 MB a second to parse, decode and push (README, abuse resistance, the video bullet). Nothing but a clip comes
+// second: 24 MB a second to parse, decode and push (docs/abuse-resistance.md, the video bullet). Nothing but a clip comes
 // near 64 KB, so a frame that big is charged to a budget of its own as it arrives, before it is parsed: three at once,
 // then one back every `clipEveryMs`. A phone records five seconds a clip, so it never meets the limit.
 const bigClip = (n) => ({ t: 'clip', mime: 'video/webm', data: randomBytes(n).toString('base64') });
@@ -565,6 +565,24 @@ test('a phone back before its wristband holds the claim, and the wristband comes
   assert.equal(ana.view.me.band, 'in this room', "the wristband does not take the place of where they are");
   close(ana);
   band.ws.close();
+});
+
+test('a wristband turned off on the wrist says so: the phone shows OFF, not away, until its power button turns it on', async () => {
+  const ana = await phone('band-room-off');
+  const band = await wristband(55);
+  await pairBand(ana, band);
+  await ana.until((v) => v.me.wristband?.live === true && v.me.wristband.off === false);
+  band.send({ t: 'off' });
+  band.ws.close();
+  await ana.until((v) => v.me.wristband?.live === false && v.me.wristband.off === true);
+  // On again: the same key and secret say hello, and it is simply there.
+  const back = await wristband(55, { key: band.key, secret: band.secret });
+  await ana.until((v) => v.me.wristband?.live === true && v.me.wristband.off === false);
+  // Merely lost (no off first) is not off.
+  back.ws.close();
+  await ana.until((v) => v.me.wristband?.live === false);
+  assert.equal(ana.view.me.wristband.off, false, 'a band out of reach is away, not off');
+  close(ana);
 });
 
 test('a dropped wristband keeps its letters through a blip', async () => {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PROMISES } from '../copy.js';
 import { timesLine } from '../lib/phase.js';
+import { roomOf } from '../lib/typed.js';
 import { Back, Cta, Ghost, Icon } from '../ui.jsx';
 
 /** S0 — three lights and the name. Tap, or wait. */
@@ -45,9 +46,6 @@ export function Promises({ onIn, onHow }) {
     </div>
   );
 }
-
-/** A venue nobody listed: a room named by what was typed. */
-const roomOf = (text) => String(text).trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 80);
 
 /** S2 — where are you tonight? Tonight's shows, or your word for it. */
 export function Venue({ shows, loading, chosen, onChoose, onNotAtShow, onBack }) {

@@ -38,13 +38,13 @@ function Notice({ notice, onHide }) {
 }
 
 /** S3 — where the night is, and the cards open tonight, each arming one thing. `open`: their ids, or all of them. */
-export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm, onOpen, onHow, band, onBand, notice, onHideNotice }) {
+export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm, onOpen, onHow, band, onBand, notice, onHideNotice, dot }) {
   const deck = useRef(null);
   const [w, setW] = useState(393);
   const [drag, setDrag] = useState({ on: false, dx: 0 });
   const down = useRef(null);
   const pi = Math.max(0, PHASES.indexOf(phase));
-  const list = cards(show?.act).filter((c) => !open || open.includes(c.id));
+  const list = cards(show?.act, !!band).filter((c) => !open || open.includes(c.id));
   const ci = Math.min(chosen, list.length - 1);   // a card closed while it was the one in front
 
   useLayoutEffect(() => {
@@ -106,7 +106,8 @@ export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm,
           <button type="button" className="bandchip" onClick={onBand}
             aria-label={band ? ['Your wristband', bandLine(band)].filter(Boolean).join(', ') : 'Pair a wristband'}>
             {band ? <><Icon name="watch" size={18} color={band.live ? '#fff' : 'var(--text-3)'} />
-              {band.offline ? <span className="tnum" style={{ color: 'var(--warn)' }}>OFFLINE</span>
+              {band.off ? <span className="tnum" style={{ color: 'var(--text-3)' }}>OFF</span>
+                : band.offline ? <span className="tnum" style={{ color: 'var(--warn)' }}>OFFLINE</span>
                 : band.battery != null ? <span className="tnum">{band.battery}%</span> : null}</>
               : <span style={{ color: 'var(--text-3)' }}>pair</span>}
           </button>
@@ -126,6 +127,7 @@ export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm,
                 <button type="button" className={'intent' + (on ? ' armed' : '')} style={hueVars(c.id)}
                   aria-pressed={on} tabIndex={active ? 0 : -1}
                   onClick={() => (active ? onArm(c.id) : setCi(i))}>
+                  {dot === c.id ? <span className="wavedot" role="img" aria-label="someone waved" /> : null}
                   <span className="glyph">{c.icon ? <Icon name={c.icon} size={36} /> : <DanceGlyph />}</span>
                   <span className="name">{on ? c.atitle : c.title}</span>
                   <span className="lines">
@@ -158,14 +160,16 @@ export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm,
 }
 
 /** The bar under a broadcasting screen: the record, the next step, and NOT NOW — always. */
-export function Bar({ label, hue, off, onTap, onTonight, onNotNow }) {
+export function Bar({ label, hue, off, dot, onTap, onTonight, onNotNow }) {
   return (
     <div className="bar">
       <button type="button" className="side" onClick={onTonight}>
         <Icon name="history" size={20} />
         <span>TONIGHT</span>
       </button>
-      <button type="button" className={'cta' + (hue ? '' : ' idle')} style={hueVars(hue)} disabled={off} onClick={onTap}>{label}</button>
+      <button type="button" className={'cta' + (hue ? '' : ' idle')} style={hueVars(hue)} disabled={off} onClick={onTap}>
+        {label}{dot ? <span className="wavedot" role="img" aria-label="someone waved" /> : null}
+      </button>
       <button type="button" className="side" onClick={onNotNow}>
         <Icon name="visibility_off" size={20} />
         <span>NOT NOW</span>

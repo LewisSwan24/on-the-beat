@@ -366,10 +366,12 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       if (!view) continue;
       const b = bandOf(r.key, ws.me);
       // Its own field: me.band is where in the room they are.
-      view.me.wristband = b ? { battery: b.battery, live: !!b.ws } : null;
+      view.me.wristband = b ? { battery: b.battery, live: !!b.ws, off: !b.ws && !!b.off } : null;
       // A pairing waiting for YES belongs to the person, not the socket: every phone of theirs is asked.
       view.me.check = pendingOf(r.key, ws.me)?.pending.number ?? null;
       view.me.clip = addressed(view.me.clip, ws.me);
+      // Whether a report here reaches anyone: only a venue with a staff page has a team to read it.
+      view.team = staffEntries.has(r.key);
       for (const c of view.floor) c.ref = addressed(c.ref, ws.me);
       const text = JSON.stringify({ t: 'view', view });
       if (text !== ws.lastView) { ws.lastView = text; ws.send(text); }
@@ -602,6 +604,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (m.t === 'battery') b.battery = clampBattery(m.level);
     // Held: NOT NOW, from the wrist. The phone follows.
     if (m.t === 'hold') holdOn(b);
+    // Turned off on the wrist: its socket closes next, and the phone says OFF rather than out of reach.
+    if (m.t === 'off') b.off = true;
     if (m.t === 'set' && !setFromBand(ws, b, m)) return;
     if (m.t === 'wave' && !waveFromBand(ws, b, m)) return;
     if (m.t === 'found' && !foundFromBand(ws, b, m)) return;
@@ -683,6 +687,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (b.ws && b.ws !== ws) b.ws.close(4000, 'replaced');
     b.ws = ws;
     b.everWs = true;
+    b.off = false;  // back on: its power button turned it on
     b.lastShow = null;
     b.air = m.air === undefined ? null : String(m.air);
     ws.band = id;
@@ -1473,6 +1478,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       bands: [...bands.values()].filter((b) => b.person || b.waiting).map((b) => ({
         id: b.id, old: b.old, key: b.key, person: b.person, secretHash: b.secretHash, everWs: b.everWs, live: !!b.ws,
         goneAt: b.goneAt, claimedAt: b.claimedAt, waiting: b.waiting, waitingAt: b.waitingAt, quiet: b.quiet, battery: b.battery,
+        off: !b.ws && !!b.off,
       })),
       gone: [...gone],
       tokens: [...tokens],
@@ -1568,7 +1574,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         bands: saved.bands.map((e) => Object.assign(makeBand(String(e.id), null), {
           old: !!e.old, key: e.key, person: e.person, secretHash: e.secretHash, everWs: !!e.everWs,
           goneAt: e.live ? now() : e.goneAt, claimedAt: e.claimedAt, waiting: !!e.waiting, waitingAt: e.waitingAt,
-          quiet: !!e.quiet, battery: e.battery,
+          quiet: !!e.quiet, battery: e.battery, off: !!e.off,
         })),
         gone: new Map(saved.gone),
         tokens: new Map(saved.tokens.flatMap(([hash, t]) => {

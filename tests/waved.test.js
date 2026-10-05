@@ -3,7 +3,7 @@
 
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { WAVED_LINE, WAVES_HOW, buzzes, newWaves } from '../app/lib/waved.js';
+import { WAVED_LINE, WAVES_HOW, WAVE_SAY, buzzes, newWaves, unlooked } from '../app/lib/waved.js';
 
 const mem = new Map();
 globalThis.localStorage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
@@ -43,4 +43,14 @@ test("a wave once seen is kept in the night's record: no buzz after a reload, or
 test('the words: a row you waved at says they will be told, and How this works says what the wristband does', () => {
   assert.equal(WAVED_LINE, "Waved — they'll be told");
   assert.equal(WAVES_HOW, 'Someone waving shows on your wristband: press its face to see, and hold its side to wave back.');
+});
+
+test("a phone with no live wristband keeps a dot on SAY HI for each wave WHO'S NEAR has not shown, and only those", () => {
+  const near = [row('a', { wavedAtYou: true }), row('b', { wavedAtYou: true, waved: true }), row('c')];
+  assert.deepEqual(unlooked(view(near), []), ['a'], 'one waiting: not one waved back to, nor one who never waved');
+  assert.deepEqual(unlooked(view(near), ['a']), [], 'looked at once is looked at');
+  assert.deepEqual(unlooked(view(near, { battery: 40, live: false }), []), ['a'], 'a band out of reach shows nothing, so the phone does');
+  assert.deepEqual(unlooked(view(near, { battery: 40, live: true }), []), [], 'a live band shows it on the wrist');
+  assert.deepEqual(unlooked(view([row('a')]), []), [], 'a wave gone takes its dot with it');
+  assert.match(WAVE_SAY, /waved/);
 });

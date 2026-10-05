@@ -20,7 +20,9 @@ const files = (dir) => readdirSync(dir).flatMap((name) => {
 
 test('nothing still describes the one-button wristband', () => {
   const found = [];
-  const where = [...files(join(root, 'app')), ...files(join(root, 'relay')), ...files(join(root, 'firmware', 'src')), join(root, 'README.md')];
+  const where = [...files(join(root, 'app')), ...files(join(root, 'relay')), ...files(join(root, 'firmware', 'src')), join(root, 'README.md'),
+    // The README's long sections live in docs/ since 5 Oct 2026; the plans under docs/superpowers are history, as written.
+    ...readdirSync(join(root, 'docs')).filter((n) => n.endsWith('.md')).map((n) => join(root, 'docs', n))];
   for (const f of where.filter((p) => /\.(js|jsx|css|h|cpp|md)$/.test(p))) {
     readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
       if (OLD.some((re) => re.test(line))) found.push(relative(root, f) + ':' + (i + 1) + ': ' + line.trim());
