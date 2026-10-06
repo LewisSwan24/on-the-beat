@@ -29,7 +29,7 @@ and the wristband's firmware for both envs with PlatformIO. Each run keeps the
 firmware as a download: each env's `firmware.bin`, and one image each that
 flashes whole at `0x0`, bootloader and partition table included —
 `otb-wristband-full.bin` for the M5StickC Plus, `otb-wristband-s3-full.bin`
-for the StickS3. Nothing in CI deploys.
+for the StickS3. Nothing in CI deploys; that is the Deploy workflow, below.
 
 **A release.** Push a tag (`git tag v0.2.0 && git push origin v0.2.0`): the
 same checks run, and only when every one passes, a GitHub Release is made with
@@ -56,6 +56,18 @@ laptop: a phone opens the address, and a wristband is told it once with
 flyctl auth login                        # once, in your own terminal
 flyctl deploy --ha=false --remote-only   # built on Fly's builder; the one machine restarts on it
 ```
+
+**Or from GitHub** (`.github/workflows/deploy.yml`): Actions → Deploy → Run
+workflow, on `main` or a `v*` tag. It never runs on a push — a deploy
+restarts the one machine, so a person picks the moment. It refuses a commit CI
+has not passed, waits for the `production` environment's reviewer to approve,
+runs the same `flyctl deploy --ha=false --remote-only`, then checks there is
+still exactly one machine and runs `npm run preflight` against the live
+address. To go back, run it on the last good tag or commit. Set up once, by
+hand: Settings → Environments → `production`, with yourself as required
+reviewer, deployment limited to `main` and tags `v*`, and the environment
+secret `FLY_API_TOKEN` from `flyctl tokens create deploy -a on-the-beat`. Until
+the reviewer is set, the workflow refuses to deploy at all.
 
 Run `npm run image-check` first (about four seconds, no Docker, nothing on Fly
 touched). It builds the image's two trees from the Dockerfile's own `COPY`
