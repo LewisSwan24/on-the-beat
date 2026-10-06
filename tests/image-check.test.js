@@ -185,7 +185,8 @@ const RUNS = {
   devDep: run({ 'relay/server.js': (t) => "import 'vite';\n" + t }),
   unread: run({ 'fly.toml': (t) => t.replace('NIGHT_TZ = ', 'NIGHT_TZONE = ') }),
   port: run({ 'fly.toml': (t) => t.replace('internal_port = 8080', 'internal_port = 8081') }),
-  lock: run({ 'package.json': (t) => t.replace('"ws": "8.21.3"', '"ws": "8.21.3",\n    "left-pad": "1.3.0"') }),
+  // After ws's line, whatever version it is at: Dependabot moves it, and a pinned string here would stop matching.
+  lock: run({ 'package.json': (t) => t.replace(/"ws": "[^"]+"/, (ws) => ws + ',\n    "left-pad": "1.3.0"') }),
   vendorBuild: run({ Dockerfile: (t) => t.replace('COPY vendor ./vendor\n', '') }),
   vendorRun: run({ Dockerfile: (t) => t.slice(0, t.lastIndexOf('COPY vendor ./vendor\n')) + t.slice(t.lastIndexOf('COPY vendor ./vendor\n') + 'COPY vendor ./vendor\n'.length) }),
   noDist: run({ Dockerfile: (t) => t.replace('COPY --from=build /app/dist ./dist\n', '') }),
