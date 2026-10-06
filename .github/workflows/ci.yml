@@ -21,7 +21,7 @@
 #   release   on a v* tag only, and only once everything above passed: a
 #             GitHub Release with the firmware attached.
 #
-# Deploying stays a person's job (README, Running it): nothing here touches Fly.
+# Deploying is deploy.yml, by hand and approved: nothing here touches Fly.
 
 name: CI
 
