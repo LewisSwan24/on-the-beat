@@ -1,0 +1,28 @@
+# ON THE BEAT — Dependabot opens a pull request when a dependency or an action
+# moves, once a week, grouped so it is one PR per kind rather than one each.
+# CI runs on every one of them like any other pull request; nothing merges by
+# itself. jsqr comes from the tarball in vendor/ and is never touched.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      runtime:
+        dependency-type: production
+        update-types: [minor, patch]
+      build:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+

@@ -1,19 +1,34 @@
-# ON THE BEAT — every push to main and every pull request:
+# ON THE BEAT — every push to main, every pull request, and every v* tag:
 #
-#   test      npm test: the Vite build, then every test. The runner has a C++
-#             compiler, so the firmware's logic is built and held against the
-#             real relay here rather than skipped.
+#   lint      the workflows themselves, by actionlint: a typo in a key or an
+#             expression fails here, not halfway through a release.
+#   test      npm test on Node 22 and on Node 24 (the Dockerfile's, so the
+#             machine on Fly's): the Vite build, then every test. The runner
+#             has a C++ compiler, so the firmware's logic is built and held
+#             against the real relay here rather than skipped.
+#   audit     npm audit over what the relay runs with (the image's
+#             `npm ci --omit=dev`), failing on high or critical.
+#   image     the deploy, tried without Fly: `npm run image-check`, then the
+#             real Dockerfile built and its relay started as Fly starts it,
+#             /data root-owned. That proves what image-check says it cannot:
+#             `npm ci`, the base image, setpriv, and the volume handed to
+#             `node`. Then `npm run preflight` against it.
 #   firmware  the wristband's firmware, built by PlatformIO for both envs, the
 #             ESP32 (`m5stickc`) and the StickS3 (`m5sticks3`), and kept as
 #             downloads: each app on its own, and one image each that flashes
 #             whole at 0x0 (the ESP32's bootloader sits at 0x1000 inside it,
 #             the S3's at 0x0).
+#   release   on a v* tag only, and only once everything above passed: a
+#             GitHub Release with the firmware attached.
+#
+# Deploying stays a person's job (README, Running it): nothing here touches Fly.
 
 name: CI
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -22,20 +37,99 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color
+
   test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    name: test (node ${{ matrix.node }})
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: What the relay runs with
+        run: npm audit --omit=dev --audit-level=high
+      - name: Everything, as a report only (Vite and its tree never reach the machine)
+        run: npm audit || true
+
+  image:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: image-check (the image's trees, without Docker)
+        run: npm run image-check
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the Dockerfile as Fly's builder would
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: on-the-beat:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Start it as Fly starts it, /data owned by root
+        run: |
+          docker run -d --name relay -p 8080:8080 --tmpfs /data \
+            -e PORT=8080 \
+            -e NIGHT_TZ=Australia/Brisbane \
+            -e NIGHT_FILE=/data/night.json \
+            -e PUSH_KEYS_FILE=/data/push-keys.json \
+            -e SHOWS=/data/shows.json \
+            -e APP_CSP=framing-only \
+            on-the-beat:ci
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://localhost:8080/ && break
+            sleep 1
+          done
+          curl -fsS -o /dev/null http://localhost:8080/
+      - name: The relay runs as node, and /data is node's
+        run: |
+          uid=$(docker exec relay cat /proc/1/status | grep '^Uid:' | cut -f2)
+          owner=$(docker exec relay stat -c %U /data)
+          echo "pid 1 uid: $uid, /data owner: $owner"
+          test "$uid" != 0
+          test "$owner" = node
+      - name: preflight against the container
+        run: npm run preflight -- http://localhost:8080
+      - name: The push keys were written to the volume
+        run: docker exec relay test -s /data/push-keys.json
+      - name: The relay's log
+        if: always()
+        run: docker logs relay 2>&1 | tail -100
 
   firmware:
     runs-on: ubuntu-latest
@@ -79,3 +173,29 @@ jobs:
             firmware/.pio/build/m5sticks3/otb-wristband-s3-full.bin
             firmware/.pio/build/m5sticks3/firmware.bin
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [lint, test, audit, image, firmware]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: otb-wristband-${{ github.sha }}
+          path: built
+      - name: A release, the firmware attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # The artifact keeps each env's app as firmware.bin in its own folder; a release needs one name each.
+          mkdir assets
+          cp built/m5stickc/otb-wristband-full.bin     assets/
+          cp built/m5stickc/firmware.bin               assets/otb-wristband-app.bin
+          cp built/m5sticks3/otb-wristband-s3-full.bin assets/
+          cp built/m5sticks3/firmware.bin              assets/otb-wristband-s3-app.bin
+          (cd assets && sha256sum -- *.bin > SHA256SUMS && cat SHA256SUMS)
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes assets/*
