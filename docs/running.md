@@ -19,12 +19,28 @@ npm run mutate -- list.json   # break a guard and see its test go red; puts ever
 names the venue's time zone (an IANA name); without it the relay uses its own
 machine's.
 
-**CI.** Every push to `main` and every pull request runs `npm test` and builds
-the wristband's firmware for both envs with PlatformIO
-(`.github/workflows/ci.yml`). Each run keeps the firmware as a download: each
-env's `firmware.bin`, and one image each that flashes whole at `0x0`,
-bootloader and partition table included — `otb-wristband-full.bin` for the
-M5StickC Plus, `otb-wristband-s3-full.bin` for the StickS3.
+**CI.** Every push to `main` and every pull request (`.github/workflows/ci.yml`):
+actionlint over the workflows; `npm test` on Node 22 and on Node 24, the
+Dockerfile's; `npm audit` over the relay's runtime dependencies, failing on
+high or critical; `npm run image-check`, then the real Dockerfile built and
+its relay started as Fly starts it — `/data` root-owned, the relay checked to
+run as `node` with `/data` handed to it — and `npm run preflight` against it;
+and the wristband's firmware for both envs with PlatformIO. Each run keeps the
+firmware as a download: each env's `firmware.bin`, and one image each that
+flashes whole at `0x0`, bootloader and partition table included —
+`otb-wristband-full.bin` for the M5StickC Plus, `otb-wristband-s3-full.bin`
+for the StickS3. Nothing in CI deploys.
+
+**A release.** Push a tag (`git tag v0.2.0 && git push origin v0.2.0`): the
+same checks run, and only when every one passes, a GitHub Release is made with
+the four firmware files (the apps renamed `otb-wristband-app.bin` and
+`otb-wristband-s3-app.bin`) and their `SHA256SUMS`.
+
+**Code scanning and updates.** CodeQL (`.github/workflows/codeql.yml`) reads
+the JavaScript and the workflows on every push, pull request and weekly;
+findings are under the Security tab. Dependabot (`.github/dependabot.yml`)
+opens one grouped pull request a week for npm and one for the actions; CI runs
+on each and none merges by itself.
 
 **Phones need https.** The camera, the screen wake lock and the offline shell
 are all refused on plain http, so a phone on the LAN gets an app with no
