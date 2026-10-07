@@ -93,7 +93,7 @@ export function runJs(protocol) {
     else if (verb === 'frame') wrist.frame(rest.join(' '), t);
     else if (verb === 'battery') wrist.setBattery(Number(rest[0]), t);
     else if (verb === 'wifi') wrist.setWifi(rest[0] === '1');
-    answers.push({ sent: wrist.take().map((o) => (o === 'DROP' ? o : JSON.parse(o))), sounds: wrist.sounds(), face: wrist.face(t) });
+    answers.push({ sent: wrist.take().map((o) => (o === 'DROP' || o === 'SETUP' ? o : JSON.parse(o))), sounds: wrist.sounds(), face: wrist.face(t) });
   }
   return answers;
 }

@@ -300,13 +300,16 @@ void face() {
   CHECK(f.show.kind == "off" && f.show.quiet && !f.offline && lightFor(f, false) == LIGHT_OFF);
   CHECK(wordsFor(f, true, 62, Signal::LIVE).big == "NOT NOW");
   f = faceFor(&song, true, true);  // and held with no relay in reach, a press says so
-  CHECK(f.show.quiet && f.offline && wordsFor(f, true, 62, Signal::NO_WIFI).big == "NO SIGNAL");
+  CHECK(f.show.quiet && f.offline && wordsFor(f, true, 62, Signal::NO_RELAY).big == "NO SIGNAL");
+  // With no Wi-Fi at all it says that, and what a SIDE hold does about it.
+  CHECK(wordsFor(f, true, 62, Signal::NO_WIFI).big == "NO WI-FI" && wordsFor(f, true, 62, Signal::NO_WIFI).small == "HOLD SIDE: SET UP");
   f = faceFor(&song, true, false);  // the relay out of reach: not believed
   CHECK(f.show.kind == "off" && f.offline && lightFor(f, false) == LIGHT_OFF);
   CHECK(wordsFor(f, false, 62, Signal::NO_RELAY).big.empty());
   w = wordsFor(f, true, 62, Signal::NO_RELAY);
   CHECK(w.big == "NO SIGNAL" && w.small == "NO RELAY - 62%");
-  CHECK(wordsFor(f, true, -1, Signal::NO_WIFI).small == "NO WI-FI");
+  CHECK(wordsFor(f, true, -1, Signal::NO_RELAY).small == "NO RELAY");
+  CHECK(wordsFor(f, true, -1, Signal::NO_WIFI).small == "HOLD SIDE: SET UP");
   CHECK(lightFor(f, true) == LIGHT_AWAKE);
 
   f = faceFor(nullptr, false, false);
@@ -975,7 +978,7 @@ int runWrist() {
     else if (verb == "battery") w->setBattery(std::atoi(arg.c_str()), t);
     else if (verb == "wifi") w->setWifi(arg == "1");
     std::string sent, sounds;
-    for (const std::string& f : w->take()) sent += (sent.empty() ? "" : ",") + (f == "DROP" ? std::string("\"DROP\"") : f);
+    for (const std::string& f : w->take()) sent += (sent.empty() ? "" : ",") + (f == "DROP" || f == "SETUP" ? quote(f) : f);
     for (const std::string& n : w->sounds()) sounds += (sounds.empty() ? "" : ",") + quote(n);
     const Screen s = w->face(t);
     std::cout << "{\"sent\":[" << sent << "],\"sounds\":[" << sounds << "],\"face\":{\"big\":" << quote(s.big) << ",\"small\":" << quote(s.small)
@@ -1105,10 +1108,6 @@ void power() {
 }
 
 void wifiSetup() {
-  // Both buttons ask for setup only as the band starts, not once it is running.
-  CHECK(setupAsked(0, true, true) && setupAsked(SETUP_WINDOW_MS - 1, true, true));
-  CHECK(!setupAsked(SETUP_WINDOW_MS, true, true) && !setupAsked(100, true, false) && !setupAsked(100, false, true));
-
   // Letters off the pairing alphabet's rules, and a draw that would bias them is drawn again.
   uint32_t n = 0;
   const std::string pass = setupLetters(SETUP_PASS_LEN, [&n] { return n++ * 2654435761u; });
@@ -1151,6 +1150,9 @@ void wifiSetup() {
   CHECK(page.find("phone&quot; - weak, open") != std::string::npos);
   CHECK(page.find("It joins Home now.") != std::string::npos);
   CHECK(savedPage("<x>").find("<x>") == std::string::npos);
+  // It says the way back in that the band has: a SIDE hold on NO WI-FI, not a start-up hold it no longer has.
+  CHECK(savedPage("x").find("hold its side button there") != std::string::npos);
+  CHECK(savedPage("x").find("both buttons") == std::string::npos);
 
   const std::vector<SeenNet> listed = setupList(heard);
   CHECK(listed.size() == 3 && listed[0].ssid[0] == '<' && listed[1].ssid == "Home" && listed[1].rssi == -55);
@@ -1160,7 +1162,7 @@ void wifiSetup() {
 
   CHECK(setupChosen("", "Home") == "Home" && setupChosen("Typed", "Home") == "Typed");
 
-  // Both held as it starts: a press leaves only after both are let go, and never once a network is kept.
+  // SIDE still held as it starts: a press leaves only after both are let go, and never once a network is kept.
   SetupMode s;
   s.begin(1000);
   CHECK(!s.keys(true, true) && !s.keys(true, false));

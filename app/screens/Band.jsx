@@ -194,6 +194,7 @@ export function BandStandIn() {
     // and the face is drawn again.
     const flush = () => {
       for (const f of wrist.take()) {
+        if (f === 'SETUP') continue;  // the band's Wi-Fi setup: the stand-in has none
         if (f === 'DROP') ws.current?.close();
         else if (ws.current?.readyState === 1) ws.current.send(f);
       }

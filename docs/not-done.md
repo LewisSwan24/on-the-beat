@@ -300,5 +300,5 @@
   under the radio's old address, so no laptop got an address, and the page,
   asked for a moment after the loop read the time, made setup think ten
   minutes had gone. Still owed: an iPhone and an Android phone joining from the
-  code on the face and seeing the page pop up by themselves, and both buttons
-  held by hand as the band starts.
+  code on the face and seeing the page pop up by themselves, and the SIDE hold
+  on NO WI-FI by hand.

@@ -201,7 +201,7 @@
         { "at": "3100+COMMIT_MS", "face": { "big": "NO SIGNAL" } },
         { "at": "2100+CHOOSE_MS", "face": { "big": "HI :)" } },
         { "at": "9000", "wifi": false },
-        { "at": "9500", "press": 2, "face": { "big": "NO SIGNAL", "small": "NO WI-FI - 62%" } }
+        { "at": "9500", "press": 2, "face": { "big": "NO WI-FI", "small": "HOLD SIDE: SET UP", "corner": "62%" } }
       ]
     },
     {
@@ -297,7 +297,7 @@
         { "at": "DEAF_MS+1+STALE_MS", "face": { "big": "", "light": "LIGHT_OFF" } },
         { "at": "DEAF_MS+1+STALE_MS", "press": 1, "face": { "big": "NO SIGNAL", "small": "NO RELAY - 62%" } },
         { "at": "20000", "wifi": false },
-        { "at": "20100", "press": 1, "face": { "small": "NO WI-FI - 62%" } }
+        { "at": "20100", "press": 1, "face": { "big": "NO WI-FI", "small": "HOLD SIDE: SET UP", "corner": "62%" } }
       ]
     },
     {
@@ -1501,6 +1501,30 @@
         { "at": "10010+WAKE_MS+100", "show": "CHECK", "sounds": ["ask"], "face": { "field": "white", "corner": "" } },
         { "at": "20000", "face": { "big": "27", "corner": "62%" } },
         { "at": "20010", "battery": -1, "face": { "big": "27", "corner": "" } }
+      ]
+    },
+    {
+      "name": "with no Wi-Fi, a SIDE hold on NO WI-FI asks for Wi-Fi setup; not under a meeting still believed, nor with only the relay gone",
+      "keepAlive": false,
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }] },
+        { "at": "0", "show": "MEET", "sounds": ["jingle"] },
+        { "at": "300", "press": 1 },
+        { "at": "1000", "wifi": false },
+        { "at": "1000", "link": "down" },
+        { "at": "2000", "key2": "down", "sounds": ["tick"] },
+        { "at": "2000+HOLD_MS", "sounds": ["low"] },
+        { "at": "2000+HOLD_MS", "key2": "up" },
+        { "at": "1000+STALE_MS+100", "press": 1, "face": { "big": "NO WI-FI", "small": "HOLD SIDE: SET UP", "corner": "62%" } },
+        { "at": "13000", "key2": "down", "sounds": ["tick"] },
+        { "at": "13000+HOLD_MS", "sent": ["SETUP"] },
+        { "at": "13000+HOLD_MS", "key2": "up" },
+        { "at": "20000", "wifi": true },
+        { "at": "20100", "press": 1, "face": { "big": "NO SIGNAL", "small": "NO RELAY - 62%", "corner": "" } },
+        { "at": "21000", "key2": "down", "sounds": ["tick"] },
+        { "at": "21000+HOLD_MS" },
+        { "at": "21000+HOLD_MS", "key2": "up" }
       ]
     }
   ]

@@ -18,7 +18,7 @@
 // and the registry), the base image, setpriv, and the volume's ownership. Exit 0 when nothing failed, 1 when something
 // did, 2 for an argument it does not take.
 
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, unlinkSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync } from 'node:fs';
 import { cp, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -184,10 +184,14 @@ function relayEnv(flyVars, volume, dataDir) {
  * relay/ ...). Returns { ok, steps: [{ name, status: 'ok' | 'fail' | 'note', detail }] }; the temporary folder is gone
  * when it returns, however it ended.
  */
-export async function imageCheck({ root = ROOT } = {}) {
+export async function imageCheck({ root: given = ROOT } = {}) {
   const steps = [];
   const step = (name, status, detail) => { steps.push({ name, status, detail }); return status !== 'fail'; };
-  const stage = mkdtempSync(join(tmpdir(), 'otb-image-'));
+  // Long paths, both: a Windows temp folder can come as an 8.3 short name (C:\Users\ABCDEF~1\...), and
+  // vite, which resolves some files to the long name, then failed to build with a "../../ABCDEF~1" asset name.
+  // It came and went from run to run (7 Oct 2026).
+  const root = realpathSync.native(given);
+  const stage = realpathSync.native(mkdtempSync(join(tmpdir(), 'otb-image-')));
   const joined = [];
   let relay = null;
   try {

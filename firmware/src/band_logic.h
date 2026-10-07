@@ -842,8 +842,9 @@ inline Words wordsFor(const Face& f, bool awake, int battery, Signal signal) {
     return {fold(s.big), s.kind == "meet" && awake && s.small == "MEET" ? "HOLD SIDE: FOUND" : upper(fold(s.small))};
   if (s.kind != "off" || !awake) return {};
   if (f.offline) {
-    const std::string why = signal == Signal::NO_WIFI ? "NO WI-FI" : "NO RELAY";
-    return {"NO SIGNAL", pct.empty() ? why : why + " - " + pct};
+    // No Wi-Fi at all, a SIDE hold sets it from a phone (setupWanted below); the battery goes to the corner.
+    if (signal == Signal::NO_WIFI) return {"NO WI-FI", "HOLD SIDE: SET UP"};
+    return {"NO SIGNAL", pct.empty() ? "NO RELAY" : "NO RELAY - " + pct};
   }
   if (s.quiet) return {"NOT NOW", pct};
   if (s.away) return {"OPEN YOUR PHONE", "TO COME BACK"};
@@ -1546,7 +1547,7 @@ class Wrist {
   /** The relay answered a ping, or anything else was heard. */
   void heard(uint32_t now) { link_.heard(now); }
 
-  /** Everything to send since the last take: frame text, or "DROP" to drop the socket. */
+  /** Everything to send since the last take: frame text, "DROP" to drop the socket, or "SETUP" to start Wi-Fi setup. */
   std::vector<std::string> take() {
     std::vector<std::string> o;
     o.swap(out_);
@@ -2071,8 +2072,8 @@ class Wrist {
   std::string pct() const { return battery_ >= 0 ? std::to_string(battery_) + "%" : ""; }
 
   Screen noSignal() const {
-    const std::string why = wifi_ ? "NO RELAY" : "NO WI-FI";
-    return words("NO SIGNAL", pct().empty() ? why : why + " - " + pct(), "black", "text2", LIGHT_AWAKE);
+    if (!wifi_) return words("NO WI-FI", "HOLD SIDE: SET UP", "black", "text2", LIGHT_AWAKE);
+    return words("NO SIGNAL", pct().empty() ? "NO RELAY" : "NO RELAY - " + pct(), "black", "text2", LIGHT_AWAKE);
   }
 
   /** The face at rest: faceFor(), wordsFor() and lightFor(), as the relay's show has it. */
@@ -2216,6 +2217,13 @@ class Wrist {
   /** KEY2 held for HOLD_MS: send now in a choice; with no preview yet, only wake. */
   void sideHeld(uint32_t now) {
     if (k1_.down || frozen_) return;
+    // With no Wi-Fi, once the face says so, the hold asks for Wi-Fi setup: "SETUP" in what is taken, which
+    // main.cpp answers by starting again as a Wi-Fi of its own. Not while a show is still believed: a blip
+    // in the Wi-Fi under a meeting leaves its FOUND hold alone.
+    if (!wifi_ && !link_.up() && (link_.stale(now) || mode_ == LOOK)) {
+      out_.push_back("SETUP");
+      return;
+    }
     if (mode_ == CHOOSING) commit(now, true);
     else if (mode_ == WAVES) waveBack(now);
     else if (mode_ == LOOK) stepAt_ = now;
@@ -2523,21 +2531,17 @@ inline std::string heardLine(const Frame& f, std::string& shown) {
 
 // ---------- setting its Wi-Fi from a phone ----------
 //
-// Held with both buttons as it starts, the band stops being a wristband for a
-// while and becomes a Wi-Fi of its own, OTB-XXXX, with a password made fresh
+// A SIDE hold on its NO WI-FI face, or `setup` at the console, and the band
+// stops being a wristband for a while and becomes a Wi-Fi of its own, OTB-XXXX, with a password made fresh
 // each time and shown on its face beside a code that joins it. A phone that
 // joins is sent to one page: pick the network the band should join, type its
 // password, save. The band keeps it and starts again on it. So anyone can put
 // a band on their own Wi-Fi with only their phone, where before it took a
 // laptop, a cable and the serial console.
 
-constexpr uint32_t SETUP_WINDOW_MS = 4000;              // both buttons down this soon after it starts: Wi-Fi setup
 constexpr uint32_t SETUP_IDLE_MS = 10u * 60u * 1000u;   // the page not asked for this long: back to being a wristband
 constexpr uint32_t SETUP_SAVED_MS = 2500;               // SAVED stays this long before it starts again on the new Wi-Fi
 constexpr int SETUP_PASS_LEN = 10;                      // 31 letters, 10 of them: about 50 bits
-
-/** Whether both buttons, down this soon after it started, ask for Wi-Fi setup. */
-inline bool setupAsked(uint32_t now, bool face, bool side) { return now < SETUP_WINDOW_MS && face && side; }
 
 /** Letters to read off a small face and type: no I, L, O, 0 or 1, as the pairing letters have none. Unbiased. */
 inline std::string setupLetters(int n, const std::function<uint32_t()>& random32) {
@@ -2663,7 +2667,7 @@ inline std::string setupPage(const std::vector<SeenNet>& seen, const std::string
 inline std::string savedPage(const std::string& ssid) {
   return std::string(setup_page::HEAD) + "<h1>Saved</h1><p>The wristband starts again now and joins " + htmlEscape(ssid) +
          ". Your phone goes back to its own Wi-Fi by itself.</p><p>If its face says NO WI-FI, the name or the password "
-         "was not right: turn it on again holding both buttons, and set it up again.</p>" + setup_page::TAIL;
+         "was not right: hold its side button there, and set it up again.</p>" + setup_page::TAIL;
 }
 
 /** The network a saved form keeps: a typed name over a picked one. */
@@ -2671,7 +2675,7 @@ inline std::string setupChosen(const std::string& typed, const std::string& pick
 
 /**
  * The time in setup: when the page was last asked for, when a network was
- * kept, and the buttons. Both are still held as setup starts, so a press only
+ * kept, and the buttons. SIDE may still be held as setup starts, so a press only
  * leaves once both have been let go.
  */
 class SetupMode {

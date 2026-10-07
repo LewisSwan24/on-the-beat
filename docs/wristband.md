@@ -317,9 +317,10 @@ not the night. A marker never does: it is nobody's by design.
 
 **Its Wi-Fi, from a phone.** Until 7 Oct 2026 a band joined only what its
 console was told, or what `secrets.h` built in: a laptop, a cable and
-`ssid`/`pass` to put it on anyone else's Wi-Fi. Now both buttons held as it
-starts (down within `SETUP_WINDOW_MS`, 4 s, of starting), or `setup` at the
-console, start it again as a Wi-Fi of its own, `OTB-` and four letters, with a
+`ssid`/`pass` to put it on anyone else's Wi-Fi. Now a band with no Wi-Fi
+says so, `NO WI-FI` / `HOLD SIDE: SET UP` (the battery in the corner), and a
+SIDE hold there, or `setup` at the console, starts it again as a Wi-Fi of its
+own, `OTB-` and four letters, with a
 password of ten letters made fresh each time (no I, L, O, 0 or 1). Its face
 shows the code a phone's camera joins it from, beside the name and the
 password in two halves of five. Every name looked up on that Wi-Fi is the band,
@@ -339,8 +340,13 @@ is. It joins 2.4 GHz with a password or open, never a sign-in page: a phone's
 hotspot works, a school's or hotel's sign-in Wi-Fi does not, and the page says
 so. Proven on a StickC Plus, 7 Oct 2026, from a laptop that joined its Wi-Fi:
 the page, both sign-in checks sent to it, a short password refused, a save, and
-the band back on its hotspot and the relay. Not yet tried: a phone, and both
-buttons by hand.
+the band back on its hotspot and the relay. Not yet tried: a phone, and the
+SIDE hold by hand. The hold asks only once the face says `NO WI-FI`: while a
+show is still believed (ten seconds, `STALE_MS`) a Wi-Fi blip under a meeting
+leaves its FOUND hold alone, and with only the relay out of reach (`NO
+SIGNAL` / `NO RELAY`) the hold does nothing, since the Wi-Fi is not what is
+wrong. It was first asked for with both buttons held as the band starts, and
+changed the same day at his word: a start-up window is easy to miss.
 
 **The battery in the corner.** Every lit face on black that does not already
 say the battery (`READY`, `NOT NOW` and `NO SIGNAL` do) carries it small in

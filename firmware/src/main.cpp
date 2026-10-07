@@ -956,7 +956,7 @@ void help() {
       "  relay <address>         https://....trycloudflare.com from npm run tunnel, or ws://<laptop>:8790 on a LAN\n"
       "  show                    what it is set to, and how it is doing\n"
       "  forget                  back to what it was built with\n"
-      "  setup                   start again as a Wi-Fi of its own, to set its Wi-Fi from a phone (both buttons as it starts do too)\n"
+      "  setup                   start again as a Wi-Fi of its own, to set its Wi-Fi from a phone (a SIDE hold on NO WI-FI does too)\n"
       "  press face|side         a press, as a finger makes it\n"
       "  hold face|side          a hold, let go just after it counts\n"
       "  hold both               face and side together, as long as it takes to turn the band off\n"
@@ -1182,7 +1182,7 @@ DNSServer* dns = nullptr;
 std::string savedSsid;
 std::vector<SeenNet> seenNets;
 
-/** Start again in Wi-Fi setup: from both buttons as it starts, or the console's `setup`. */
+/** Start again in Wi-Fi setup: from a SIDE hold on the NO WI-FI face, or the console's `setup`. */
 void askSetup() {
   prefs.putBool("setup", true);
   Serial.println("Wi-Fi setup: restarting into it");
@@ -1491,8 +1491,6 @@ void loop() {
   const bool a = M5.BtnA.isPressed() || fromConsole(1), b = M5.BtnB.isPressed() || fromConsole(2);
   if (a != keyA) { keyA = a; a ? wrist->keyDown(1, now) : wrist->keyUp(1, now); }
   if (b != keyB) { keyB = b; b ? wrist->keyDown(2, now) : wrist->keyUp(2, now); }
-  // Both buttons, as it starts: set its Wi-Fi from a phone. Only the buttons themselves; a console hold is a test.
-  if (setupAsked(now, M5.BtnA.isPressed(), M5.BtnB.isPressed())) askSetup();
   if (off.keys(a, b, now, a && b && plugged())) wrist->bothDown(now);  // after the edges: a key that went down this time is let go too
   // Nobody's, off its cable and untouched for IDLE_OFF_MS: it turns itself off. The cable is read once a second.
   if (now - cableReadAt >= 1000) {
@@ -1508,7 +1506,10 @@ void loop() {
   wrist->setWifi(WiFi.status() == WL_CONNECTED);
   wrist->tick(now);
   playSounds();  // before the frames and the face: a press's tick is heard as soon as it can be
-  for (const std::string& f : wrist->take()) sendFrame(f);
+  for (const std::string& f : wrist->take()) {
+    if (f == "SETUP") askSetup();  // a SIDE hold on NO WI-FI: set its Wi-Fi from a phone
+    else sendFrame(f);
+  }
   hearTick(now);
   if (wrist->up() && batteryReport.due(battery, now)) {
     sendFrame(batteryFrame(battery));

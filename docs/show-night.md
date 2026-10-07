@@ -48,7 +48,7 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
    staff page. Each team member signs in at `/staff` and taps **NOTIFY THIS
    DEVICE** (on an iPhone: add to Home Screen first).
 3. **Every band joins the venue's Wi-Fi** (console `ssid`/`pass`, or from a
-   phone: both buttons held as it starts, docs/wristband.md "Its Wi-Fi, from a
+   phone: a SIDE hold on its NO WI-FI face, docs/wristband.md "Its Wi-Fi, from a
    phone"; kept across restarts) and shows `(on it)`. A save from a phone drops
    the band's `channel` pin, so pin the channel after it, not before. A band hears only bands on its own Wi-Fi
    channel, so access points spread over several channels split the bands

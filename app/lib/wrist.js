@@ -301,8 +301,9 @@ export function createWrist({ key }) {
   }
 
   function noSignal() {
-    const why = wifi ? 'NO RELAY' : 'NO WI-FI';
-    return words('NO SIGNAL', pct() ? why + ' - ' + pct() : why, 'black', 'text2', LIGHT_AWAKE);
+    // No Wi-Fi at all, a SIDE hold sets it from a phone (sideHeld below); the battery goes to the corner.
+    if (!wifi) return words('NO WI-FI', 'HOLD SIDE: SET UP', 'black', 'text2', LIGHT_AWAKE);
+    return words('NO SIGNAL', pct() ? 'NO RELAY - ' + pct() : 'NO RELAY', 'black', 'text2', LIGHT_AWAKE);
   }
 
   /** A press shows the face for WAKE_MS; the waiting face, which sleeps, stays lit PAIR_AWAKE_MS from it. */
@@ -421,6 +422,9 @@ export function createWrist({ key }) {
 
   function sideHeld(now) {
     if (k1.down || frozen) return;
+    // With no Wi-Fi, once the face says so, the hold asks for Wi-Fi setup ('SETUP' in what is taken). The
+    // stand-in always has its Wi-Fi, so only the band ever asks; a blip under a meeting leaves FOUND alone.
+    if (!wifi && !link.up && (stale(now) || mode === 'look')) { out.push('SETUP'); return; }
     if (mode === 'choosing') commit(now, true);
     else if (mode === 'waves') waveBack(now);
     else if (mode === 'look') stepAt = now;
@@ -754,7 +758,7 @@ export function createWrist({ key }) {
     tick,
     setBattery,
     setWifi: (on) => { wifi = !!on; },
-    /** Everything to send since the last take: frame text, or 'DROP' to drop the socket. */
+    /** Everything to send since the last take: frame text, 'DROP' to drop the socket, or 'SETUP' for Wi-Fi setup. */
     take: () => { const o = out; out = []; return o; },
     /** The names of the sounds due to start since the last ask: the player plays the newest. */
     sounds: () => { const d = due; due = []; return d; },
