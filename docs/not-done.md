@@ -281,8 +281,14 @@
   told apart from two people dancing to the same beat.
 - **The timings are guesses until worn** — six seconds awake, 1.5 s holds,
   three to send, ten to wait. They are named constants for that reason.
-- **Recording has run on Chrome's fake camera, not a phone's.** Headless
-  Chrome with a fake camera recorded five seconds through the app's own
-  MediaRecorder path and sent it; a second phone found it on the floor and
-  loaded a valid WebM (148 KB). A real phone camera — and Safari's MP4
-  recorder — is the next check.
+- **Recording has run on real phones since 6 Oct 2026, and an iPhone's
+  dance vanished.** He tried one Android phone and two iPhones on the live
+  relay: an iPhone sent its five seconds, then its tile disappeared from the
+  floor. `/clip/` answered every request with the whole file, and Safari asks
+  for `bytes=0-1` first and plays nothing from a server that ignores a range,
+  so the tile's `onError` hid it. `/clip/` now answers one byte range with a
+  206 (`rangeOf()` in `relay/server.js`, a test for each shape of range), and
+  phones record H.264 MP4 first (`CLIP_TYPES` in `app/lib/device.js`), which
+  every phone plays, where an iPhone may not play an Android phone's WebM.
+  Chromium's MP4 recorder was checked to make a file it plays back; the
+  iPhones themselves are the check still owed.

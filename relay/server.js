@@ -107,6 +107,23 @@ export const APP_POLICY = [
 export const FRAMING_ONLY = "frame-ancestors 'none'";
 
 /** A venue's room key: its name, folded, so "The Roundhouse " and "the roundhouse" meet. */
+/**
+ * One byte range of a body `size` long, from a Range header: [first, last], 'none' when it starts past the end, or
+ * null for no header or one this does not read (several ranges, another unit, nonsense), which gets the whole body.
+ */
+export function rangeOf(header, size) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(header ?? '').trim());
+  if (!m || (m[1] === '' && m[2] === '')) return null;
+  if (m[1] === '') {   // the last n bytes
+    const n = Number(m[2]);
+    return n > 0 ? [Math.max(0, size - n), size - 1] : 'none';
+  }
+  const from = Number(m[1]);
+  if (m[2] !== '' && Number(m[2]) < from) return null;
+  if (from >= size) return 'none';
+  return [from, m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1)];
+}
+
 export const venueKey = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 80);
 
 /** A venue key as a log line may carry it. A stranger typed it, so no control, format or separator character goes through. */
@@ -1165,9 +1182,21 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const view = viewer ? r.room.viewFor(viewer) : null;
     if (!view || !(view.me.clip === ref || view.floor.some((f) => f.ref === ref))) { res.writeHead(404).end(); return; }
     const etag = '"' + ref + '"';
-    const head = { 'content-type': c.mime, 'cache-control': 'private, no-cache', etag, 'x-content-type-options': 'nosniff' };
+    const head = { 'content-type': c.mime, 'cache-control': 'private, no-cache', etag, 'x-content-type-options': 'nosniff',
+      'accept-ranges': 'bytes' };
     if (req.headers['if-none-match'] === etag) { res.writeHead(304, head).end(); return; }
-    res.writeHead(200, head).end(c.buf);
+    // Safari asks for bytes=0-1 before it plays a video, and plays nothing from a server that answers with the whole
+    // file: an iPhone's own dance vanished from its floor (5 Oct 2026). One range is answered; anything else, the clip.
+    const size = c.buf.length;
+    const range = rangeOf(req.headers.range, size);
+    if (range === 'none') { res.writeHead(416, { ...head, 'content-range': 'bytes */' + size }).end(); return; }
+    if (range) {
+      const [from, to] = range;
+      res.writeHead(206, { ...head, 'content-range': `bytes ${from}-${to}/${size}`, 'content-length': to - from + 1 })
+        .end(c.buf.subarray(from, to + 1));
+      return;
+    }
+    res.writeHead(200, { ...head, 'content-length': size }).end(c.buf);
   }
 
   /** A file from dist/, the staff page at /staff, or the app itself for any route it owns. Never anything outside dist/. */

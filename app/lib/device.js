@@ -33,10 +33,14 @@ export const buzz = (pattern) => { try { navigator.vibrate?.(pattern); } catch {
 
 export const reducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-/** The first recording format this browser can make. */
+/**
+ * The first recording format this browser can make, H.264 in MP4 first: every phone plays it, where an iPhone may not
+ * play a WebM an Android phone made. Chrome on Android records MP4 now; an older one still makes WebM.
+ */
+export const CLIP_TYPES = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp8', 'video/webm'];
 export function clipType() {
   if (typeof MediaRecorder === 'undefined') return null;
-  for (const t of ['video/webm;codecs=vp8', 'video/webm', 'video/mp4']) {
+  for (const t of CLIP_TYPES) {
     try { if (MediaRecorder.isTypeSupported(t)) return t; } catch { /* keep looking */ }
   }
   return null;

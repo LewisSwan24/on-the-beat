@@ -171,6 +171,71 @@ test('a clip on the floor is served to the room, and a dance back reaches only i
   close(ana, ben, cai);
 });
 
+test('every format a phone records in is kept, H.264 MP4 first, since every phone plays that', async () => {
+  const { CLIP_TYPES } = await import('../app/lib/device.js');
+  assert.match(CLIP_TYPES[0], /^video\/mp4;codecs=avc1$/, 'an iPhone may not play a WebM an Android phone made');
+  const ana = await phone('the format room');
+  const ben = await phone('the format room');
+  for (const type of CLIP_TYPES) {
+    ana.send({ t: 'clip', mime: type, data: randomBytes(256).toString('base64') });
+    const { floor: [tile] } = await ben.until((v) => v.floor.length === 1 && v.floor[0].ref !== ben.lastRef);
+    ben.lastRef = tile.ref;
+    const res = await fetch(url('/clip/' + encodeURIComponent('the format room') + '/' + tile.ref));
+    assert.equal(res.headers.get('content-type'), type.split(';')[0], type);
+    await res.arrayBuffer();
+  }
+  close(ana, ben);
+});
+
+test('a clip answers a byte range, as Safari asks for one before it plays: an iPhone could not play its own dance', async () => {
+  // Safari asks for bytes=0-1 first and will not play a video from a server that answers a range with the whole file.
+  const ana = await phone('the range room');
+  const ben = await phone('the range room');
+  const bytes = randomBytes(3000);
+  ana.send({ t: 'clip', mime: 'video/mp4', data: bytes.toString('base64') });
+  const { floor: [tile] } = await ben.until((v) => v.floor.length === 1);
+  const at = url('/clip/' + encodeURIComponent('the range room') + '/' + tile.ref);
+  const get = (range) => fetch(at, range ? { headers: { range } } : {});
+
+  const whole = await get();
+  assert.equal(whole.status, 200);
+  assert.equal(whole.headers.get('accept-ranges'), 'bytes', 'it says ranges are welcome');
+  assert.equal(whole.headers.get('content-length'), '3000');
+  assert.deepEqual(Buffer.from(await whole.arrayBuffer()), bytes);
+
+  const first = await get('bytes=0-1');
+  assert.equal(first.status, 206);
+  assert.equal(first.headers.get('content-range'), 'bytes 0-1/3000');
+  assert.equal(first.headers.get('content-type'), 'video/mp4');
+  assert.deepEqual(Buffer.from(await first.arrayBuffer()), bytes.subarray(0, 2));
+
+  const rest = await get('bytes=1000-');
+  assert.equal(rest.status, 206);
+  assert.equal(rest.headers.get('content-range'), 'bytes 1000-2999/3000');
+  assert.deepEqual(Buffer.from(await rest.arrayBuffer()), bytes.subarray(1000));
+
+  const tail = await get('bytes=-500');
+  assert.equal(tail.headers.get('content-range'), 'bytes 2500-2999/3000');
+  assert.deepEqual(Buffer.from(await tail.arrayBuffer()), bytes.subarray(2500));
+
+  const past = await get('bytes=0-99999');
+  assert.equal(past.headers.get('content-range'), 'bytes 0-2999/3000', 'an end past the clip is cut to its end');
+  await past.arrayBuffer();
+
+  const none = await get('bytes=3000-');
+  assert.equal(none.status, 416);
+  assert.equal(none.headers.get('content-range'), 'bytes */3000');
+  await none.arrayBuffer();
+
+  // A range it does not read (several at once, another unit, nonsense) is answered with the whole clip.
+  for (const odd of ['bytes=0-1,5-6', 'items=0-1', 'bytes=x-y', 'bytes=5-2']) {
+    const r = await get(odd);
+    assert.equal(r.status, 200, odd);
+    assert.equal(Buffer.from(await r.arrayBuffer()).length, 3000, odd);
+  }
+  close(ana, ben);
+});
+
 test("a clip loads only for someone whose own view shows it: a blocked viewer's address stops at once, either way", async () => {
   const venue = 'the-grove-clip-block';
   const ana = await phone(venue);
