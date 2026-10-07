@@ -980,7 +980,7 @@ int runWrist() {
     const Screen s = w->face(t);
     std::cout << "{\"sent\":[" << sent << "],\"sounds\":[" << sounds << "],\"face\":{\"big\":" << quote(s.big) << ",\"small\":" << quote(s.small)
               << ",\"field\":" << quote(s.field) << ",\"ink\":" << quote(s.ink) << ",\"light\":" << int(s.light)
-              << ",\"bar\":" << s.bar << ",\"code\":" << quote(s.code) << "}}\n";
+              << ",\"bar\":" << s.bar << ",\"code\":" << quote(s.code) << ",\"corner\":" << quote(s.corner) << "}}\n";
   }
   return 0;
 }
@@ -1104,6 +1104,90 @@ void power() {
   CHECK(pressFor(readCommand("press both")).key == 3);
 }
 
+void wifiSetup() {
+  // Both buttons ask for setup only as the band starts, not once it is running.
+  CHECK(setupAsked(0, true, true) && setupAsked(SETUP_WINDOW_MS - 1, true, true));
+  CHECK(!setupAsked(SETUP_WINDOW_MS, true, true) && !setupAsked(100, true, false) && !setupAsked(100, false, true));
+
+  // Letters off the pairing alphabet's rules, and a draw that would bias them is drawn again.
+  uint32_t n = 0;
+  const std::string pass = setupLetters(SETUP_PASS_LEN, [&n] { return n++ * 2654435761u; });
+  CHECK(pass.size() == static_cast<size_t>(SETUP_PASS_LEN));
+  CHECK(pass.find_first_not_of("ABCDEFGHJKMNPQRSTUVWXYZ23456789") == std::string::npos);
+  std::vector<uint32_t> draws = {0xFFFFFFFFu, 0u, 30u};
+  size_t d = 0;
+  CHECK(setupLetters(2, [&] { return draws[d++]; }) == "A9" && d == 3);
+  uint32_t m = 7;
+  CHECK(setupLetters(SETUP_PASS_LEN, [&m] { return m = m * 1103515245u + 12345u; }) != pass);
+
+  // The join code escapes what its format reserves.
+  CHECK(wifiQr("OTB-ABCD", "K7Q2M9XPAB") == "WIFI:T:WPA;S:OTB-ABCD;P:K7Q2M9XPAB;;");
+  const std::string bs(1, char(92));  // one backslash, spelled so no editor can fold it
+  CHECK(wifiQr("a;b,c:d" + bs + "e\"f", "x") ==
+        "WIFI:T:WPA;S:a" + bs + ";b" + bs + ",c" + bs + ":d" + bs + bs + "e" + bs + "\"f;P:x;;");
+
+  // What can be kept.
+  CHECK(setupCheck("Rae's phone", "hunter2hunter2").empty());
+  CHECK(setupCheck("Open cafe", "").empty());
+  CHECK(setupCheck("x", std::string(64, 'a')).empty());  // a 64-digit key
+  CHECK(!setupCheck("", "hunter2hunter2").empty());
+  CHECK(!setupCheck(std::string(33, 'x'), "hunter2hunter2").empty());
+  CHECK(!setupCheck("x", "short").empty());
+  CHECK(!setupCheck("x", std::string(64, 'z')).empty());
+  CHECK(!setupCheck("x", std::string(65, 'a')).empty());
+  CHECK(!setupCheck("bad\nname", "hunter2hunter2").empty());
+  CHECK(!setupCheck("x", "tab\there12").empty());
+
+  // A name heard over the air is only ever words in the page.
+  const std::vector<SeenNet> heard = {
+      {"<script>alert(1)</script>", -50, false}, {"Rae\"s \"phone\"", -80, true}, {"", -30, false}, {"Home", -70, false},
+      {"Home", -55, false}};
+  const std::string page = setupPage(heard, "Home", "<b>no</b>");
+  CHECK(page.find("<script>") == std::string::npos && page.find("&lt;script&gt;alert(1)&lt;/script&gt;") != std::string::npos);
+  CHECK(page.find("value=\"Rae&quot;s &quot;phone&quot;\"") != std::string::npos);
+  CHECK(page.find("<b>no</b>") == std::string::npos && page.find("&lt;b&gt;no&lt;/b&gt;") != std::string::npos);
+  CHECK(page.find("value=\"Home\" selected>Home - strong<") != std::string::npos);  // at its strongest, once
+  CHECK(page.find("Home - fair") == std::string::npos);
+  CHECK(page.find("phone&quot; - weak, open") != std::string::npos);
+  CHECK(page.find("It joins Home now.") != std::string::npos);
+  CHECK(savedPage("<x>").find("<x>") == std::string::npos);
+
+  const std::vector<SeenNet> listed = setupList(heard);
+  CHECK(listed.size() == 3 && listed[0].ssid[0] == '<' && listed[1].ssid == "Home" && listed[1].rssi == -55);
+  std::vector<SeenNet> many;
+  for (int i = 0; i < 30; ++i) many.push_back({"n" + std::to_string(i), -90 + i, false});
+  CHECK(setupList(many).size() == 20 && setupList(many)[0].ssid == "n29");
+
+  CHECK(setupChosen("", "Home") == "Home" && setupChosen("Typed", "Home") == "Typed");
+
+  // Both held as it starts: a press leaves only after both are let go, and never once a network is kept.
+  SetupMode s;
+  s.begin(1000);
+  CHECK(!s.keys(true, true) && !s.keys(true, false));
+  CHECK(!s.keys(false, false));
+  CHECK(s.keys(false, true));
+  SetupMode t;
+  t.begin(0);
+  CHECK(!t.idleDue(SETUP_IDLE_MS - 1) && t.idleDue(SETUP_IDLE_MS));
+  t.asked(5000);
+  CHECK(!t.idleDue(SETUP_IDLE_MS) && t.idleDue(5000 + SETUP_IDLE_MS));
+  t.keys(false, false);
+  t.saved(6000);
+  CHECK(t.isSaved() && !t.keys(true, false) && !t.idleDue(6000 + SETUP_IDLE_MS));
+  CHECK(!t.restartDue(6000 + SETUP_SAVED_MS - 1) && t.restartDue(6000 + SETUP_SAVED_MS));
+  // The page is asked for inside a turn of the loop, a moment after that turn read the time. Found on the
+  // first real band: a laptop's captive check fetched the page, and the band at once called it ten minutes idle.
+  SetupMode u;
+  u.begin(1000);
+  u.asked(1005);
+  CHECK(!u.idleDue(1000) && !u.idleDue(1004));
+  u.saved(2005);
+  CHECK(!u.restartDue(2000));
+  SetupMode v;  // and across the counter wrapping, as everything else here
+  v.begin(0xFFFFFF00u);
+  CHECK(!v.idleDue(0x00000100u) && v.idleDue(0xFFFFFF00u + SETUP_IDLE_MS));
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1131,6 +1215,7 @@ int main(int argc, char** argv) {
   markers();
   turning();
   power();
+  wifiSetup();
   std::printf("ok: %d checks\n", checks);
   return 0;
 }

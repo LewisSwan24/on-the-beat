@@ -1492,7 +1492,19 @@ struct Screen {
   uint8_t light = LIGHT_OFF;
   int bar = -1;                 // 0..99 while KEY1 is held past BAR_MS; -1 otherwise
   std::string code;             // the pairing letters
+  std::string corner;           // the battery, small in a corner: see withCorner()
 };
+
+/**
+ * The battery, small in the top right corner, on every lit face on black that
+ * does not already say it: the letters, the check, a preview, a wave. Never on
+ * a card, whose colour is the whole point from across a room, nor on a flash.
+ */
+inline Screen withCorner(Screen s, int battery) {
+  const bool says = s.big.find('%') != std::string::npos || s.small.find('%') != std::string::npos;
+  if (battery >= 0 && s.light != LIGHT_OFF && s.field == "black" && !says) s.corner = std::to_string(battery) + "%";
+  return s;
+}
 
 class Wrist {
  public:
@@ -1878,7 +1890,7 @@ class Wrist {
     }
     // A call blinks: the meeting face as it is, then off. A flash, while it lasts, is drawn over it.
     if (blinking(now) && (now - callAt_) % (2 * BLINK_MS) >= BLINK_MS) f.light = LIGHT_OFF;
-    return flashOver(f, now);
+    return withCorner(flashOver(f, now), battery_);
   }
 
  private:
@@ -2508,5 +2520,186 @@ inline std::string heardLine(const Frame& f, std::string& shown) {
   shown = what;
   return "the relay shows: " + what;
 }
+
+// ---------- setting its Wi-Fi from a phone ----------
+//
+// Held with both buttons as it starts, the band stops being a wristband for a
+// while and becomes a Wi-Fi of its own, OTB-XXXX, with a password made fresh
+// each time and shown on its face beside a code that joins it. A phone that
+// joins is sent to one page: pick the network the band should join, type its
+// password, save. The band keeps it and starts again on it. So anyone can put
+// a band on their own Wi-Fi with only their phone, where before it took a
+// laptop, a cable and the serial console.
+
+constexpr uint32_t SETUP_WINDOW_MS = 4000;              // both buttons down this soon after it starts: Wi-Fi setup
+constexpr uint32_t SETUP_IDLE_MS = 10u * 60u * 1000u;   // the page not asked for this long: back to being a wristband
+constexpr uint32_t SETUP_SAVED_MS = 2500;               // SAVED stays this long before it starts again on the new Wi-Fi
+constexpr int SETUP_PASS_LEN = 10;                      // 31 letters, 10 of them: about 50 bits
+
+/** Whether both buttons, down this soon after it started, ask for Wi-Fi setup. */
+inline bool setupAsked(uint32_t now, bool face, bool side) { return now < SETUP_WINDOW_MS && face && side; }
+
+/** Letters to read off a small face and type: no I, L, O, 0 or 1, as the pairing letters have none. Unbiased. */
+inline std::string setupLetters(int n, const std::function<uint32_t()>& random32) {
+  static const char LETTERS[] = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  constexpr uint64_t COUNT = sizeof(LETTERS) - 1;
+  constexpr uint64_t SPAN = ((uint64_t(1) << 32) / COUNT) * COUNT;  // a draw past this would favour the first few
+  std::string s;
+  while (static_cast<int>(s.size()) < n) {
+    const uint32_t r = random32();
+    if (r < SPAN) s += LETTERS[r % COUNT];
+  }
+  return s;
+}
+
+/** The code a phone's camera joins a Wi-Fi from, its name and password escaped as that format asks. */
+inline std::string wifiQr(const std::string& ssid, const std::string& pass) {
+  const auto esc = [](const std::string& v) {
+    std::string o;
+    for (char c : v) {
+      if (c == '\\' || c == ';' || c == ',' || c == ':' || c == '"') o += '\\';
+      o += c;
+    }
+    return o;
+  };
+  return "WIFI:T:WPA;S:" + esc(ssid) + ";P:" + esc(pass) + ";;";
+}
+
+/** Why a network name and password cannot be kept, or "" when they can. An empty password is an open network. */
+inline std::string setupCheck(const std::string& ssid, const std::string& pass) {
+  if (ssid.empty()) return "Pick a network, or type its name.";
+  if (ssid.size() > 32) return "A Wi-Fi name is at most 32 characters.";
+  for (unsigned char c : ssid)
+    if (c < 0x20 || c == 0x7F) return "That Wi-Fi name has a character a name cannot hold.";
+  if (pass.empty()) return "";
+  const bool hex = pass.size() == 64 && pass.find_first_not_of("0123456789abcdefABCDEF") == std::string::npos;
+  if (!hex && (pass.size() < 8 || pass.size() > 63)) return "A Wi-Fi password is 8 to 63 characters.";
+  for (unsigned char c : pass)
+    if (c < 0x20 || c > 0x7E) return "That password has a character a Wi-Fi password cannot hold.";
+  return "";
+}
+
+/** Text made safe to stand in a page, in its words and in a quoted attribute. */
+inline std::string htmlEscape(const std::string& v) {
+  std::string o;
+  for (char c : v) {
+    switch (c) {
+      case '&': o += "&amp;"; break;
+      case '<': o += "&lt;"; break;
+      case '>': o += "&gt;"; break;
+      case '"': o += "&quot;"; break;
+      case '\'': o += "&#39;"; break;
+      default: o += c;
+    }
+  }
+  return o;
+}
+
+/** A network the band heard while it looked. */
+struct SeenNet {  // no defaults, so it stays an aggregate on the band's C++11
+  std::string ssid;
+  int rssi;
+  bool open;
+};
+
+/** What the band heard, as the page lists it: named ones only, each once at its strongest, strongest first, 20 at most. */
+inline std::vector<SeenNet> setupList(std::vector<SeenNet> seen) {
+  std::vector<SeenNet> out;
+  for (const SeenNet& n : seen) {
+    if (n.ssid.empty()) continue;  // a hidden network: typed, never listed
+    auto same = std::find_if(out.begin(), out.end(), [&](const SeenNet& o) { return o.ssid == n.ssid; });
+    if (same == out.end()) out.push_back(n);
+    else if (n.rssi > same->rssi) *same = n;
+  }
+  std::stable_sort(out.begin(), out.end(), [](const SeenNet& a, const SeenNet& b) { return a.rssi > b.rssi; });
+  if (out.size() > 20) out.resize(20);
+  return out;
+}
+
+namespace setup_page {
+constexpr char HEAD[] =
+    "<!doctype html><html lang=en><head><meta charset=utf-8>"
+    "<meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Wristband Wi-Fi</title><style>"
+    "body{margin:0;padding:24px 16px;background:#0b0b10;color:#f4f3f7;font:16px/1.45 system-ui,sans-serif}"
+    "main{max-width:420px;margin:0 auto}h1{font-size:22px;margin:0 0 8px}p{margin:0 0 16px;color:#9a99a4}"
+    "label{display:block;margin:0 0 14px;font-weight:600}"
+    "select,input{display:block;box-sizing:border-box;width:100%;margin-top:6px;padding:12px;border-radius:10px;"
+    "border:1px solid #3a3946;background:#16161e;color:#f4f3f7;font:inherit}"
+    "button{width:100%;padding:14px;border:0;border-radius:999px;background:#f4f3f7;color:#0b0b10;"
+    "font:700 15px system-ui,sans-serif;letter-spacing:.06em}"
+    ".again{margin-top:12px;background:none;color:#f4f3f7;border:1px solid #3a3946}"
+    ".note{color:#ffb4a8;font-weight:600}.small{font-size:14px}</style></head><body><main>";
+constexpr char TAIL[] = "</main></body></html>";
+}  // namespace setup_page
+
+/**
+ * The page a phone on the band's own Wi-Fi is sent to. Every name in it was
+ * heard over the air, so every one is escaped: a network called <script> is
+ * only words. The password it has now is never put in the page.
+ */
+inline std::string setupPage(const std::vector<SeenNet>& seen, const std::string& now, const std::string& note) {
+  std::string h = setup_page::HEAD;
+  h += "<h1>Wristband Wi-Fi</h1><p>Pick the Wi-Fi this wristband joins. It needs 2.4 GHz, with a password or "
+       "open, and no page to sign in on: a phone's hotspot works, a school's or a hotel's sign-in Wi-Fi does not.</p>";
+  if (!note.empty()) h += "<p class=note>" + htmlEscape(note) + "</p>";
+  h += "<form method=post action=/save><label>Network<select name=pick>";
+  for (const SeenNet& n : setupList(seen)) {
+    const char* how = n.rssi >= -60 ? "strong" : n.rssi >= -72 ? "fair" : "weak";
+    const std::string e = htmlEscape(n.ssid);
+    h += "<option value=\"" + e + "\"" + (n.ssid == now ? " selected" : "") + ">" + e + " - " + how +
+         (n.open ? ", open" : "") + "</option>";
+  }
+  h += "<option value=\"\">Another one: type its name below</option></select></label>"
+       "<label>Or type its name<input name=ssid maxlength=32 autocomplete=off autocapitalize=none></label>"
+       "<label>Password<input name=pass type=password maxlength=64 autocomplete=off></label>"
+       "<button>SAVE AND RESTART</button></form>"
+       "<form method=post action=/scan><button class=again>LOOK AGAIN</button></form>";
+  h += "<p class=small>" + (now.empty() ? std::string("It has no Wi-Fi yet.") : "It joins " + htmlEscape(now) + " now.") +
+       " A press on either of its buttons leaves this without changing anything.</p>";
+  return h + setup_page::TAIL;
+}
+
+/** The page once a network is kept. */
+inline std::string savedPage(const std::string& ssid) {
+  return std::string(setup_page::HEAD) + "<h1>Saved</h1><p>The wristband starts again now and joins " + htmlEscape(ssid) +
+         ". Your phone goes back to its own Wi-Fi by itself.</p><p>If its face says NO WI-FI, the name or the password "
+         "was not right: turn it on again holding both buttons, and set it up again.</p>" + setup_page::TAIL;
+}
+
+/** The network a saved form keeps: a typed name over a picked one. */
+inline std::string setupChosen(const std::string& typed, const std::string& picked) { return typed.empty() ? picked : typed; }
+
+/**
+ * The time in setup: when the page was last asked for, when a network was
+ * kept, and the buttons. Both are still held as setup starts, so a press only
+ * leaves once both have been let go.
+ */
+class SetupMode {
+ public:
+  void begin(uint32_t now) { asked_ = now; }
+  void asked(uint32_t now) { asked_ = now; }
+  void saved(uint32_t now) {
+    saved_ = true;
+    savedAt_ = now;
+  }
+  bool isSaved() const { return saved_; }
+  /** Whether a press asks to leave setup, unchanged. */
+  bool keys(bool face, bool side) {
+    if (!face && !side) {
+      free_ = true;
+      return false;
+    }
+    return free_ && !saved_;
+  }
+  // Signed, as the page is asked for a moment after the loop read `now`: unsigned, that moment is 49 days.
+  bool idleDue(uint32_t now) const { return !saved_ && static_cast<int32_t>(now - asked_) >= static_cast<int32_t>(SETUP_IDLE_MS); }
+  bool restartDue(uint32_t now) const {
+    return saved_ && static_cast<int32_t>(now - savedAt_) >= static_cast<int32_t>(SETUP_SAVED_MS);
+  }
+
+ private:
+  bool free_ = false, saved_ = false;
+  uint32_t asked_ = 0, savedAt_ = 0;
+};
 
 }  // namespace otb

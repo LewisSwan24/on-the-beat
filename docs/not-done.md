@@ -292,3 +292,13 @@
   every phone plays, where an iPhone may not play an Android phone's WebM.
   Chromium's MP4 recorder was checked to make a file it plays back; the
   iPhones themselves are the check still owed.
+- **A band's Wi-Fi has been set from a laptop, not yet from a phone.** On 7
+  Oct 2026 a StickC Plus in setup was joined from a laptop: the page came up,
+  Apple's and Android's sign-in checks were both sent to it, a short password
+  was refused, and a save put the band back on its hotspot and the relay. Two
+  bugs were found that way and fixed, each with its test: the stack answered
+  under the radio's old address, so no laptop got an address, and the page,
+  asked for a moment after the loop read the time, made setup think ten
+  minutes had gone. Still owed: an iPhone and an Android phone joining from the
+  code on the face and seeing the page pop up by themselves, and both buttons
+  held by hand as the band starts.

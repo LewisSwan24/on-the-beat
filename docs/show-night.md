@@ -47,8 +47,10 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
    sets it, between nights, never during one. A venue with no entry has no
    staff page. Each team member signs in at `/staff` and taps **NOTIFY THIS
    DEVICE** (on an iPhone: add to Home Screen first).
-3. **Every band joins the venue's Wi-Fi** (console `ssid`/`pass`; kept across
-   restarts) and shows `(on it)`. A band hears only bands on its own Wi-Fi
+3. **Every band joins the venue's Wi-Fi** (console `ssid`/`pass`, or from a
+   phone: both buttons held as it starts, docs/wristband.md "Its Wi-Fi, from a
+   phone"; kept across restarts) and shows `(on it)`. A save from a phone drops
+   the band's `channel` pin, so pin the channel after it, not before. A band hears only bands on its own Wi-Fi
    channel, so access points spread over several channels split the bands
    into groups that never hear each other, and each keeps everyone in the
    other groups listed: on three channels WHO'S NEAR stops shortening the

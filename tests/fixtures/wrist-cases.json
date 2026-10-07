@@ -1486,6 +1486,22 @@
         { "at": "3000+HOLD_MS", "sent": [{ "t": "set", "intent": "song", "basis": 6 }], "face": { "big": "FIRST SONG?", "small": "SENDING" } },
         { "at": "3000+HOLD_MS", "key2": "up" }
       ]
+    },
+    {
+      "name": "the battery sits small in the corner of a lit face on black that does not say it already: never on a card, a flash or READY",
+      "steps": [
+        { "at": "0", "battery": 62 },
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2, "battery": 62 }], "face": { "light": "LIGHT_OFF", "corner": "" } },
+        { "at": "10", "show": "WAITING", "face": { "big": "OPEN YOUR PHONE", "corner": "62%" } },
+        { "at": "20", "show": "PAIRING", "face": { "code": "KXRT", "light": "LIGHT_PAIR", "corner": "62%" } },
+        { "at": "5000" },
+        { "at": "5010", "show": "HI", "face": { "field": "hi", "corner": "" } },
+        { "at": "10000", "show": "OFF", "face": { "light": "LIGHT_OFF", "corner": "" } },
+        { "at": "10010", "press": 1, "face": { "big": "READY", "small": "62%", "corner": "" } },
+        { "at": "10010+WAKE_MS+100", "show": "CHECK", "sounds": ["ask"], "face": { "field": "white", "corner": "" } },
+        { "at": "20000", "face": { "big": "27", "corner": "62%" } },
+        { "at": "20010", "battery": -1, "face": { "big": "27", "corner": "" } }
+      ]
     }
   ]
 }

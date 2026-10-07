@@ -19,8 +19,10 @@
 // Or, set so on the console, it is a marker the venue leaves at the bar or by
 // the stage, and does nothing else: it beacons its area on every channel.
 
+#include <DNSServer.h>
 #include <M5Unified.h>
 #include <Preferences.h>
+#include <WebServer.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <esp_now.h>
@@ -774,6 +776,13 @@ void paint(const Screen& s) {
   if (!s.code.empty()) drawPairing(s.code, s.small, k);
   else if (number) drawMeet(w, ink, k);
   else if (!s.big.empty() || !s.small.empty()) drawWords(w, ink, k);
+  if (!s.corner.empty()) {  // the battery, small in the top right, in the quiet grey of every face read up close
+    face.setFont(SMALL[1]);
+    face.setTextSize(1);
+    face.setTextColor(rgb565(TEXT_2));
+    face.setTextDatum(lgfx::textdatum_t::top_right);
+    face.drawString(s.corner.c_str(), W - px(5, k), px(3, k));
+  }
   if (s.bar >= 0) {  // KEEP HOLDING: how far to NOT NOW
     const int x = px(12, k), width = W - 2 * x, y = H - px(22, k), h = px(6, k);
     face.drawRect(x, y, width, h, ink);
@@ -789,7 +798,7 @@ void drawScreen(const Screen& s) {
   // is never seen, so it is not drawn.
   if (s.light != LIGHT_OFF) {
     const std::string key = s.big + '|' + s.small + '|' + s.field + '|' + s.ink + '|' + std::to_string(s.bar) + '|' +
-                            s.code + '|' + relay.origin;
+                            s.code + '|' + s.corner + '|' + relay.origin;
     if (key != drawn) {
       drawn = key;
       paint(s);
@@ -935,6 +944,10 @@ void playSounds() {
 
 // ---------- the serial console ----------
 
+void askSetup();  // Wi-Fi setup, below
+bool setupOn = false;
+std::string apName, apPass;  // setup's own Wi-Fi, made fresh each time
+
 void help() {
   Serial.println(
       "  ssid <network name>     the venue's Wi-Fi\n"
@@ -943,6 +956,7 @@ void help() {
       "  relay <address>         https://....trycloudflare.com from npm run tunnel, or ws://<laptop>:8790 on a LAN\n"
       "  show                    what it is set to, and how it is doing\n"
       "  forget                  back to what it was built with\n"
+      "  setup                   start again as a Wi-Fi of its own, to set its Wi-Fi from a phone (both buttons as it starts do too)\n"
       "  press face|side         a press, as a finger makes it\n"
       "  hold face|side          a hold, let go just after it counts\n"
       "  hold both               face and side together, as long as it takes to turn the band off\n"
@@ -994,6 +1008,19 @@ void report() {
 }
 
 void run(const Command& c) {
+  if (setupOn) {  // in Wi-Fi setup the console only looks: what is on the face, and its own Wi-Fi, which the face shows anyway
+    if (c.verb == "snap") snap();
+    else if (c.verb == "leave") {
+      Serial.println("Wi-Fi setup: left unchanged");
+      Serial.flush();
+      ESP.restart();
+    } else {
+      Serial.printf("Wi-Fi setup: %s, password %s, %d phone(s) on it\n", apName.c_str(), apPass.c_str(),
+                    WiFi.softAPgetStationNum());
+      Serial.println("  snap   the screen\n  leave  start again as a wristband, unchanged");
+    }
+    return;
+  }
   if (marker) {  // a marker takes nothing that would join a Wi-Fi or a relay
     if (c.verb == "marker") setMarker(trim(c.arg));
     else if (c.verb == "show") {
@@ -1056,6 +1083,8 @@ void run(const Command& c) {
                   p.key == 3 ? "face and the side" : p.key == 1 ? "face" : "side", static_cast<unsigned>(p.ms));
   } else if (c.verb == "off") {
     off.start(millis(), plugged());
+  } else if (c.verb == "setup") {
+    askSetup();
   } else if (c.verb == "face") {
     const uint32_t now = millis();
     Serial.println(faceLine(off.showing(now) ? off.face(now) : wrist->face(now)).c_str());
@@ -1141,6 +1170,166 @@ void readUsb(uint32_t now) {
 #endif
 }
 
+// ---------- setting its Wi-Fi from a phone ----------
+//
+// band_logic.h has the page, the checks and the timing; this is the radio and
+// the face. Setup is a start of its own: asked for, the band notes it and
+// starts again, so no socket, relay or wristband is running beside it.
+
+SetupMode setupMode;
+WebServer* web = nullptr;
+DNSServer* dns = nullptr;
+std::string savedSsid;
+std::vector<SeenNet> seenNets;
+
+/** Start again in Wi-Fi setup: from both buttons as it starts, or the console's `setup`. */
+void askSetup() {
+  prefs.putBool("setup", true);
+  Serial.println("Wi-Fi setup: restarting into it");
+  Serial.flush();
+  delay(200);
+  ESP.restart();
+}
+
+void scanNets() {
+  seenNets.clear();
+  const int16_t n = WiFi.scanNetworks(false, false);
+  for (int16_t i = 0; i < n; ++i)
+    seenNets.push_back({WiFi.SSID(i).c_str(), WiFi.RSSI(i), WiFi.encryptionType(i) == WIFI_AUTH_OPEN});
+  WiFi.scanDelete();
+}
+
+void sendPage(int code, const std::string& html) {
+  web->sendHeader("Cache-Control", "no-store");
+  web->send(code, "text/html; charset=utf-8", html.c_str());
+}
+
+void startSetup() {
+  setupOn = true;
+  const auto random32 = [] { return static_cast<uint32_t>(esp_random()); };
+  WiFi.persistent(false);
+  WiFi.disconnect();
+  scanNets();  // before the access point is up, so the first page lists what is near at once
+  WiFi.mode(WIFI_AP_STA);  // the station joins nothing; it is there for LOOK AGAIN
+  // Its own Wi-Fi gets a made-up address too, never the chip's.
+  // The radio and the network stack both take it: the stack read the old one as the access point
+  // started, and its answers under that one went unheard. A laptop joined, and no address came.
+  uint8_t apAir[6];
+  makeAir(apAir, random32);
+  if (esp_wifi_set_mac(WIFI_IF_AP, apAir) == ESP_OK)
+    esp_netif_set_mac(esp_netif_get_handle_from_ifkey("WIFI_AP_DEF"), apAir);
+  apName = "OTB-" + setupLetters(4, random32);
+  apPass = setupLetters(SETUP_PASS_LEN, random32);
+  WiFi.softAP(apName.c_str(), apPass.c_str());
+  // Every name the phone looks up is the band, so the phone opens the page by itself.
+  dns = new DNSServer();
+  dns->setErrorReplyCode(DNSReplyCode::NoError);
+  dns->start(53, "*", WiFi.softAPIP());
+  web = new WebServer(80);
+  web->on("/", HTTP_GET, [] {
+    setupMode.asked(millis());
+    sendPage(200, setupPage(seenNets, ssid, ""));
+  });
+  web->on("/scan", HTTP_POST, [] {
+    setupMode.asked(millis());
+    scanNets();
+    web->sendHeader("Location", "/");
+    web->send(303);
+  });
+  web->on("/save", HTTP_POST, [] {
+    setupMode.asked(millis());
+    if (setupMode.isSaved()) return sendPage(200, savedPage(savedSsid));
+    const std::string chosen = setupChosen(web->arg("ssid").c_str(), web->arg("pick").c_str());
+    const std::string password = web->arg("pass").c_str();
+    const std::string why = setupCheck(chosen, password);
+    if (!why.empty()) return sendPage(400, setupPage(seenNets, ssid, why));
+    prefs.putString("ssid", chosen.c_str());
+    prefs.putString("pass", password.c_str());
+    // A channel pinned for one venue's Wi-Fi would keep it off this one.
+    if (prefs.isKey("channel")) prefs.remove("channel");
+    savedSsid = chosen;
+    setupMode.saved(millis());
+    Serial.printf("Wi-Fi setup: kept %s%s; restarting onto it\n", chosen.c_str(), password.empty() ? " (open)" : ", with a password");
+    sendPage(200, savedPage(chosen));
+  });
+  // Whatever else a phone asks for, the captive-portal checks included, is sent to the page.
+  web->onNotFound([] {
+    web->sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/");
+    web->send(302);
+  });
+  web->begin();
+  setupMode.begin(millis());
+  Serial.printf("\nON THE BEAT wristband: Wi-Fi setup\njoin %s with the password on its face, or scan its code; "
+                "a press on either button leaves\n", apName.c_str());
+}
+
+/** The face in setup: the code that joins its Wi-Fi, beside that Wi-Fi's name and password; then SAVED. */
+void drawSetup() {
+  if (setupMode.isSaved()) {
+    Screen s;
+    s.big = "SAVED";
+    s.small = "JOINING " + upper(fold(savedSsid));
+    s.ink = "white";
+    s.light = LIGHT_AWAKE;
+    drawScreen(s);
+    return;
+  }
+  const bool joined = WiFi.softAPgetStationNum() > 0;
+  const std::string key = "setup|" + apName + (joined ? "|joined" : "");
+  if (key != drawn) {
+    drawn = key;
+    const int W = face.width(), H = face.height();
+    const float k = scaleOf(W, H);
+    face.fillScreen(BLACK);
+    const std::string qr = wifiQr(apName, apPass);
+    const int version = qrVersion(qr.size());
+    const int module = qrModule(version, H - px(8, k));
+    const int box = module * (qrSize(version) + 8);
+    const int edge = (H - box) / 2;
+    face.fillRect(edge, edge, box, box, WHITE);
+    face.qrcode(qr.c_str(), edge + 4 * module, edge + 4 * module, module * qrSize(version), version);
+    const int left = edge + box + px(6, k), colW = W - left - px(4, k), middle = left + colW / 2;
+    int font = 0;
+    while (font < 2 && widthIn(CODE[font], apName) > colW) ++font;
+    const int label = heightOf(SMALL[1]), code = heightOf(CODE[font]), gap = px(4, k);
+    // A label, the name, a label, and the password in two halves of five, so each half reads at a glance.
+    int y = (H - (2 * label + 3 * code + 4 * gap)) / 2;
+    face.setTextDatum(lgfx::textdatum_t::top_center);
+    face.setTextSize(1);
+    const auto line = [&](const lgfx::IFont* f, uint16_t ink, const std::string& text, int h) {
+      face.setFont(f);
+      face.setTextColor(ink);
+      face.drawString(text.c_str(), middle, y);
+      y += h + gap;
+    };
+    line(SMALL[1], rgb565(TEXT_2), joined ? "OPEN THE PAGE" : "SCAN TO JOIN", label);
+    line(CODE[font], WHITE, apName, code);
+    line(SMALL[1], rgb565(TEXT_2), "PASSWORD", label);
+    line(CODE[font], WHITE, apPass.substr(0, 5), code);
+    line(CODE[font], WHITE, apPass.substr(5), code);
+    face.pushSprite(0, 0);
+  }
+  if (lit != LIGHT_PAIR) {
+    lit = LIGHT_PAIR;
+    M5.Display.setBrightness(LIGHT_PAIR);
+  }
+}
+
+/** Setup's turn of the loop: the page, the buttons, and the time. Nothing of the wristband runs. */
+void setupTick(uint32_t now) {
+  console();
+  dns->processNextRequest();
+  web->handleClient();
+  const bool leave = setupMode.keys(M5.BtnA.isPressed(), M5.BtnB.isPressed());
+  if (leave || setupMode.idleDue(now) || setupMode.restartDue(now)) {
+    if (!setupMode.isSaved()) Serial.println(leave ? "Wi-Fi setup: left unchanged" : "Wi-Fi setup: nobody came, left unchanged");
+    Serial.flush();
+    delay(setupMode.isSaved() ? 0 : 200);
+    ESP.restart();
+  }
+  drawSetup();
+}
+
 }  // namespace
 
 void setup() {
@@ -1196,6 +1385,14 @@ void setup() {
     helpMarker();
     reportMarker();
     reportTurn();
+    return;
+  }
+  // Asked for at the last start: Wi-Fi setup, and nothing else. Asked for once only, so a setup that
+  // goes wrong is a wristband again at the next start.
+  if (prefs.isKey("setup")) {
+    prefs.remove("setup");
+    loadSettings();
+    startSetup();
     return;
   }
   // A new wristband at every boot: the key lives in RAM only, and the id is its hash.
@@ -1261,6 +1458,11 @@ void goingOff(uint32_t now) {
 void loop() {
   M5.update();
   const uint32_t now = millis();
+  if (setupOn) {
+    setupTick(now);
+    delay(5);
+    return;
+  }
   console();
   readBattery(now);
   if (axp && M5.BtnPWR.wasClicked()) turnTo(!usbRight);  // on the Plus a short press turns the face over, a marker's too
@@ -1289,6 +1491,8 @@ void loop() {
   const bool a = M5.BtnA.isPressed() || fromConsole(1), b = M5.BtnB.isPressed() || fromConsole(2);
   if (a != keyA) { keyA = a; a ? wrist->keyDown(1, now) : wrist->keyUp(1, now); }
   if (b != keyB) { keyB = b; b ? wrist->keyDown(2, now) : wrist->keyUp(2, now); }
+  // Both buttons, as it starts: set its Wi-Fi from a phone. Only the buttons themselves; a console hold is a test.
+  if (setupAsked(now, M5.BtnA.isPressed(), M5.BtnB.isPressed())) askSetup();
   if (off.keys(a, b, now, a && b && plugged())) wrist->bothDown(now);  // after the edges: a key that went down this time is let go too
   // Nobody's, off its cable and untouched for IDLE_OFF_MS: it turns itself off. The cable is read once a second.
   if (now - cableReadAt >= 1000) {

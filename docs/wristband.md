@@ -245,12 +245,12 @@ a dead socket. Its two buttons work as above.
 ```
 cd firmware
 pio run -t upload       # build it and flash it over USB
-pio device monitor      # its console: ssid, pass, channel, relay, show, forget, press, hold, face, snap, turn, near, marker
+pio device monitor      # its console: ssid, pass, channel, relay, show, forget, setup, press, hold, face, snap, turn, near, marker
 
 pio run -e m5sticks3 -t upload    # the same, for a StickS3
 ```
 
-Tell it the venue's Wi-Fi and the relay at the console — `relay` takes
+Tell it the venue's Wi-Fi from a phone ("Its Wi-Fi, from a phone", below), or the Wi-Fi and the relay at the console — `relay` takes
 `https://on-the-beat.fly.dev`, or the address `npm run tunnel` prints — or
 copy `src/secrets.example.h` to `src/secrets.h`, which git ignores, to build
 them in. What is typed is kept across restarts, which matters: a quick
@@ -314,6 +314,41 @@ It also turns itself off: a band nobody has paired (nor is pairing),
 off its cable, with no key pressed and no console line for 30 minutes
 (`IDLE_OFF_MS`), so one forgotten in a bag after the show drains half an hour,
 not the night. A marker never does: it is nobody's by design.
+
+**Its Wi-Fi, from a phone.** Until 7 Oct 2026 a band joined only what its
+console was told, or what `secrets.h` built in: a laptop, a cable and
+`ssid`/`pass` to put it on anyone else's Wi-Fi. Now both buttons held as it
+starts (down within `SETUP_WINDOW_MS`, 4 s, of starting), or `setup` at the
+console, start it again as a Wi-Fi of its own, `OTB-` and four letters, with a
+password of ten letters made fresh each time (no I, L, O, 0 or 1). Its face
+shows the code a phone's camera joins it from, beside the name and the
+password in two halves of five. Every name looked up on that Wi-Fi is the band,
+so the phone's own check for a sign-in page (Apple's `hotspot-detect.html`,
+Android's `generate_204`) is sent to the one page there is: the networks the
+band heard, strongest first, each once, a box to type one it did not, its
+password, `SAVE AND RESTART` and `LOOK AGAIN`. Saved, the band keeps them,
+drops any `channel` pin (one venue's channel would keep it off this Wi-Fi),
+says `SAVED` / `JOINING …` and starts again as a wristband on it. A press on
+either button leaves setup unchanged once both have been let go, and so do 10
+minutes with nobody asking for the page (`SETUP_IDLE_MS`). Setup is a start of
+its own, asked for once: no socket, relay or wristband runs beside it, and a
+setup that goes wrong is a wristband again at the next start. Every name in the
+page was heard over the air, so each is escaped; the password it has now is
+never put in the page; its own Wi-Fi is on a made-up address, as the wristband
+is. It joins 2.4 GHz with a password or open, never a sign-in page: a phone's
+hotspot works, a school's or hotel's sign-in Wi-Fi does not, and the page says
+so. Proven on a StickC Plus, 7 Oct 2026, from a laptop that joined its Wi-Fi:
+the page, both sign-in checks sent to it, a short password refused, a save, and
+the band back on its hotspot and the relay. Not yet tried: a phone, and both
+buttons by hand.
+
+**The battery in the corner.** Every lit face on black that does not already
+say the battery (`READY`, `NOT NOW` and `NO SIGNAL` do) carries it small in
+its top right corner: the letters, the check, the waiting face, a preview, a
+wave. Never a card, whose colour is the point from across a room, and never a
+flash. It is the band's own reading, once a second, so it moves on the face
+before the relay hears it (`withCorner()`; the stand-in at `/band` draws it
+too, and the shared table holds both to it).
 
 **Which way up.** The face is landscape and reads from one of two sides: the
 USB-C socket to the left of the words, or to their right. The side is held,

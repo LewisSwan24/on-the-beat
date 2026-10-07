@@ -317,6 +317,7 @@ h1 { margin: 0; font-weight: 400; }
 .bandface .big { font: 400 calc(var(--u) * 26)/1.05 var(--disp); }
 .bandface .small-w { font: 600 calc(var(--u) * 10)/1.2 var(--sans); letter-spacing: .06em; text-transform: uppercase; }
 .bandface .ready { color: var(--text-2); }
+.bandface .corner { position: absolute; top: calc(var(--u) * 4); right: calc(var(--u) * 6); font: 600 calc(var(--u) * 9)/1 var(--sans); color: var(--text-2); font-variant-numeric: tabular-nums; }
 .bandface .meet .num { font: 400 calc(var(--u) * 84)/1 var(--disp); animation: ob-breathe var(--breathe) var(--ease-io) infinite; }
 .bandface .pairing { display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 16); }
 .bandface .qr { display: block; width: calc(var(--u) * 115); height: calc(var(--u) * 115); }

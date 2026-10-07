@@ -78,6 +78,7 @@ export function WristFace({ screen: s, scale = 2, pairAt = null }) {
             {s.small ? <span className="small-w">{s.small}</span> : null}
           </span>
         ) : null}
+      {s.corner ? <span className="corner" aria-hidden="true">{s.corner}</span> : null}
       {s.bar >= 0 ? <span className="bandbar" style={{ '--p': s.bar / 99, color: ink }} aria-hidden="true" /> : null}
     </div>
   );

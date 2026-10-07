@@ -70,6 +70,15 @@ export const cardAfter = (card, closed = []) => {
 };
 const LIT = [...INTENTS, 'meet'];
 
+/**
+ * The battery, small in the top right corner, on every lit face on black that does not already say it: the letters,
+ * the check, a preview, a wave. Never on a card or a flash. band_logic.h withCorner() is its twin.
+ */
+export const withCorner = (f, battery) => {
+  const says = f.big.includes('%') || f.small.includes('%');
+  return battery >= 0 && f.light !== LIGHT_OFF && f.field === 'black' && !says ? { ...f, corner: battery + '%' } : { ...f, corner: '' };
+};
+
 /** Every constant above, by name: the fixtures' times are written in these. */
 export const CONSTS = {
   WAKE_MS, HOLD_MS, BAR_MS, CHOOSE_MS, COMMIT_MS, CONFIRM_MS, RESULT_MS, PING_EVERY_MS, DEAF_MS,
@@ -718,7 +727,7 @@ export function createWrist({ key }) {
     }
     // A call blinks: the meeting face as it is, then off. A flash, while it lasts, is drawn over it.
     if (blinking(now) && (now - callAt) % (2 * BLINK_MS) >= BLINK_MS) f = { ...f, light: LIGHT_OFF };
-    return flashOver(f, now);
+    return withCorner(flashOver(f, now), battery);
   }
 
   /** A flash, step by step: on is its colour at full light and nothing else; off is the backlight off. */
