@@ -364,13 +364,14 @@ test("after 06:00 the night's file holds nothing of last night's people, those s
   await n.start();
   const ana = await n.on.phone('restart-six');
   const ben = await n.on.phone('restart-six');
-  for (const p of [ana, ben]) p.send({ t: 'sound', on: true });
+  for (const p of [ana, ben]) { p.send({ t: 'sound', on: true }); p.send({ t: 'beat', on: false }); }
   const left = n.on.reply(ben, 'left');
   ben.send({ t: 'leave' });
   await left;
   n.clock.t = Date.UTC(2026, 8, 29, 20, 0, 30);   // 06:00:30 on 30 Sep at the venue
   const cai = await n.on.phone('restart-six');
   cai.send({ t: 'sound', on: true });
+  cai.send({ t: 'beat', on: false });
   await pause(100);
   const over = n.on.reply(ana, 'over');
   n.relay.expire(n.clock.t + 30_000);
@@ -379,6 +380,8 @@ test("after 06:00 the night's file holds nothing of last night's people, those s
   const [room] = n.saved().rooms;
   assert.deepEqual(room.heard.map(([id]) => id), [personOf(cai.me)]);
   assert.deepEqual(room.sound.map(([id]) => id), [personOf(cai.me)]);
+  // The beat switch is carried across a restart beside the sound one, and goes at 06:00 the same way.
+  assert.deepEqual(room.beat, [[personOf(cai.me), false]]);
   assert.deepEqual(room.room.tombs, [], 'ben left before six, and goes with it');
 });
 

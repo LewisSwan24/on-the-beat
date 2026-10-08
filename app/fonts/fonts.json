@@ -9,7 +9,7 @@
   },
   "icons": {
     "file": "material-symbols-outlined.woff2",
-    "from": "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=arrow_back,badge,block,brightness_low,cancel,check_circle,chevron_right,do_not_disturb_on,favorite,flag,flashlight_on,history,link,link_off,location_off,logout,more_horiz,music_note,qr_code_scanner,queue_music,report,search,sensors,shield,smartphone,touch_app,visibility_lock,visibility_off,volume_off,volume_up,watch,waving_hand,wifi_off&display=block",
+    "from": "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=arrow_back,badge,block,brightness_low,cancel,check_circle,chevron_right,do_not_disturb_on,favorite,flag,flashlight_on,graphic_eq,history,link,link_off,location_off,logout,more_horiz,music_note,music_off,qr_code_scanner,queue_music,report,search,sensors,shield,smartphone,touch_app,visibility_lock,visibility_off,volume_off,volume_up,watch,waving_hand,wifi_off&display=block",
     "names": [
       "arrow_back",
       "badge",
@@ -22,6 +22,7 @@
       "favorite",
       "flag",
       "flashlight_on",
+      "graphic_eq",
       "history",
       "link",
       "link_off",
@@ -29,6 +30,7 @@
       "logout",
       "more_horiz",
       "music_note",
+      "music_off",
       "qr_code_scanner",
       "queue_music",
       "report",
@@ -45,7 +47,7 @@
       "waving_hand",
       "wifi_off"
     ],
-    "bytes": 5792,
-    "sha256": "e2cd56ff89c2df5881948bb46dd61b55c957de07a629134d314d1fdb9ab9678b"
+    "bytes": 5684,
+    "sha256": "4dce16fff8602d831fa879f0affebfc98e4693984c73d1929f65c8d51f32f0cc"
   }
 }
