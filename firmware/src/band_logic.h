@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -1674,9 +1675,9 @@ class Wrist {
   /** One block of the microphone's five levels, and the time it ends. Not listening, it is not heard (beat §2). */
   void hear(const BandLevels& levels, uint32_t now) {
     listen(now);
-    if (!tracking_) return;
-    tracker_.hear(levels, now);
-    for (const BeatPulse& p : tracker_.take()) {
+    if (!tracker_) return;
+    tracker_->hear(levels, now);
+    for (const BeatPulse& p : tracker_->take()) {
       if (pulsesN_ == 2) {
         pulses_[0] = pulses_[1];
         pulsesN_ = 1;
@@ -1686,10 +1687,13 @@ class Wrist {
   }
 
   /** The microphone's delay from a sound to the block that hears it, in ms: this model's. */
-  void setMicLatency(double ms) { tracker_.setLatency(ms); }
+  void setMicLatency(double ms) {
+    micLatency_ = ms;
+    if (tracker_) tracker_->setLatency(ms);
+  }
 
   /** The beat's period in ms once the band has it, and 0 before: for the console. */
-  double beatPeriod() const { return tracker_.locked() ? tracker_.period() : 0; }
+  double beatPeriod() const { return tracker_ && tracker_->locked() ? tracker_->period() : 0; }
 
  private:
   void heardFrame(const std::string& text, uint32_t now) {
@@ -1934,14 +1938,19 @@ class Wrist {
   }
 
  private:
-  /** Not listening, the band forgets the beat it had: its microphone is closed. */
+  /**
+   * Not listening, the band forgets the beat it had: its microphone is closed. The tracker is made only while it
+   * listens, and let go after: its 6 KB are heap a wristband needs for its relay's TLS handshake.
+   */
   void listen(uint32_t now) {
     if (listening(now)) {
-      tracking_ = true;
-    } else if (tracking_) {
+      if (!tracker_) {
+        tracker_.reset(new BeatTracker());
+        tracker_->setLatency(micLatency_);
+      }
+    } else if (tracker_) {
       tracker_.reset();
       pulsesN_ = 0;
-      tracking_ = false;
     }
   }
 
@@ -2313,9 +2322,10 @@ class Wrist {
   bool soundOn_ = true;  // the person's switch, as the last show that said it had it (rule 3)
   bool silent_ = false;  // NOT NOW, for the sake of silence (rule 1)
   bool beatOn_ = true;   // the person's beat switch, as the last show that said it had it (beat §1)
-  // The beat (beat §2): the tracker, whether it has been listening, and its last two pulses, the newer perhaps due.
-  BeatTracker tracker_;
-  bool tracking_ = false;
+  // The beat (beat §2): the tracker while it listens, the microphone's delay, and its last two pulses, the newer
+  // perhaps due.
+  std::unique_ptr<BeatTracker> tracker_;
+  double micLatency_ = 0;
   BeatPulse pulses_[2] = {};
   size_t pulsesN_ = 0;
   // The meeting call (rule 4): the number last called for, whether it still calls, and since when.

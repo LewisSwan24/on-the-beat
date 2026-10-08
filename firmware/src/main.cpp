@@ -120,7 +120,8 @@ constexpr size_t HEARD_KEPT = 16;         // 128 ms of blocks the loop may fall 
 constexpr double MIC_LATENCY_S3_MS = 0;   // the StickS3's, through its codec
 constexpr double MIC_LATENCY_PDM_MS = 0;  // the StickC Plus's and Plus2's PDM microphone
 int16_t micBuf[2][BEAT_BLOCK];
-QueueHandle_t heardBlocks = nullptr;
+QueueHandle_t heardBlocks = nullptr;     // made as the microphone opens and let go once it is shut: its 4 KB of
+                                          // heap are wanted for a TLS handshake with the relay while it is shut
 volatile uint32_t micLost = 0;            // written by the microphone's task, and by the loop only while it is shut
 std::atomic<int16_t*> micStuck{nullptr};  // a buffer the microphone's task could not hand back
 bool micWorks = false;                    // this band has a microphone, and it opened whenever asked
@@ -954,22 +955,32 @@ void micReleased(void*, void* data, size_t) {
   if (!M5.Mic.record(static_cast<int16_t*>(data), BEAT_BLOCK)) micStuck = static_cast<int16_t*>(data);
 }
 
+/** Lets the heard blocks' queue go. Only once the microphone is shut: M5.Mic.end() waits for its task to stop. */
+void dropHeard() {
+  if (heardBlocks) vQueueDelete(heardBlocks);
+  heardBlocks = nullptr;
+}
+
 /** Hands the channel to the microphone: the speaker off first, then two blocks' buffers queued, counted afresh. */
 void openMic() {
+  // No heap for the queue just now: the card stays still, and the next tick tries again.
+  heardBlocks = xQueueCreate(HEARD_KEPT, sizeof(Heard));
+  if (!heardBlocks) return;
   if (speakerOn) {
     M5.Speaker.end();
     speakerOn = false;
   }
-  xQueueReset(heardBlocks);
   micLost = 0;
   micStuck = nullptr;
   micBlocks = micDropped = 0;
   blockClock.reset();
-  if (M5.Mic.begin() && M5.Mic.record(micBuf[0], BEAT_BLOCK, BEAT_RATE) && M5.Mic.record(micBuf[1], BEAT_BLOCK, BEAT_RATE)) {
+  if (M5.Mic.begin() && M5.Mic.record(micBuf[0], BEAT_BLOCK, BEAT_RATE) &&
+      M5.Mic.record(micBuf[1], BEAT_BLOCK, BEAT_RATE)) {
     micOpen = true;
     return;
   }
   M5.Mic.end();
+  dropHeard();
   micWorks = false;
   Serial.println("the microphone did not open: this band's card stays still");
   giveSpeaker();
@@ -979,7 +990,7 @@ void openMic() {
 void closeMic() {
   M5.Mic.end();
   micOpen = false;
-  xQueueReset(heardBlocks);
+  dropHeard();
   giveSpeaker();
 }
 
@@ -1520,8 +1531,7 @@ void setup() {
   // A new wristband at every boot: the key lives in RAM only, and the id is its hash.
   wrist = new Wrist(makeKey([] { return static_cast<uint32_t>(esp_random()); }));
   if (airSet) wrist->setAir(airHex(air));
-  heardBlocks = xQueueCreate(HEARD_KEPT, sizeof(Heard));
-  micWorks = heardBlocks && M5.Mic.isEnabled();
+  micWorks = M5.Mic.isEnabled();
   wrist->setMicLatency(M5.getBoard() == m5::board_t::board_M5StickS3 ? MIC_LATENCY_S3_MS : MIC_LATENCY_PDM_MS);
   loadSettings();
   readBattery(millis());

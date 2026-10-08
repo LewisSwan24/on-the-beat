@@ -1304,6 +1304,12 @@ void wifiSetup() {
 
 }  // namespace
 
+// The beat's tracker is heap only while the band listens. Held inside the Wrist it was 6 KB more of the heap
+// the relay's TLS handshake needs, and a band built that way never reached the relay (8 Oct 2026).
+void beatHeap() {
+  CHECK(sizeof(Wrist) < sizeof(BeatTracker));
+}
+
 int main(int argc, char** argv) {
   if (argc > 1 && std::string(argv[1]) == "wrist") return runWrist();
   if (argc > 1 && std::string(argv[1]) == "speak") {
@@ -1330,6 +1336,7 @@ int main(int argc, char** argv) {
   turning();
   power();
   wifiSetup();
+  beatHeap();
   std::printf("ok: %d checks\n", checks);
   return 0;
 }
