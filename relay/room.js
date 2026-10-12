@@ -159,6 +159,8 @@ export function createRoom({
   // person made again never reuses one, and whether they were NOT NOW, so they
   // come back as they left. Outlives leave(), as blocks do.
   const tombs = new Map();
+  // A match a block ended: its id -> the two in it, kept so the one blocked can still report the other (F12).
+  const ended = new Map();
   const reports = [];         // oldest first: { id, at, from, about, aboutBand, fromBand, why, handledAt }
   // FIRST SONG?'s answer, as the venue's staff named it: { track, at }, or null until they do. Everyone sees it.
   let opener = null;
@@ -200,6 +202,8 @@ export function createRoom({
     for (const k of restore.dances) dances.set(k, null);
     for (const [k, ref] of Array.isArray(restore.danceClips) ? restore.danceClips : []) if (dances.has(k)) dances.set(k, kept(ref));
     for (const m of restore.matches) matches.set(pairKey(m.a, m.b), m);
+    // A file from before F12 has none.
+    for (const e of Array.isArray(restore.ended) ? restore.ended : []) if (e && typeof e.id === 'string') ended.set(e.id, { a: e.a, b: e.b });
     for (const [id, tomb] of restore.tombs) tombs.set(id, tomb);
     reports.push(...restore.reports);
     nextReport = restore.nextReport;
@@ -292,6 +296,7 @@ export function createRoom({
     const theirs = (k) => k.split('>').includes(id);
     for (const map of [waves, likes, dances]) for (const k of [...map.keys()]) if (theirs(k)) map.delete(k);
     for (const [k, m] of [...matches]) if (m.a === id || m.b === id) matches.delete(k);
+    for (const [k, e] of [...ended]) if (e.a === id || e.b === id) ended.delete(k);
   }
 
   /**
@@ -429,6 +434,9 @@ export function createRoom({
     const t = clip(track, TRACK_MAX);
     if ((p.pick || '') === t) return;
     p.pick = t || null;
+    // A match made with no pick takes the first one made after it: PICK ONE on a match asks for exactly that (F1).
+    // A match made over a pick keeps the track it was made over.
+    for (const m of matches.values()) if ((m.a === id || m.b === id) && !m.picks[id]) m.picks[id] = p.pick;
     // A like was for an answer. A changed answer takes its likes with it.
     for (const k of [...likes.keys()]) if (k.endsWith('>' + id)) likes.delete(k);
   }
@@ -560,6 +568,8 @@ export function createRoom({
     if (!t) return false;
     if (!blocks.has(viewer)) blocks.set(viewer, new Set());
     blocks.get(viewer).add(t);
+    const m = matches.get(pairKey(viewer, t));
+    if (m) ended.set(m.id, { a: m.a, b: m.b });
     matches.delete(pairKey(viewer, t));
     for (const k of [viewer + '>' + t, t + '>' + viewer]) for (const play of Object.values(plays)) play.yeses.delete(k);
     return true;
@@ -571,7 +581,7 @@ export function createRoom({
    */
   function report(viewer, h, why = '') {
     if (!people.has(viewer)) return false;
-    const t = h ? (resolve(viewer, h) ?? matchOther(viewer, h)) : null;
+    const t = h ? (resolve(viewer, h) ?? matchOther(viewer, h) ?? endedOther(viewer, h)) : null;
     if (h && !t) return false;
     reports.push({
       id: 'r' + nextReport++, at: now(), from: viewer, about: t,
@@ -625,6 +635,12 @@ export function createRoom({
   }
 
   /** A match is addressed by its id once it exists; this finds the other side of one. */
+  /** The other one in a match a block ended, for the two in it only: what lets the one blocked still report (F12). */
+  function endedOther(viewer, id) {
+    const e = ended.get(id);
+    return e && (e.a === viewer || e.b === viewer) ? (e.a === viewer ? e.b : e.a) : null;
+  }
+
   function matchOther(viewer, id) {
     for (const m of matches.values()) {
       if (m.id === id && (m.a === viewer || m.b === viewer)) return m.a === viewer ? m.b : m.a;
@@ -845,6 +861,7 @@ export function createRoom({
       danceClips: [...dances].filter(([, ref]) => ref),
       matches: [...matches.values()],
       tombs: [...tombs],
+      ended: [...ended].map(([id, e]) => ({ id, ...e })),
       reports: reports.slice(),
       nextReport,
       nextMatch,

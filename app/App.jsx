@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cardOf } from '../relay/cards.js';
-import { BAND_OFF, HOW, HUE, PROMISES, REPORT, matchName, someone, teamHere } from './copy.js';
+import { BAND_OFF, HOW, HUE, LEAVE, PROMISES, REPORT, matchName, someone, teamHere } from './copy.js';
 import { SOUND_SAY, soundRow } from './lib/bandsound.js';
 import { battery, buzz, toBase64 } from './lib/device.js';
-import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
-import { meetingOn, newlyFound } from './lib/found.js';
+import { follow, intentFor, nextSeq, tapMessage } from './lib/follow.js';
+import { matchScreen, meetingOn, newlyFound, reportable, shownMatch } from './lib/found.js';
 import { connect } from './lib/net.js';
 import { openerArrived, openerNews } from './lib/opener.js';
 import { noticeArrived, showWith, timesArrived } from './lib/venue.js';
@@ -12,7 +12,7 @@ import { phaseLine, phaseOf } from './lib/phase.js';
 import { refusalWords } from './lib/refusals.js';
 import { saveCard } from './lib/vcard.js';
 import * as store from './lib/store.js';
-import { WAVES_HOW, WAVE_SAY, buzzes, newWaves, unlooked } from './lib/waved.js';
+import { WAVES_HOW, WAVE_SAY, buzzes, newWaves, steady, unlooked } from './lib/waved.js';
 import { Bar, Home } from './screens/Home.jsx';
 import { Beacon, Near, WristBeacon } from './screens/Hi.jsx';
 import { Pair, bandLine } from './screens/Band.jsx';
@@ -83,6 +83,8 @@ export default function App() {
   const [ci, setCi] = useState(0);
   const [pickText, setPickText] = useState(night?.state?.pick || '');
   const [matchId, setMatchId] = useState(null);
+  const [pickFor, setPickFor] = useState(null);   // the match a PICK ONE came from, or none
+  const nearOrder = useRef([]);   // SAY HI handles in the order first seen tonight (F3)
   const [backTo, setBackTo] = useState(null);
   const [dim, setDim] = useState(false);
   const [pairError, setPairError] = useState(null);
@@ -297,7 +299,7 @@ export default function App() {
     setScreen('match');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
-  useEffect(() => { seen.current = null; }, [night?.me]);
+  useEffect(() => { seen.current = null; nearOrder.current = []; }, [night?.me]);
 
   // A wave at you the phone has not seen: one buzz, unless a live wristband calls instead. Seen either way.
   const wavesSeen = useRef(null);
@@ -385,6 +387,7 @@ export default function App() {
       setNightState({ armed: f.armed, invisible: f.invisible, seq: f.seq });
     }
     if (f.events.includes('hi') && !store.hasEvent(s, 'hi')) update((prev) => store.addEvent(prev, 'hi', 'started saying hi'));
+    for (const e of f.events) if (e?.kind === 'closed') update((prev) => store.addEvent(prev, e.kind, e.text));
     if (f.clearStack) { setStack([]); setSheet(null); }
     if (f.screen !== screen && !ONBOARDING.has(screen) && screen !== 'leaving') setScreen(f.screen);
     if (f.toast) say(f.toast.text, f.toast.unpair ? { label: 'NOT YOU? UNPAIR', onTap: unpair } : null);
@@ -419,8 +422,8 @@ export default function App() {
     return true;
   }, [s, setNightState, update, tap, cannotShow]);
 
-  const go = useCallback((to, { replace = false } = {}) => {
-    const intent = INTENT_OF[to];
+  const go = useCallback((to, { replace = false, keepCard = false } = {}) => {
+    const intent = intentFor(to, { keepCard });
     // Nothing moves when the card could not be armed.
     if (intent && armed !== intent && !arm(intent)) return;
     setSheet(null);
@@ -477,6 +480,8 @@ export default function App() {
       setNightState({ pick: t });
       update((prev) => store.addEvent(prev, 'pick', 'picked ' + t));
     }
+    // Picked for a match (PICK ONE): back to that match, its card left as it was (F1).
+    if (pickFor) { setMatchId(pickFor); setPickFor(null); go('match', { replace: true }); return; }
     go('wall');
   };
 
@@ -630,6 +635,11 @@ export default function App() {
     setScreen('leaving');
   };
 
+  const leaveSheet = () => setSheet({
+    title: LEAVE.title, sub: LEAVE.sub, close: 'Cancel',
+    rows: [{ icon: 'logout', label: LEAVE.row, fg: 'var(--stop)', onTap: leftVenue }],
+  });
+
   const quietBlock = () => setSheet({
     title: 'Block someone', close: 'Cancel',
     sub: view.matches.length ? 'instant, silent, and permanent for tonight.' : 'nobody you’ve met tonight. you can block anyone from their card, any time.',
@@ -639,7 +649,7 @@ export default function App() {
   const quietReport = () => (!team ? report(null) : setSheet({
     title: 'Report something', sub: REPORT.goes, close: 'Cancel',
     rows: [
-      ...view.matches.map((m) => ({ icon: 'flag', label: matchName(m), fg: 'var(--stop)', onTap: () => report(m.id) })),
+      ...reportable(view, night?.matches).map((m) => ({ icon: 'flag', label: matchName(m), fg: 'var(--stop)', onTap: () => report(m.id) })),
       { icon: 'report', label: 'Something else', sub: 'not about anyone here — something the team should know.', fg: 'var(--stop)', onTap: () => report(null) },
     ],
   }));
@@ -694,10 +704,14 @@ export default function App() {
 
   // ---------- drawing ----------
 
-  const match = useMemo(() => {
-    const live = view.matches.find((m) => m.id === matchId);
-    return live || night?.matches?.[matchId] || null;
-  }, [view.matches, matchId, night]);
+  const match = useMemo(() => shownMatch(view, night?.matches, matchId), [view, matchId, night]);
+  // A PICK ONE is for its match only while the pick screen is up.
+  useEffect(() => { if (screen !== 'pick' && pickFor) setPickFor(null); }, [screen, pickFor]);
+  // A meeting answered elsewhere moves its screen on: found from the wrist to S11, ended (a block) home, quietly.
+  useEffect(() => {
+    const next = matchScreen(screen, match);
+    if (next !== screen) setScreen(next);
+  }, [screen, match]);
 
   const barHue = invisible ? null : armed;
   const barFor = {
@@ -754,7 +768,7 @@ export default function App() {
         : <Beacon count={view.near.length} dim={dim} onStop={() => { arm(null); setStack([]); setScreen('home'); }} />;
       break;
     case 'near':
-      body = <Near near={view.near} offline={status === 'offline'} onBack={back}
+      body = <Near near={steady(nearOrder.current, view.near)} offline={status === 'offline'} onBack={back}
         onWave={(handle) => net.current?.send({ t: 'wave', handle })} onMore={personSheet} />;
       break;
     case 'pick': body = <Pick show={show} text={pickText} setText={setPickText} onBack={back} />; break;
@@ -764,7 +778,7 @@ export default function App() {
       break;
     case 'match':
       body = match ? (
-        <Match match={match} number={match.number} held={!paired} onPick={() => go('pick')}
+        <Match match={match} number={match.number} held={!paired} onPick={() => { setPickFor(match.id); go('pick', { keepCard: true }); }}
           onMyWay={() => { say('on your way. ' + matchName(match) + ' has the same hint.'); go('mate', { replace: true }); }}
           onNotThis={() => notThis(match)} />
       ) : null;
@@ -789,7 +803,7 @@ export default function App() {
         onSave={(m) => saveContact(m.night ? m : tonightCard(m))} />;
       break;
     case 'quiet':
-      body = <Quiet paired={paired} onBackOn={backOn} onBlock={quietBlock} onReport={quietReport} onLeft={leftVenue} />;
+      body = <Quiet paired={paired} onBackOn={backOn} onBlock={quietBlock} onReport={quietReport} onLeft={leaveSheet} />;
       break;
     case 'leaving': body = <Leaving offline={status !== 'live'} />; break;
     default: body = null;

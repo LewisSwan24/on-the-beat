@@ -2239,9 +2239,21 @@ class Wrist {
     }
     if (mode_ == CHOOSING) commit(now, true);
     else if (mode_ == WAVES) waveBack(now);
-    else if (mode_ == LOOK) stepAt_ = now;
+    else if (mode_ == LOOK) { if (!comeBack(now)) stepAt_ = now; }
     else if ((mode_ == REST || mode_ == RESULT) && meetingFace(now)) sayFound(now);
-    else if (mode_ == REST || mode_ == RESULT) step(now);
+    else if (mode_ == REST || mode_ == RESULT) { step(now); if (mode_ == LOOK) comeBack(now); }
+  }
+
+  /**
+   * In NOT NOW one SIDE hold comes back, as the phone says (F11): the first open card, sent at once. Stray presses
+   * still only look, and a NOT NOW the relay has not yet heard is not undone by the next hold.
+   */
+  bool comeBack(uint32_t now) {
+    if (current() != "notnow" || quiet_.dark()) return false;
+    step(now);
+    if (mode_ != CHOOSING) return false;
+    commit(now, true);
+    return true;
   }
 
   std::string key_, id_, secret_, air_;

@@ -121,3 +121,18 @@ test('on a screen of a card the venue closed, armed or not, the phone goes home;
   assert.equal(quiet.screen, 'quiet', 'NOT NOW still wins');
   assert.equal(follow(phone({ armed: null, screen: 'floor' }), view({ armed: null })).screen, 'floor', 'a view that names no cards closes none');
 });
+
+test('F1: going to the pick screen arms FIRST SONG?, but not when a match asks for the opening track', async () => {
+  const { intentFor } = await import('../app/lib/follow.js');
+  assert.equal(intentFor('pick'), 'song', 'from the card: arriving arms it');
+  assert.equal(intentFor('pick', { keepCard: true }), null, 'PICK ONE on a match: the card stays as it is');
+  assert.equal(intentFor('beacon'), 'hi');
+  assert.equal(intentFor('tonight'), null);
+});
+
+
+test('F14: a card the venue closed is kept on Tonight too, not only in a toast that is gone in seconds', () => {
+  const f = follow(phone({ armed: 'dance', screen: 'floor' }), view({ armed: null, by: 'staff' }));
+  assert.deepEqual(f.events, [{ kind: 'closed', text: "the venue closed LET'S DANCE for tonight" }]);
+  assert.deepEqual(follow(phone({ armed: null }), view({ armed: null, by: 'staff' })).events, [], 'nothing was on');
+});

@@ -30,3 +30,10 @@ test('nothing still describes the one-button wristband', () => {
   }
   assert.deepEqual(found, []);
 });
+
+test('F13: leaving asks first, and says what it ends: the wristband lets go and the night here stops', async () => {
+  const { LEAVE } = await import('../app/copy.js');
+  assert.match(LEAVE.title, /\?$/, 'it is a question');
+  assert.match(LEAVE.sub, /wristband/);
+  assert.ok(LEAVE.row && LEAVE.row !== LEAVE.title);
+});

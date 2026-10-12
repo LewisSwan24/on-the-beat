@@ -380,6 +380,29 @@ test('block is silent and both ways, and ends a match', () => {
   assert.equal(JSON.stringify(room.viewFor('ana')).includes('block'), false, 'nothing tells ana why');
 });
 
+test('F12: blocked on a match, ana can still report ben by that match id; nobody else can, and it survives a restart', () => {
+  const { room, handleOf } = night();
+  const m = meet(room, handleOf, 'ana', 'ben');
+  room.block('ben', m.id);
+  assert.equal(room.report('ana', m.id, 'followed me after'), true, 'the one blocked can still report the blocker');
+  assert.equal(room.dump().reports.at(-1).about, 'ben');
+  assert.equal(room.report('cai', m.id, 'x'), false, 'a match id is only theirs');
+  const back = createRoom({ now: () => Date.UTC(2026, 8, 23, 11, 30), salt: 'test', restore: JSON.parse(JSON.stringify(room.dump())) });
+  assert.equal(back.report('ana', m.id, 'again'), true, 'kept across a restart');
+  back.forgetPerson('ben');
+  assert.equal(back.report('ana', m.id, 'x'), false, 'a person forgotten takes it with them');
+});
+
+test('F1: a pick made after the match (PICK ONE) shows on the match, on both sides', () => {
+  const { room, handleOf } = night();
+  meet(room, handleOf, 'ana', 'ben');
+  room.pick('ana', 'Teardrop');
+  assert.equal(room.viewFor('ana').matches[0].yourPick, 'Teardrop');
+  assert.equal(room.viewFor('ben').matches[0].pick, 'Teardrop');
+  room.pick('ana', 'Treasure');
+  assert.equal(room.viewFor('ben').matches[0].pick, 'Teardrop', 'a match keeps the track it first had');
+});
+
 test('a block outlives leaving the room — a phone that slept does not come back unblocked', () => {
   const { room, handleOf } = night();
   room.arm('ben', 'hi');

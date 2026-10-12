@@ -69,6 +69,13 @@ export const BAND_OFF = {
 export const teamHere = (view) => view?.team !== false;
 
 /** The words around a report, by whether the venue has a team to read it. Never "the team has it" where there is none. */
+/** Leaving asks first (F13): one stray tap on the NOT NOW screen should not end the night here. */
+export const LEAVE = {
+  title: 'Left the venue?',
+  sub: 'your wristband lets go and nobody here sees you. you can come back in tonight.',
+  row: 'I’ve left',
+};
+
 export const REPORT = {
   goes: 'goes to the venue team, with the time and the room.',
   sent: 'reported. the venue team has it.',

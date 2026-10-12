@@ -454,9 +454,21 @@ export function createWrist({ key }) {
     if (!wifi && !link.up && (stale(now) || mode === 'look')) { out.push('SETUP'); return; }
     if (mode === 'choosing') commit(now, true);
     else if (mode === 'waves') waveBack(now);
-    else if (mode === 'look') stepAt = now;
+    else if (mode === 'look') comeBack(now) || (stepAt = now);
     else if ((mode === 'rest' || mode === 'result') && meetingFace(now)) sayFound(now);
-    else if (mode === 'rest' || mode === 'result') step(now);
+    else if (mode === 'rest' || mode === 'result') { step(now); if (mode === 'look') comeBack(now); }
+  }
+
+  /**
+   * In NOT NOW one SIDE hold comes back, as the phone says (F11): the first open card, sent at once. Stray presses
+   * still only look, and a NOT NOW the relay has not yet heard is not undone by the next hold.
+   */
+  function comeBack(now) {
+    if (current() !== 'notnow' || quiet.pending) return false;
+    step(now);
+    if (mode !== 'choosing') return false;
+    commit(now, true);
+    return true;
   }
 
   function tick(now) {

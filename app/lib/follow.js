@@ -16,6 +16,9 @@ import { HUE } from '../copy.js';
 /** Arriving on one of these arms its card, as the canvas does. */
 export const INTENT_OF = Object.fromEntries(CARDS.flatMap((c) => c.screens.map((screen) => [screen, c.id])));
 
+/** The card arriving on `to` arms, or none. A match's PICK ONE only asks for the opening track: it keeps the card (F1). */
+export const intentFor = (to, { keepCard = false } = {}) => (keepCard ? null : INTENT_OF[to] ?? null);
+
 export const FOLLOW_SAY = {
   armed: (intent) => 'Armed from your wristband: ' + HUE[intent].label,
   off: 'Your wristband turned your card off',
@@ -70,6 +73,7 @@ export function follow(phone, view) {
     toast(FOLLOW_SAY.away);
   } else if (me.by === 'staff' && phone.armed && !armed) {
     toast(FOLLOW_SAY.closed(phone.armed));
+    out.events.push({ kind: 'closed', text: 'the venue closed ' + HUE[phone.armed].label + ' for tonight' });
   } else if (me.by === 'band') {
     // Going dark from the wrist says itself: the quiet screen, as before.
     if (!invisible && quietMoved) toast(armed ? FOLLOW_SAY.backOn(armed) : FOLLOW_SAY.visible, true);

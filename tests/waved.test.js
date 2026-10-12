@@ -54,3 +54,13 @@ test("a phone with no live wristband keeps a dot on SAY HI for each wave WHO'S N
   assert.deepEqual(unlooked(view([row('a')]), []), [], 'a wave gone takes its dot with it');
   assert.match(WAVE_SAY, /waved/);
 });
+
+test('F3: steady() keeps each row where it was; someone new goes to the end, someone gone leaves no gap', async () => {
+  const { steady } = await import('../app/lib/waved.js');
+  const row = (handle) => ({ handle });
+  const order = [];
+  assert.deepEqual(steady(order, [row('b'), row('a')]).map((r) => r.handle), ['b', 'a']);
+  assert.deepEqual(steady(order, [row('c'), row('a'), row('b')]).map((r) => r.handle), ['b', 'a', 'c'], 'c arrived above: shown below');
+  assert.deepEqual(steady(order, [row('c'), row('b')]).map((r) => r.handle), ['b', 'c'], 'a left');
+  assert.deepEqual(steady(order, [row('a'), row('c'), row('b')]).map((r) => r.handle), ['b', 'a', 'c'], 'a back where it was seen first');
+});

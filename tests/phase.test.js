@@ -38,3 +38,11 @@ test('a venue nobody listed gets an ordinary evening', () => {
   assert.equal(phaseOf({ act: 'THE LANTERN' }, at(21, 45)), 'HEADLINE');
   assert.equal(timesLine({}), 'Doors 19:00 · Support 20:00 · Headline 21:30');
 });
+
+test('F4: whereLine() names the act and the venue as listed, so the phone says where you are after joining', async () => {
+  const { whereLine } = await import('../app/lib/phase.js');
+  assert.equal(whereLine({ act: 'KAYO LANE', venue: 'Moth Club, Hackney' }), 'KAYO LANE · Moth Club, Hackney');
+  assert.equal(whereLine({ venue: 'Moth Club, Hackney' }), 'Moth Club, Hackney');
+  assert.equal(whereLine({ act: 'KAYO LANE' }), 'KAYO LANE');
+  assert.equal(whereLine(null), '');
+});

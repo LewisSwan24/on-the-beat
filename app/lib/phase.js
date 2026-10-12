@@ -38,6 +38,9 @@ const inMins = (n) => {
   return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60 ? (m % 60) + ' min' : '').trim();
 };
 
+/** Where you are tonight, as the show is listed: the act, then the venue (F4). */
+export const whereLine = (show) => [show?.act, show?.venue].filter(Boolean).join(' · ');
+
 /** The line under the phase bar, as the canvas writes it. */
 export function phaseLine(show, date = new Date()) {
   const now = minsOf(date);

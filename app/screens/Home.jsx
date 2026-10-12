@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { HUE, cards, hueVars } from '../copy.js';
-import { PHASES, hhmm } from '../lib/phase.js';
+import { PHASES, hhmm, whereLine } from '../lib/phase.js';
 import { Icon } from '../ui.jsx';
 import { bandLine } from './Band.jsx';
 
@@ -97,6 +97,7 @@ export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm,
           {PHASES.map((p, i) => <span key={p} className="label" style={{ color: i <= pi ? '#fff' : 'var(--text-2)' }}>{p}</span>)}
         </div>
         <div className="label tnum" aria-live="polite" style={{ padding: '9px 24px 0' }}>{line}</div>
+        {whereLine(show) ? <div className="small" style={{ padding: '2px 24px 0', color: 'var(--text-2)' }}>{whereLine(show)}</div> : null}
         {notice ? <Notice notice={notice} onHide={onHideNotice} /> : null}
       </div>
 
