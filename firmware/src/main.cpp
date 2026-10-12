@@ -931,10 +931,12 @@ void playSounds() {
     if (M5.Speaker.isPlaying(SOUND_CHANNEL)) return;
     soundHeld[i] = false;
   }
+  const uint32_t began = micros();  // the render runs on the loop: its cost goes on the console
   const size_t n = render(soundDue, soundBuf[i], SOUND_SAMPLES, buzzer);
+  const uint32_t took = micros() - began;
   soundHeld[i] = true;
   if (n && M5.Speaker.playRaw(soundBuf[i], n, SOUND_RATE, false, 1, SOUND_CHANNEL, true)) {
-    Serial.printf("sound: %s\n", soundDue.c_str());
+    Serial.printf("sound: %s (rendered in %u us)\n", soundDue.c_str(), static_cast<unsigned>(took));
     soundNext = 1 - i;
   } else {
     soundHeld[i] = false;
