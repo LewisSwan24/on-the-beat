@@ -22,6 +22,7 @@ import { INTENTS } from '../relay/cards.js';
 import { HUE } from '../app/copy.js';
 import { codeFrom, pairUrl } from '../app/lib/pairing.js';
 import { CONSTS, FLASH_COLOURS, FLASHES, SOUNDS, cardAfter } from '../app/lib/wrist.js';
+import { fnv1a, renderSound } from '../app/lib/sound.js';
 import { TABLE, lines, check } from './wrist-table.js';
 
 const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).digest('hex').slice(0, 32);
@@ -369,10 +370,21 @@ test('the firmware and the stand-in keep the same constants, by name', { skip },
   assert.deepEqual(JSON.parse(consts), CONSTS);
 });
 
-test('the firmware and the stand-in play the same notes and the same flashes', { skip }, () => {
+test('the firmware and the stand-in keep the same sounds and the same flashes', { skip }, () => {
   const [sounds, flashes] = speak(['sounds', 'flashes']);
   assert.deepEqual(JSON.parse(sounds), SOUNDS);
   assert.deepEqual(JSON.parse(flashes), FLASHES);
+});
+
+test('the firmware and the stand-in render every sound to the same bytes, on the buzzer and an octave down', { skip }, () => {
+  const [renders] = speak(['renders']);
+  const want = {};
+  for (const name of Object.keys(SOUNDS)) {
+    const hi = renderSound(name, { buzzer: true });
+    const lo = renderSound(name);
+    want[name] = [hi.length, fnv1a(hi), lo.length, fnv1a(lo)];
+  }
+  assert.deepEqual(JSON.parse(renders), want);
 });
 
 // The stand-in's table of cases (tests/wrist.test.js), run through band_logic.h's Wrist.

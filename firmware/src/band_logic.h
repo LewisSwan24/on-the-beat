@@ -57,32 +57,54 @@ constexpr uint8_t LIGHT_OFF = 0;
 // ---------- what the wrist plays ----------
 //
 // The same tables as app/lib/wrist.js SOUNDS and FLASHES; tests/firmware.test.js
-// holds them equal. A note is Hz and ms, 0 Hz a rest.
+// holds them equal. A sound is segments of a 50% square, noise or a rest, chosen
+// by ear on the band (docs/superpowers/specs/2026-10-12-band-sounds-8bit-design.md),
+// at the buzzer's pitch: a speaker plays them an octave down.
 
-struct Note {
-  uint16_t hz, ms;
+enum class Wave : uint8_t { SQUARE, NOISE, REST };
+// FLAT holds a; LINE runs a to b; DECAY starts at a and halves every b ms. Volumes are Q15: 1.0 is 32767.
+enum class Env : uint8_t { FLAT, LINE, DECAY };
+
+struct Segment {
+  Wave wave;
+  uint16_t hz0, hz1, ms;  // a slide when hz0 and hz1 differ; for noise, how often its level steps
+  Env env;
+  uint16_t a, b;
 };
 struct Sound {
   const char* name;
-  const Note* notes;
+  const Segment* segments;
   size_t count;
 };
 
 namespace detail {
-constexpr Note TICK[] = {{1800, 25}};
-constexpr Note DOUBLE[] = {{1800, 25}, {0, 60}, {1800, 25}};
-constexpr Note DOWN[] = {{1047, 90}, {784, 180}};
-constexpr Note UP[] = {{1047, 70}, {1319, 70}, {1568, 70}, {2093, 140}};
-constexpr Note FALL[] = {{1568, 100}, {1047, 200}};
-constexpr Note LOW_TONE[] = {{784, 120}, {523, 220}};  // not LOW: Arduino.h makes LOW a macro
-constexpr Note ASK[] = {{1319, 80}, {0, 50}, {1760, 160}};
-constexpr Note JINGLE[] = {{1319, 80}, {1568, 80}, {2637, 80}, {2093, 80}, {2349, 80}, {3136, 200}};
-constexpr Note WARN[] = {{880, 150}, {698, 150}, {880, 150}, {698, 150}};
-constexpr Note HELLO[] = {{1568, 60}, {2093, 120}};
-constexpr Note FOUND[] = {{1568, 70}, {2093, 70}, {2637, 70}, {0, 40}, {2637, 70}, {3136, 220}};
-constexpr Note CALLEDIT[] = {{2093, 90}, {0, 50}, {2093, 90}, {0, 50}, {2637, 90}, {3136, 230}};
+// F7 A7 C8 is the motif, "on-the-BEAT"; D8 tops it. The buzzer is loud from about 2.8 to 4.7 kHz.
+constexpr uint16_t HZ_F7 = 2794, HZ_A7 = 3520, HZ_C8 = 4186, HZ_D8 = 4699;
+constexpr uint16_t FULL = 32767;
+constexpr Segment note(uint16_t hz, uint16_t ms) { return {Wave::SQUARE, hz, hz, ms, Env::FLAT, FULL, 0}; }
+constexpr Segment slide(uint16_t hz0, uint16_t hz1, uint16_t ms) { return {Wave::SQUARE, hz0, hz1, ms, Env::FLAT, FULL, 0}; }
+constexpr Segment fade(uint16_t hz, uint16_t ms, uint16_t v0, uint16_t v1) { return {Wave::SQUARE, hz, hz, ms, Env::LINE, v0, v1}; }
+constexpr Segment struck(uint16_t hz, uint16_t ms, uint16_t v0, uint16_t h) { return {Wave::SQUARE, hz, hz, ms, Env::DECAY, v0, h}; }
+constexpr Segment noise(uint16_t rate, uint16_t ms, uint16_t v0, uint16_t v1) { return {Wave::NOISE, rate, rate, ms, Env::LINE, v0, v1}; }
+constexpr Segment rest(uint16_t ms) { return {Wave::REST, 0, 0, ms, Env::FLAT, 0, 0}; }
+
+constexpr Segment TICK[] = {struck(HZ_F7, 60, FULL, 14)};
+constexpr Segment DOUBLE[] = {struck(HZ_F7, 60, FULL, 14), rest(40), struck(HZ_A7, 60, FULL, 14)};
+constexpr Segment DOWN[] = {fade(HZ_C8, 90, FULL, 19660), fade(HZ_A7, 90, 19660, 11468), struck(HZ_F7, 240, 11468, 58)};
+constexpr Segment UP[] = {note(HZ_F7, 70), fade(HZ_C8, 140, FULL, 9830)};
+constexpr Segment FALL[] = {note(HZ_C8, 90), fade(HZ_A7, 180, FULL, 9830)};
+constexpr Segment LOW_TONE[] = {slide(HZ_A7, 1400, 250), noise(3000, 50, FULL, 3277)};  // not LOW: Arduino.h makes LOW a macro
+constexpr Segment ASK[] = {note(HZ_F7, 80), rest(60), note(HZ_C8, 110), slide(HZ_C8, HZ_D8, 60)};
+constexpr Segment JINGLE[] = {note(HZ_F7, 25), note(HZ_A7, 25), note(HZ_C8, 25), note(HZ_F7, 25), note(HZ_A7, 25),
+                              note(HZ_C8, 25), note(HZ_F7, 25), note(HZ_A7, 25), note(HZ_C8, 25), fade(HZ_C8, 200, FULL, 6553)};
+constexpr Segment WARN[] = {note(HZ_A7, 50), rest(30), note(HZ_A7, 50), rest(30), note(HZ_A7, 50), rest(120),
+                            note(HZ_A7, 50), rest(30), note(HZ_A7, 50), rest(30), note(HZ_A7, 50)};
+constexpr Segment HELLO[] = {slide(HZ_F7, HZ_A7, 60), rest(30), note(HZ_A7, 90)};
+constexpr Segment FOUND[] = {note(HZ_F7, 50), note(HZ_A7, 50), note(HZ_C8, 50), fade(HZ_D8, 180, FULL, 9830)};
+constexpr Segment CALLEDIT[] = {note(HZ_F7, 45), note(HZ_A7, 45), note(HZ_C8, 45), rest(30),
+                                note(HZ_F7, 45), note(HZ_A7, 45), note(HZ_C8, 45), fade(HZ_D8, 240, FULL, 9830)};
 template <size_t N>
-constexpr Sound sound(const char* name, const Note (&notes)[N]) { return {name, notes, N}; }
+constexpr Sound sound(const char* name, const Segment (&segments)[N]) { return {name, segments, N}; }
 }  // namespace detail
 
 constexpr Sound SOUNDS[] = {
@@ -98,103 +120,94 @@ inline const Sound* soundFor(const std::string& name) {
   return nullptr;
 }
 
-// The band's compiler takes C++11, where a constexpr function is one return
-// statement: so these sums recurse rather than loop.
-
-/** How long `count` notes last, in ms. */
-constexpr uint32_t notesMs(const Note* notes, size_t count) {
-  return count ? notes->ms + notesMs(notes + 1, count - 1) : 0;
-}
-
-inline uint32_t soundMs(const char* name) {
-  const Sound* s = name ? soundFor(name) : nullptr;
-  return s ? notesMs(s->notes, s->count) : 0;
-}
-
 // A sound is played as one buffer of samples, so painting the face, which holds
 // the loop for tens of milliseconds, cannot bend a tune's rhythm.
 
-constexpr uint32_t SOUND_RATE = 16000;  // samples a second
+constexpr uint32_t SOUND_RATE = 16000;          // samples a second
+constexpr uint32_t PER_MS = SOUND_RATE / 1000;  // samples a millisecond
+// Silence before every sound: a short sound that starts the speaker cold lost its start (heard on the band).
+constexpr uint32_t LEAD_IN_MS = 40;
+
+// The band's compiler takes C++11, where a constexpr function is one return
+// statement: so these sums recurse rather than loop.
+
+/** How long `count` segments last, in ms. */
+constexpr uint32_t segmentsMs(const Segment* segments, size_t count) {
+  return count ? segments->ms + segmentsMs(segments + 1, count - 1) : 0;
+}
+
+/** A sound's length in ms, its lead-in included; none, 0. app/lib/wrist.js soundMs(). */
+inline uint32_t soundMs(const char* name) {
+  const Sound* s = name ? soundFor(name) : nullptr;
+  return s ? LEAD_IN_MS + segmentsMs(s->segments, s->count) : 0;
+}
 
 constexpr uint32_t longerOf(uint32_t a, uint32_t b) { return a > b ? a : b; }
 
-/** The longest sound in the table from the i-th on, in ms: from 0, what one buffer must hold. */
+/** The longest sound in the table from the i-th on, lead-in included, in ms: from 0, what one buffer must hold. */
 constexpr uint32_t longestSoundMs(size_t i = 0) {
-  return i == sizeof(SOUNDS) / sizeof(SOUNDS[0]) ? 0
-                                                 : longerOf(notesMs(SOUNDS[i].notes, SOUNDS[i].count), longestSoundMs(i + 1));
+  return i == sizeof(SOUNDS) / sizeof(SOUNDS[0])
+             ? 0
+             : longerOf(LEAD_IN_MS + segmentsMs(SOUNDS[i].segments, SOUNDS[i].count), longestSoundMs(i + 1));
 }
 
-constexpr size_t SOUND_SAMPLES = longestSoundMs() * (SOUND_RATE / 1000);  // one buffer
+constexpr size_t SOUND_SAMPLES = longestSoundMs() * PER_MS;  // one buffer
 
-// A buzzer is not a speaker. The StickC Plus's, swept a semitone at a time
-// beside a microphone, is loud from about 2.8 kHz to 4.7 kHz, where the sweep
-// ended, and weak under 2.6 kHz: played through it, down, low and warn, every
-// note under 1.1 kHz, did not rise over the room at all. So on a buzzer a sound
-// goes up whole octaves, which keeps its tune and every note's length, as far
-// as its highest note stays within BUZZER_TOP_HZ.
-
-constexpr uint32_t BUZZER_TOP_HZ = 4700;
-
-/** The highest of `count` notes, in Hz. */
-constexpr uint32_t highestHz(const Note* notes, size_t count, uint32_t high = 0) {
-  return count ? highestHz(notes + 1, count - 1, notes->hz > high ? notes->hz : high) : high;
+/** The pitch `i` samples into a segment of `n`: the table's on a buzzer, an octave down on a speaker. */
+inline int64_t pitchAt(const Segment& g, int64_t i, int64_t n, bool buzzer) {
+  const int64_t from = buzzer ? g.hz0 : g.hz0 >> 1, to = buzzer ? g.hz1 : g.hz1 >> 1;
+  return from + (to - from) * i / n;  // truncated toward zero, as Math.trunc: a downward slide agrees
 }
 
-/** What notes that reach `top` Hz are multiplied by on a buzzer: 1, 2, 4... */
-constexpr uint32_t buzzerFactor(uint32_t top, uint32_t factor = 1) {
-  return top && top * factor * 2 <= BUZZER_TOP_HZ ? buzzerFactor(top, factor * 2) : factor;
+/** The volume, 0 to 32767, `i` samples into a segment of `n`. A decay halves every b ms, straight between halvings. */
+inline int64_t volumeAt(const Segment& g, int64_t i, int64_t n) {
+  if (g.env == Env::FLAT) return g.a;
+  if (g.env == Env::LINE) return g.a + (int64_t(g.b) - g.a) * i / n;
+  const int64_t len = int64_t(g.b) * PER_MS, q = i / len;
+  const int64_t hi = q < 16 ? g.a >> q : 0, lo = q < 15 ? g.a >> (q + 1) : 0;
+  return hi - (hi - lo) * (i % len) / len;
 }
 
-inline uint32_t buzzerFactor(const Sound& s) { return buzzerFactor(highestHz(s.notes, s.count)); }
-
-// Octaves alone would make two sounds one. NOT SENT falls the same fifth as
-// CHANGED, an octave under it; two octaves up and one, they land on the same
-// notes, and under 2.6 kHz there is no room to keep it lower. So on a buzzer
-// it falls that fifth from the top of the loud range instead, above CHANGED:
-// every note as long, the same way down.
-
-namespace detail {
-constexpr Note BUZZER_LOW[] = {{4699, 120}, {3136, 220}};
-}  // namespace detail
-
-constexpr Sound BUZZER_OWN[] = {detail::sound("low", detail::BUZZER_LOW)};
-
-/** A sound's own notes on a buzzer, where it has them. */
-inline const Sound* buzzerOwn(const std::string& name) {
-  for (const Sound& s : BUZZER_OWN)
-    if (name == s.name) return &s;
-  return nullptr;
-}
-
-/** The k-th note of `s` as a buzzer plays it: its own, or up by buzzerFactor(). */
-inline Note buzzerNote(const Sound& s, size_t k) {
-  if (const Sound* own = buzzerOwn(s.name)) return own->notes[k];
-  return {static_cast<uint16_t>(s.notes[k].hz * buzzerFactor(s)), s.notes[k].ms};
+/** One step of the noise's 16-bit LFSR, taps 0, 2, 3 and 5. */
+inline uint16_t lfsrStep(uint16_t l) {
+  return static_cast<uint16_t>((l >> 1) | (((l ^ (l >> 2) ^ (l >> 3) ^ (l >> 5)) & 1u) << 15));
 }
 
 /**
- * A sound's notes as one triangle wave, 8 bits unsigned at SOUND_RATE, as
- * M5.Speaker.playRaw() takes it: 128 is silence, and a rest is silence. Each
- * note starts at the middle of its wave, so it does not click in. On a
- * `buzzer`, each note is buzzerNote()'s. Writes at most `cap` samples;
- * returns how many.
+ * A sound as 8 bits unsigned at SOUND_RATE, as M5.Speaker.playRaw() takes it:
+ * 128 is silence. The lead-in first, then each segment: a square's phase and
+ * the noise's run on across segments, so a slide joins its next note without
+ * a click. Integers only, so app/lib/sound.js renderSound() makes the same
+ * bytes. On a `buzzer`, the table's pitches; otherwise an octave down. Writes
+ * at most `cap` samples; returns how many.
  */
 inline size_t render(const std::string& name, uint8_t* out, size_t cap, bool buzzer = false) {
   const Sound* s = soundFor(name);
-  size_t n = 0;
   if (!s) return 0;
+  size_t n = 0;
+  for (size_t i = 0; i < LEAD_IN_MS * PER_MS && n < cap; ++i) out[n++] = 128;
+  uint32_t phase = 0, noise = 0;
+  uint16_t lfsr = 0xACE1;
   for (size_t k = 0; k < s->count; ++k) {
-    const Note note = buzzer ? buzzerNote(*s, k) : s->notes[k];
-    const size_t samples = size_t(note.ms) * (SOUND_RATE / 1000);
-    for (size_t i = 0; i < samples && n < cap; ++i) {
-      if (!note.hz) {
+    const Segment& g = s->segments[k];
+    const int64_t len = int64_t(g.ms) * PER_MS;
+    for (int64_t i = 0; i < len && n < cap; ++i) {
+      if (g.wave == Wave::REST) {
         out[n++] = 128;
         continue;
       }
-      // Where in its wave this sample is, from 0 to SOUND_RATE; a quarter in, the wave crosses the middle going up.
-      const int64_t phase = static_cast<int64_t>((uint64_t(i) * note.hz + SOUND_RATE / 4) % SOUND_RATE);
-      const int64_t v = phase < SOUND_RATE / 2 ? 4 * phase - SOUND_RATE : 3 * int64_t(SOUND_RATE) - 4 * phase;
-      out[n++] = static_cast<uint8_t>(128 + v * 127 / int64_t(SOUND_RATE));
+      const uint32_t step = static_cast<uint32_t>((uint64_t(pitchAt(g, i, len, buzzer)) << 32) / SOUND_RATE);
+      int64_t level;
+      if (g.wave == Wave::SQUARE) {
+        level = phase < 0x80000000u ? 1 : -1;
+        phase += step;
+      } else {
+        const uint32_t was = noise;
+        noise += step;
+        if (noise < was) lfsr = lfsrStep(lfsr);
+        level = (lfsr & 1) ? 1 : -1;
+      }
+      out[n++] = static_cast<uint8_t>(128 + level * volumeAt(g, i, len) * 127 / 32767);
     }
   }
   return n;

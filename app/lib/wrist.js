@@ -95,7 +95,7 @@ const FULL = 32767;  // volumes are Q15: 1.0 is 32767
 
 // A segment: [wave, hz0, hz1, ms, env, a, b]. env 'flat' holds a; 'line' runs a to b;
 // 'decay' starts at a and halves every b ms. For noise, hz is how often its level steps.
-const sq = (hz, ms) => ['square', hz, hz, ms, 'flat', FULL, 0];
+const note = (hz, ms) => ['square', hz, hz, ms, 'flat', FULL, 0];
 const slide = (hz0, hz1, ms) => ['square', hz0, hz1, ms, 'flat', FULL, 0];
 const fade = (hz, ms, v0, v1) => ['square', hz, hz, ms, 'line', v0, v1];
 const struck = (hz, ms, v0, h) => ['square', hz, hz, ms, 'decay', v0, h];
@@ -111,17 +111,17 @@ export const SOUNDS = {
   tick: [struck(F7, 60, FULL, 14)],
   double: [struck(F7, 60, FULL, 14), rest(40), struck(A7, 60, FULL, 14)],
   down: [fade(C8, 90, FULL, 19660), fade(A7, 90, 19660, 11468), struck(F7, 240, 11468, 58)],
-  up: [sq(F7, 70), fade(C8, 140, FULL, 9830)],
-  fall: [sq(C8, 90), fade(A7, 180, FULL, 9830)],
+  up: [note(F7, 70), fade(C8, 140, FULL, 9830)],
+  fall: [note(C8, 90), fade(A7, 180, FULL, 9830)],
   low: [slide(A7, 1400, 250), noise(3000, 50, FULL, 3277)],
-  ask: [sq(F7, 80), rest(60), sq(C8, 110), slide(C8, D8, 60)],
-  jingle: [sq(F7, 25), sq(A7, 25), sq(C8, 25), sq(F7, 25), sq(A7, 25), sq(C8, 25), sq(F7, 25), sq(A7, 25), sq(C8, 25),
+  ask: [note(F7, 80), rest(60), note(C8, 110), slide(C8, D8, 60)],
+  jingle: [note(F7, 25), note(A7, 25), note(C8, 25), note(F7, 25), note(A7, 25), note(C8, 25), note(F7, 25), note(A7, 25), note(C8, 25),
     fade(C8, 200, FULL, 6553)],
-  warn: [sq(A7, 50), rest(30), sq(A7, 50), rest(30), sq(A7, 50), rest(120), sq(A7, 50), rest(30), sq(A7, 50), rest(30),
-    sq(A7, 50)],
-  hello: [slide(F7, A7, 60), rest(30), sq(A7, 90)],
-  found: [sq(F7, 50), sq(A7, 50), sq(C8, 50), fade(D8, 180, FULL, 9830)],
-  calledit: [sq(F7, 45), sq(A7, 45), sq(C8, 45), rest(30), sq(F7, 45), sq(A7, 45), sq(C8, 45), fade(D8, 240, FULL, 9830)],
+  warn: [note(A7, 50), rest(30), note(A7, 50), rest(30), note(A7, 50), rest(120), note(A7, 50), rest(30), note(A7, 50), rest(30),
+    note(A7, 50)],
+  hello: [slide(F7, A7, 60), rest(30), note(A7, 90)],
+  found: [note(F7, 50), note(A7, 50), note(C8, 50), fade(D8, 180, FULL, 9830)],
+  calledit: [note(F7, 45), note(A7, 45), note(C8, 45), rest(30), note(F7, 45), note(A7, 45), note(C8, 45), fade(D8, 240, FULL, 9830)],
 };
 
 /** Silence before every sound: a short sound that starts the speaker cold loses its start. */
