@@ -81,9 +81,12 @@ that was taken.
   ends it; a warning that came up meanwhile plays once, after. A change made
   on the phone to one's own card or NOT NOW is silent on the wrist. Each sound
   and flash is one line in a table both twins keep, `SOUNDS` and `FLASHES`,
-  held equal by `tests/firmware.test.js`; the notes are starting points, to be
-  tuned by ear on a band. `/band` plays the same notes through Web Audio once
-  its page has been tapped, which is when a browser first lets a page sound.
+  held equal by `tests/firmware.test.js`. The sounds are 8-bit: square waves,
+  noise and rests, chosen by ear on a band on 12 Oct 2026, and every piece of
+  good news grows from one motif, F7 A7 C8
+  (`docs/superpowers/specs/2026-10-12-band-sounds-8bit-design.md`). `/band`
+  plays the band's own bytes, an octave down, through Web Audio once its page
+  has been tapped, which is when a browser first lets a page sound.
 - **A wave reaches the wrist, and is answered there.** A wave at someone on
   SAY HI calls their wristband: a short `hello` and the HI blue three times,
   whatever the keys do. During it a key only ticks, and only a face hold still
@@ -394,27 +397,26 @@ read back from the picture with jsQR, the scanner the app uses.
   captive portal can hold a TLS handshake open for two minutes — never holds
   up the button or the screen.
 - **A sound plays from a buffer of its own.** When the wrist names a sound,
-  `main.cpp` renders all its notes as one 8-bit triangle wave at 16 kHz
-  (`render()`, in `band_logic.h`, so the host tests hold it) and hands that
-  to `M5.Speaker.playRaw()`, so painting the face cannot bend a tune's
-  rhythm. There are two buffers of 9.6 KB, used in turn, and one is written
+  `main.cpp` renders it as 8-bit samples at 16 kHz (`render()`, in
+  `band_logic.h`, so the host tests hold it) and hands that to
+  `M5.Speaker.playRaw()`, so painting the face cannot bend a tune's rhythm.
+  The render is integers only, and `app/lib/sound.js` is the same function:
+  a test holds the two to the same bytes. Every sound starts with 40 ms of
+  silence, because a short sound that started the speaker cold lost its
+  start. There are two buffers of 9.28 KB, used in turn, and one is written
   again only once M5Unified says the speaker has let it go: its buffer
   release callback, which is why the firmware needs M5Unified 0.2.22 or
-  later. The StickC Plus plays the same sounds through its buzzer, which
-  runs off the 5V output the StickS3 keeps off so as to charge, so `setup()`
+  later. The StickC Plus plays the sounds through its buzzer, which runs
+  off the 5V output the StickS3 keeps off so as to charge, so `setup()`
   switches that output back on for the Plus alone. A buzzer is loud only
-  high up, from about 2.8 to 4.7 kHz on the Plus, so there each sound goes
-  up whole octaves, as far as its highest note stays under 4.7 kHz: the same
-  tune, every note as long, so the wrist's timings hold (`buzzerFactor()`).
-  `down` and `warn` go up two octaves; `jingle` and `found`, already high,
-  stay as they are. Octaves alone made `low`, NOT SENT, into `fall`,
-  CHANGED: the same fifth down an octave apart, they landed on the same
-  notes. So on a buzzer `low` falls that fifth from 4.7 kHz instead, above
-  CHANGED (`BUZZER_OWN`), and a host test holds that no two sounds are
-  alike on either. The first
-  M5StickC has no speaker; it says so once on the console and only lights up.
-  The Plus has no PSRAM, and the buffers take its static RAM from 51 KB to
-  70 KB of 320 KB; `show` prints the free heap.
+  high up, from about 2.8 to 4.7 kHz on the Plus, so the table is written
+  at the buzzer's pitch and a speaker plays it an octave down; a host test
+  refuses a note that starts outside 2.6–4.8 kHz. The first M5StickC has no
+  speaker; it says so once on the console and only lights up. The Plus has
+  no PSRAM, and the buffers share its static RAM with everything else: a
+  firmware that held a 24 KB buffer could no longer open TLS to the relay,
+  so a host test keeps a buffer at 9600 samples or fewer. `show` prints the
+  free heap.
 - **Checking the relay's certificate takes the older chip seconds.** From
   `relay` to on the Fly relay took 5.9 to 6.3 s on the StickC Plus, whose
   ESP32 checks each ECDSA signature of the chain in software, and 3.0 to 3.4 s

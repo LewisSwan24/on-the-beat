@@ -373,79 +373,69 @@ void colour() {
 
 void sound() {
   static uint8_t buf[SOUND_SAMPLES];
-  const size_t ms = SOUND_RATE / 1000;  // samples a millisecond
-  // One buffer holds the longest sound, jingle and warn at 0.6 s, and so every sound.
-  CHECK(SOUND_SAMPLES == 600 * ms);
-  for (const Sound& s : SOUNDS) CHECK(soundMs(s.name) * ms <= SOUND_SAMPLES);
-  // A sound is as long as its notes.
-  CHECK(render("tick", buf, sizeof buf) == 25 * ms);
-  CHECK(render("jingle", buf, sizeof buf) == SOUND_SAMPLES);
-  // A rest is silence, the middle of the range.
-  CHECK(render("double", buf, sizeof buf) == 110 * ms);
-  bool rest = true;
-  for (size_t i = 25 * ms; i < 85 * ms; ++i) rest = rest && buf[i] == 128;
-  CHECK(rest);
-  // A note is a triangle over the whole range, never 0, starting from the middle so it does not click in.
-  render("tick", buf, sizeof buf);
-  uint8_t lo = 255, hi = 0;
-  int ups = 0;
-  for (size_t i = 0; i < 25 * ms; ++i) {
-    lo = std::min(lo, buf[i]);
-    hi = std::max(hi, buf[i]);
-    if (i > 0 && buf[i - 1] < 128 && buf[i] >= 128) ++ups;
+  static uint8_t plain[SOUND_SAMPLES];
+  const size_t lead = LEAD_IN_MS * PER_MS;  // 640 samples of silence before every sound
+  // One buffer holds the longest sound, calledit and warn at 540 ms plus the lead-in, and so every sound;
+  // and no more than the two 9.6 KB buffers the band had before, which TLS already shares the heap with.
+  CHECK(SOUND_SAMPLES == 580 * PER_MS && SOUND_SAMPLES <= 9600);
+  for (const Sound& s : SOUNDS) CHECK(soundMs(s.name) * PER_MS <= SOUND_SAMPLES);
+  // A sound is its lead-in and its segments, on either octave.
+  CHECK(soundMs("tick") == 100 && render("tick", buf, sizeof buf, true) == 100 * PER_MS);
+  CHECK(render("tick", plain, sizeof plain) == 100 * PER_MS);
+  CHECK(render("calledit", buf, sizeof buf, true) == SOUND_SAMPLES);
+  // The lead-in and a rest are silence.
+  render("double", buf, sizeof buf, true);
+  bool quiet = true;
+  for (size_t i = 0; i < lead; ++i) quiet = quiet && buf[i] == 128;
+  for (size_t i = lead + 60 * PER_MS; i < lead + 100 * PER_MS; ++i) quiet = quiet && buf[i] == 128;
+  CHECK(quiet);
+  // A square is two levels at full scale, starting high.
+  render("up", buf, sizeof buf, true);
+  bool two = buf[lead] == 255;
+  for (size_t i = lead; i < lead + 70 * PER_MS; ++i) two = two && (buf[i] == 255 || buf[i] == 1);
+  CHECK(two);
+  // On the buzzer F7 for 60 ms is 167.6 waves; on a speaker, an octave down, 83.8.
+  const auto ups = [](const uint8_t* b, size_t from, size_t to) {
+    int n = 0;
+    for (size_t i = from + 1; i < to; ++i)
+      if (b[i - 1] < 128 && b[i] >= 128) ++n;
+    return n;
+  };
+  render("tick", buf, sizeof buf, true);
+  render("tick", plain, sizeof plain);
+  const int hi = ups(buf, lead, 100 * PER_MS), lo = ups(plain, lead, 100 * PER_MS);
+  CHECK(hi >= 166 && hi <= 168 && lo >= 82 && lo <= 84);
+  // A decay halves every h ms, straight between halvings, and stays at nothing far past the last.
+  const Segment struck = SOUNDS[0].segments[0];  // tick: F7 60, decay from 1.0, h14
+  CHECK(struck.env == Env::DECAY && struck.b == 14);
+  CHECK(volumeAt(struck, 0, 960) == 32767 && volumeAt(struck, 14 * PER_MS, 960) == 16383);
+  // Read at run time: a shift past 31 is undefined, and a constant one the compiler may fold to anything, 0 too.
+  volatile int64_t far = 40 * 14 * PER_MS;
+  CHECK(volumeAt(struck, 28 * PER_MS, 960) == 8191 && volumeAt(struck, far, 960) == 0);
+  // A slide ends within one step of its last pitch, down (low) as well as up (hello), and halves on a speaker.
+  for (const char* name : {"low", "hello"}) {
+    const Segment& g = soundFor(name)->segments[0];
+    const int64_t n = int64_t(g.ms) * PER_MS, step = (std::abs(int64_t(g.hz1) - g.hz0) + n - 1) / n;
+    CHECK(g.hz0 != g.hz1 && pitchAt(g, 0, n, true) == g.hz0 && pitchAt(g, 0, n, false) == g.hz0 >> 1);
+    CHECK(std::abs(pitchAt(g, n - 1, n, true) - int64_t(g.hz1)) <= step);
   }
-  CHECK(buf[0] == 128 && lo >= 1 && lo <= 8 && hi >= 247);
-  CHECK(ups >= 44 && ups <= 45);  // 1800 Hz for 25 ms: 45 waves
-  // No more than the room it is given, and nothing for a name it does not know.
-  CHECK(render("jingle", buf, 100) == 100);
-  CHECK(render("hum", buf, sizeof buf) == 0);
-  // On a buzzer a sound goes up whole octaves, as far as its highest note stays within BUZZER_TOP_HZ...
-  const std::pair<const char*, uint32_t> octaves[] = {{"tick", 2}, {"double", 2}, {"down", 4},   {"up", 2},
-                                                      {"fall", 2}, {"ask", 2},    {"jingle", 1}, {"warn", 4},
-                                                      {"hello", 2}, {"found", 1}, {"calledit", 1}};
-  CHECK(sizeof octaves / sizeof octaves[0] + 1 == sizeof SOUNDS / sizeof SOUNDS[0]);  // and low, below
-  for (const auto& o : octaves) CHECK(soundFor(o.first) && !buzzerOwn(o.first) && buzzerFactor(*soundFor(o.first)) == o.second);
-  for (const Sound& s : SOUNDS) {
-    const uint32_t top = highestHz(s.notes, s.count) * buzzerFactor(s);
-    CHECK(top <= BUZZER_TOP_HZ && top * 2 > BUZZER_TOP_HZ);
-  }
-  // ...but low, NOT SENT, falls a fifth from 4699 Hz: two octaves up it would be CHANGED's own notes.
-  CHECK(buzzerOwn("low") && buzzerNote(*soundFor("low"), 0).hz == 4699 && buzzerNote(*soundFor("low"), 1).hz == 3136);
-  // Every note on a buzzer keeps its length, its rests and the way each step goes, within BUZZER_TOP_HZ.
-  const auto dir = [](uint32_t a, uint32_t b) { return (b > a) - (b < a); };
+  // Every note the buzzer must sound starts where it is loud; a slide may end below.
+  for (const Sound& s : SOUNDS)
+    for (size_t k = 0; k < s.count; ++k)
+      if (s.segments[k].wave == Wave::SQUARE)
+        CHECK(s.segments[k].hz0 >= 2600 && s.segments[k].hz0 <= 4800 && s.segments[k].hz1 <= 4800);
+  // And every segment is one the render can make: under 8 kHz, where a step stays far from 2^32; volumes
+  // within Q15, or the byte wraps; a decay with a half-life, or it divides by zero, a reboot on the band.
   for (const Sound& s : SOUNDS)
     for (size_t k = 0; k < s.count; ++k) {
-      const Note n = buzzerNote(s, k);
-      CHECK(n.ms == s.notes[k].ms && !n.hz == !s.notes[k].hz && n.hz <= BUZZER_TOP_HZ);
-      if (k && n.hz && s.notes[k - 1].hz)
-        CHECK(dir(buzzerNote(s, k - 1).hz, n.hz) == dir(s.notes[k - 1].hz, s.notes[k].hz));
+      const Segment& g = s.segments[k];
+      CHECK(g.hz0 <= 8000 && g.hz1 <= 8000 && g.ms > 0);
+      if (g.wave == Wave::REST) continue;
+      CHECK(g.a <= 32767 && (g.env != Env::LINE || g.b <= 32767) && (g.env != Env::DECAY || g.b > 0));
     }
-  // And no two sounds are alike, on the speaker or the buzzer: as many notes, each within a semitone.
-  const auto alike = [](const Sound& a, const Sound& b, bool buzzer) {
-    if (a.count != b.count) return false;
-    for (size_t k = 0; k < a.count; ++k) {
-      const uint32_t x = buzzer ? buzzerNote(a, k).hz : a.notes[k].hz;
-      const uint32_t y = buzzer ? buzzerNote(b, k).hz : b.notes[k].hz;
-      if (!x != !y || (x && std::max(x, y) * 1000 >= std::min(x, y) * 1060)) return false;
-    }
-    return true;
-  };
-  for (const Sound& a : SOUNDS)
-    for (const Sound& b : SOUNDS)
-      if (&a != &b) CHECK(!alike(a, b, false) && !alike(a, b, true));
-  // Its length stays, so the wrist's timings hold; only the pitch moves: 3600 Hz for 25 ms is 90 waves.
-  static uint8_t plain[SOUND_SAMPLES];
-  CHECK(render("tick", buf, sizeof buf, true) == 25 * ms);
-  CHECK(render("double", buf, sizeof buf, true) == 110 * ms);
-  CHECK(render("warn", buf, sizeof buf, true) == render("warn", plain, sizeof plain));
-  render("tick", buf, sizeof buf, true);
-  ups = 0;
-  for (size_t i = 1; i < 25 * ms; ++i)
-    if (buf[i - 1] < 128 && buf[i] >= 128) ++ups;
-  CHECK(buf[0] == 128 && ups >= 89 && ups <= 90);
-  // A sound already high enough is left as it is, sample for sample.
-  const size_t n = render("found", buf, sizeof buf, true);
-  CHECK(n == render("found", plain, sizeof plain) && std::equal(buf, buf + n, plain));
+  // No more than the room it is given, and nothing for a name it does not know.
+  CHECK(render("jingle", buf, 100, true) == 100);
+  CHECK(render("hum", buf, sizeof buf) == 0);
   // The flash colours: plain fills. Black, white and the cards are drawn another way.
   CHECK(plainField("red") && *plainField("red") == (Rgb{0xFF, 0x6B, 0x6B}));
   CHECK(plainField("orange") && *plainField("orange") == (Rgb{0xFF, 0x8A, 0x00}));
@@ -875,12 +865,34 @@ std::string answer(const Command& c) {
            ",\"CARD_WORDS\":" + cardWordsJson() + "}";
   }
   if (c.verb == "sounds") {
-    // SOUNDS, as app/lib/wrist.js has it: {"tick":[[1800,25]],...}
+    // SOUNDS, as app/lib/wrist.js has it: {"tick":[["square",2794,2794,60,"decay",32767,14]],...}
+    static const char* const WAVES[] = {"square", "noise", "rest"};
+    static const char* const ENVS[] = {"flat", "line", "decay"};
     std::string out = "{";
     for (const Sound& s : SOUNDS) {
       out += std::string(out.size() > 1 ? "," : "") + quote(s.name) + ":[";
-      for (size_t i = 0; i < s.count; ++i)
-        out += std::string(i ? "," : "") + "[" + std::to_string(s.notes[i].hz) + "," + std::to_string(s.notes[i].ms) + "]";
+      for (size_t i = 0; i < s.count; ++i) {
+        const Segment& g = s.segments[i];
+        out += std::string(i ? "," : "") + "[" + quote(WAVES[int(g.wave)]) + "," + std::to_string(g.hz0) + "," +
+               std::to_string(g.hz1) + "," + std::to_string(g.ms) + "," + quote(ENVS[int(g.env)]) + "," +
+               std::to_string(g.a) + "," + std::to_string(g.b) + "]";
+      }
+      out += "]";
+    }
+    return out + "}";
+  }
+  if (c.verb == "renders") {
+    // Every sound rendered, as [length, FNV-1a] on the buzzer and then on a speaker: app/lib/sound.js fnv1a().
+    static uint8_t buf[SOUND_SAMPLES];
+    std::string out = "{";
+    for (const Sound& s : SOUNDS) {
+      out += std::string(out.size() > 1 ? "," : "") + quote(s.name) + ":[";
+      for (int buzzer = 1; buzzer >= 0; --buzzer) {
+        const size_t n = render(s.name, buf, sizeof buf, buzzer == 1);
+        uint32_t h = 2166136261u;
+        for (size_t i = 0; i < n; ++i) h = (h ^ buf[i]) * 16777619u;
+        out += std::to_string(n) + "," + std::to_string(h) + (buzzer ? "," : "");
+      }
       out += "]";
     }
     return out + "}";

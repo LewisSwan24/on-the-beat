@@ -99,7 +99,7 @@ std::string typed;      // the console line so far
 // one is written again only once the speaker has let it go.
 constexpr int SOUND_CHANNEL = 0;
 bool speaker = false;                   // the first M5StickC has none: it only lights up
-bool buzzer = false;                    // a buzzer, as the StickC Plus has: sounds go octaves up
+bool buzzer = false;                    // a buzzer, as the StickC Plus has: sounds at the table's pitch; a speaker plays them an octave down
 uint8_t soundBuf[2][SOUND_SAMPLES];
 std::atomic<bool> soundHeld[2];         // a sound on this buffer the speaker has not let go of yet
 int soundNext = 0;                      // the buffer the next sound goes in
@@ -931,10 +931,12 @@ void playSounds() {
     if (M5.Speaker.isPlaying(SOUND_CHANNEL)) return;
     soundHeld[i] = false;
   }
+  const uint32_t began = micros();  // the render runs on the loop: its cost goes on the console
   const size_t n = render(soundDue, soundBuf[i], SOUND_SAMPLES, buzzer);
+  const uint32_t took = micros() - began;
   soundHeld[i] = true;
   if (n && M5.Speaker.playRaw(soundBuf[i], n, SOUND_RATE, false, 1, SOUND_CHANNEL, true)) {
-    Serial.printf("sound: %s\n", soundDue.c_str());
+    Serial.printf("sound: %s (rendered in %u us)\n", soundDue.c_str(), static_cast<unsigned>(took));
     soundNext = 1 - i;
   } else {
     soundHeld[i] = false;
@@ -995,7 +997,7 @@ void report() {
   // The Plus has no PSRAM: the sound buffers and the face leave this much for a TLS handshake.
   Serial.printf("memory  %u bytes free, %u at the least; sound %s\n", static_cast<unsigned>(ESP.getFreeHeap()),
                 static_cast<unsigned>(ESP.getMinFreeHeap()),
-                !speaker ? "none: light only" : buzzer ? "on the buzzer, octaves up" : "on the speaker");
+                !speaker ? "none: light only" : buzzer ? "on the buzzer" : "on the speaker, an octave down");
   // Plugged in with the battery full, what it draws is what the band uses: near on against near off.
   if (axp) {
     Serial.printf("power   %.1f mA from USB, the mean of %u readings since the last show\n", usbCount ? usbSum / usbCount : 0.0f,
@@ -1356,7 +1358,7 @@ void setup() {
   face.createSprite(M5.Display.width(), M5.Display.height());
   // The speaker, as the sound test had it: the microphone off first (on some
   // bands the two share one I2S), then full volume. The StickC Plus plays the
-  // same sounds through its buzzer, powered as above, whole octaves higher.
+  // same sounds through its buzzer, powered as above, an octave above a speaker.
   M5.Mic.end();
   M5.Speaker.setBufferReleaseCallback(nullptr, soundReleased);
   speaker = M5.Speaker.begin();

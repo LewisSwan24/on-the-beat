@@ -1,23 +1,21 @@
-// The wristband's speaker, in a browser (/band). The band renders a sound's
-// notes into one triangle wave (band_logic.h render()); here each note is a
-// triangle oscillator, started and stopped on the audio clock, so the page's
-// own drawing cannot bend the rhythm either. A browser lets a page make sound
+// The wristband's speaker, in a browser (/band). It plays the bytes the band
+// renders (app/lib/sound.js, as band_logic.h render()), an octave down as a
+// speaker build plays them: 3 to 4.7 kHz squares are shrill on a laptop, and
+// the tune survives the octave. One buffer, started on the audio clock, so the
+// page's own drawing cannot bend the rhythm. A browser lets a page make sound
 // only after it has been tapped, so it is silent until then. A new sound cuts
 // off the one playing, as the band's does.
 
-import { SOUNDS } from './wrist.js';
+import { SOUND_RATE, renderSound } from './sound.js';
 
 // Softer than the band, which plays at its full volume: a browser at full volume can be a headphone's.
 const LEVEL = 0.5;
 
-/** When each sounding note of a sound starts and stops, in seconds from `at`. A rest only takes its time. */
-export function notesAt(name, at) {
-  const out = [];
-  let t = at;
-  for (const [hz, ms] of SOUNDS[name] || []) {
-    if (hz) out.push({ hz, start: t, stop: t + ms / 1000 });
-    t += ms / 1000;
-  }
+/** A sound's samples as Web Audio takes them, -1 to 1: the band's bytes, 128 the middle. */
+export function samplesOf(name) {
+  const bytes = renderSound(name);
+  const out = new Float32Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) out[i] = (bytes[i] - 128) / 128;
   return out;
 }
 
@@ -25,7 +23,7 @@ export function notesAt(name, at) {
 export function createSpeaker(make = () => new AudioContext()) {
   let ctx = null;
   let out = null;
-  let playing = [];
+  let playing = null;
   return {
     /** Call from a tap: from then on it may sound. */
     unlock() {
@@ -43,19 +41,24 @@ export function createSpeaker(make = () => new AudioContext()) {
     ready: () => ctx?.state === 'running',
     /** Plays one sound, cutting off the last. Before a tap, or for a name it does not know, nothing. */
     play(name) {
-      if (ctx?.state !== 'running' || !SOUNDS[name]) return false;
-      for (const o of playing) {
-        try { o.stop(); } catch { /* over already */ }
+      if (ctx?.state !== 'running') return false;
+      const samples = samplesOf(name);
+      if (!samples.length) return false;
+      let source;
+      try {
+        // getChannelData, not copyToChannel, which older WebKit lacks; a browser that will not
+        // take a 16 kHz buffer stays silent rather than throwing into the page's drawing.
+        const buffer = ctx.createBuffer(1, samples.length, SOUND_RATE);
+        buffer.getChannelData(0).set(samples);
+        source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(out);
+      } catch {
+        return false;
       }
-      playing = notesAt(name, ctx.currentTime).map(({ hz, start, stop }) => {
-        const o = ctx.createOscillator();
-        o.type = 'triangle';
-        o.frequency.value = hz;
-        o.connect(out);
-        o.start(start);
-        o.stop(stop);
-        return o;
-      });
+      try { playing?.stop(); } catch { /* over already */ }
+      source.start(ctx.currentTime);
+      playing = source;
       return true;
     },
   };
