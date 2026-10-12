@@ -85,21 +85,47 @@ export const CONSTS = {
   STALE_MS, QUIET_CONFIRM_MS, BLINK_MS, HINT_MS, PAIR_AWAKE_MS, LIGHT_FULL, LIGHT_DIM, LIGHT_PAIR, LIGHT_AWAKE, LIGHT_OFF, CARD_WORDS,
 };
 
-/** Every sound the wrist makes, as notes: [Hz, ms], 0 Hz a rest. band_logic.h SOUNDS is the same table. */
+// The band's notes: F7 A7 C8 is the motif, "on-the-BEAT"; D8 tops it. The
+// buzzer is loud from about 2.8 to 4.7 kHz, so every steady note sits there.
+const F7 = 2794;
+const A7 = 3520;
+const C8 = 4186;
+const D8 = 4699;
+const FULL = 32767;  // volumes are Q15: 1.0 is 32767
+
+// A segment: [wave, hz0, hz1, ms, env, a, b]. env 'flat' holds a; 'line' runs a to b;
+// 'decay' starts at a and halves every b ms. For noise, hz is how often its level steps.
+const sq = (hz, ms) => ['square', hz, hz, ms, 'flat', FULL, 0];
+const slide = (hz0, hz1, ms) => ['square', hz0, hz1, ms, 'flat', FULL, 0];
+const fade = (hz, ms, v0, v1) => ['square', hz, hz, ms, 'line', v0, v1];
+const struck = (hz, ms, v0, h) => ['square', hz, hz, ms, 'decay', v0, h];
+const noise = (rate, ms, v0, v1) => ['noise', rate, rate, ms, 'line', v0, v1];
+const rest = (ms) => ['rest', 0, 0, ms, 'flat', 0, 0];
+
+/**
+ * Every sound the wrist makes, in segments, at the buzzer's pitch: a speaker plays them an octave down.
+ * band_logic.h SOUNDS is the same table. Chosen by ear on the band, 12 Oct 2026
+ * (docs/superpowers/specs/2026-10-12-band-sounds-8bit-design.md).
+ */
 export const SOUNDS = {
-  tick: [[1800, 25]],
-  double: [[1800, 25], [0, 60], [1800, 25]],
-  down: [[1047, 90], [784, 180]],
-  up: [[1047, 70], [1319, 70], [1568, 70], [2093, 140]],
-  fall: [[1568, 100], [1047, 200]],
-  low: [[784, 120], [523, 220]],
-  ask: [[1319, 80], [0, 50], [1760, 160]],
-  jingle: [[1319, 80], [1568, 80], [2637, 80], [2093, 80], [2349, 80], [3136, 200]],
-  warn: [[880, 150], [698, 150], [880, 150], [698, 150]],
-  hello: [[1568, 60], [2093, 120]],
-  found: [[1568, 70], [2093, 70], [2637, 70], [0, 40], [2637, 70], [3136, 220]],
-  calledit: [[2093, 90], [0, 50], [2093, 90], [0, 50], [2637, 90], [3136, 230]],
+  tick: [struck(F7, 60, FULL, 14)],
+  double: [struck(F7, 60, FULL, 14), rest(40), struck(A7, 60, FULL, 14)],
+  down: [fade(C8, 90, FULL, 19660), fade(A7, 90, 19660, 11468), struck(F7, 240, 11468, 58)],
+  up: [sq(F7, 70), fade(C8, 140, FULL, 9830)],
+  fall: [sq(C8, 90), fade(A7, 180, FULL, 9830)],
+  low: [slide(A7, 1400, 250), noise(3000, 50, FULL, 3277)],
+  ask: [sq(F7, 80), rest(60), sq(C8, 110), slide(C8, D8, 60)],
+  jingle: [sq(F7, 25), sq(A7, 25), sq(C8, 25), sq(F7, 25), sq(A7, 25), sq(C8, 25), sq(F7, 25), sq(A7, 25), sq(C8, 25),
+    fade(C8, 200, FULL, 6553)],
+  warn: [sq(A7, 50), rest(30), sq(A7, 50), rest(30), sq(A7, 50), rest(120), sq(A7, 50), rest(30), sq(A7, 50), rest(30),
+    sq(A7, 50)],
+  hello: [slide(F7, A7, 60), rest(30), sq(A7, 90)],
+  found: [sq(F7, 50), sq(A7, 50), sq(C8, 50), fade(D8, 180, FULL, 9830)],
+  calledit: [sq(F7, 45), sq(A7, 45), sq(C8, 45), rest(30), sq(F7, 45), sq(A7, 45), sq(C8, 45), fade(D8, 240, FULL, 9830)],
 };
+
+/** Silence before every sound: a short sound that starts the speaker cold loses its start. */
+export const LEAD_IN_MS = 40;
 
 /**
  * Every flash: its colour, then count × on / off ms. `card` is the card chosen, or the meeting's for found; white
@@ -122,7 +148,8 @@ export const FLASHES = {
  */
 export const FLASH_COLOURS = { red: '#FF6B6B', orange: '#FF8A00' };
 
-const soundMs = (name) => (name ? SOUNDS[name].reduce((ms, [, len]) => ms + len, 0) : 0);
+/** A sound's length in ms, its lead-in included; none, 0. band_logic.h soundMs(). */
+export const soundMs = (name) => (name ? LEAD_IN_MS + SOUNDS[name].reduce((ms, s) => ms + s[3], 0) : 0);
 const flashMs = (f) => (f ? f.count * (f.on + f.off) : 0);
 
 /** A relay show, read the way band_logic.h readFrame() reads it: wrong types fall back to defaults. */
