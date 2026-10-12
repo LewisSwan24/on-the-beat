@@ -105,9 +105,12 @@ team: his 「直接做」.
 - **Making a room** = joining a new key (today's path), then
   `{t:'fill', venue, act?, lat?, lon?}` as the first fill. The relay checks the
   address limit and the night cap there.
-- **Adding later:** `{t:'fill', field, value}`. The answer is
-  `{t:'fill', ok, why?}`, with `why` one of `taken`, `limit`, `full`, `listed`
-  or `bad`.
+- **Adding later:** `{t:'fill', <field>: value, …}`. Success is the room's
+  next view carrying the field. A refusal is the relay's usual
+  `{t:'error', why}`, with `why` one of `fill taken`, `fill limit`,
+  `fill full`, `fill listed` or `fill bad`.
+- **The per-address count** is in memory. A restart starts it again; the
+  200 cap is counted from the rooms, so it holds across a restart.
 - **Saying it is wrong:** `{t:'wrong', field}`. Each person counts once per
   field.
 - **`/api/shows`** returns the listed shows (with `lat`/`lon` when the file has
