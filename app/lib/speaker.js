@@ -44,12 +44,19 @@ export function createSpeaker(make = () => new AudioContext()) {
       if (ctx?.state !== 'running') return false;
       const samples = samplesOf(name);
       if (!samples.length) return false;
+      let source;
+      try {
+        // getChannelData, not copyToChannel, which older WebKit lacks; a browser that will not
+        // take a 16 kHz buffer stays silent rather than throwing into the page's drawing.
+        const buffer = ctx.createBuffer(1, samples.length, SOUND_RATE);
+        buffer.getChannelData(0).set(samples);
+        source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(out);
+      } catch {
+        return false;
+      }
       try { playing?.stop(); } catch { /* over already */ }
-      const buffer = ctx.createBuffer(1, samples.length, SOUND_RATE);
-      buffer.copyToChannel(samples, 0);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(out);
       source.start(ctx.currentTime);
       playing = source;
       return true;

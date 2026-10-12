@@ -109,6 +109,19 @@ test('every note the buzzer must sound starts where it is loud', () => {
   }
 });
 
+test('every segment is one the render can make the same on both sides', () => {
+  // Over 8 kHz a step nears 2^32, where C++ wraps it and JS does not; over 32767 a volume wraps its byte;
+  // a decay with no half-life divides by zero, which on the band is a reboot.
+  for (const [name, segs] of Object.entries(SOUNDS)) {
+    for (const [wave, hz0, hz1, ms, env, a, b] of segs) {
+      assert.ok(hz0 <= 8000 && hz1 <= 8000 && ms > 0, name);
+      if (wave === 'rest') continue;
+      assert.ok(a <= 32767 && (env !== 'line' || b <= 32767), name + ' volume');
+      assert.ok(env !== 'decay' || b > 0, name + ' half-life');
+    }
+  }
+});
+
 test('the longest sound fits one buffer of 9600 samples', () => {
   const longest = Math.max(...Object.keys(SOUNDS).map(soundMs));
   assert.equal(longest, 580);

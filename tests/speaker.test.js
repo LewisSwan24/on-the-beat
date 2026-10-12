@@ -11,6 +11,7 @@ import { createSpeaker, samplesOf } from '../app/lib/speaker.js';
 /** An AudioContext that plays nothing and remembers everything. `running` is where resume() leaves it. */
 function fakeContext({ running = true } = {}) {
   const ctx = {
+    refuse: false,  // set: createBuffer throws, as a browser that will not take 16 kHz might
     state: 'suspended',
     currentTime: 5,
     destination: {},
@@ -18,7 +19,9 @@ function fakeContext({ running = true } = {}) {
     resume() { if (running) ctx.state = 'running'; return Promise.resolve(); },
     createGain: () => ({ gain: { value: 1 }, connect() {} }),
     createBuffer(channels, length, sampleRate) {
-      return { channels, length, sampleRate, data: null, copyToChannel(d, ch) { if (ch === 0) this.data = d; } };
+      if (ctx.refuse) throw new Error('NotSupportedError: sampleRate');
+      const data = new Float32Array(length);
+      return { channels, length, sampleRate, data, getChannelData: (ch) => (ch === 0 ? data : null) };
     },
     createBufferSource() {
       const s = { buffer: null, started: null, stopped: [], connect() {} };
@@ -75,4 +78,16 @@ test('after a tap it plays one buffer at 16 kHz, now, and a new sound stops the 
   assert.equal(speaker.play('no such sound'), false);
   assert.equal(ctx.sources.length, 2);
   assert.equal(ctx.sources[1].stopped.length, 0, 'an unknown name does not cut the last');
+});
+
+test('a browser that cannot make the buffer leaves it silent, throws nothing, and does not cut the last', () => {
+  const ctx = fakeContext();
+  const speaker = createSpeaker(() => ctx);
+  speaker.unlock();
+  assert.equal(speaker.play('up'), true);
+  const [up] = ctx.sources;
+  ctx.refuse = true;
+  assert.equal(speaker.play('tick'), false);
+  assert.equal(ctx.sources.length, 1);
+  assert.equal(up.stopped.length, 0, 'what was playing plays on');
 });

@@ -424,6 +424,15 @@ void sound() {
     for (size_t k = 0; k < s.count; ++k)
       if (s.segments[k].wave == Wave::SQUARE)
         CHECK(s.segments[k].hz0 >= 2600 && s.segments[k].hz0 <= 4800 && s.segments[k].hz1 <= 4800);
+  // And every segment is one the render can make: under 8 kHz, where a step stays far from 2^32; volumes
+  // within Q15, or the byte wraps; a decay with a half-life, or it divides by zero, a reboot on the band.
+  for (const Sound& s : SOUNDS)
+    for (size_t k = 0; k < s.count; ++k) {
+      const Segment& g = s.segments[k];
+      CHECK(g.hz0 <= 8000 && g.hz1 <= 8000 && g.ms > 0);
+      if (g.wave == Wave::REST) continue;
+      CHECK(g.a <= 32767 && (g.env != Env::LINE || g.b <= 32767) && (g.env != Env::DECAY || g.b > 0));
+    }
   // No more than the room it is given, and nothing for a name it does not know.
   CHECK(render("jingle", buf, 100, true) == 100);
   CHECK(render("hum", buf, sizeof buf) == 0);
