@@ -35,6 +35,7 @@ What each kind of yes shows the other side before it is returned:
 | a wave (SAY HI) | yes — a blue dot on a row that is still only a band, so they can wave back; and on their wristband, a short call and a count of who waits, never who |
 | a like (FIRST SONG?) | never — it was for an answer, not a face |
 | a dance back (LET'S DANCE!) | yes — the clip goes straight to them, with no name on it |
+| a team-up (LET'S GUESS!) | never — like a like, it shows only on your own list, as ASKED; they see your score, never your answers, and learn you asked only if they team up back |
 
 None of them is ever reported as declined. A yes that is not returned just
 never becomes a match.
@@ -72,10 +73,23 @@ never becomes a match.
     keys, kept in `PUSH_KEYS_FILE`; each payload sealed for one device
     (RFC 8291); and requests only to the push services' own hosts.
   - `relay/shows.json` is tonight's shows: times, quiet corners to meet at,
-    and the set list. A venue nobody listed still gets a room, named by what
+    and the set list. A show may carry `quiz`, one to five questions for
+    LET'S GUESS! (`relay/quiz.js`); the relay keeps the answers, and the
+    venue list phones are given carries no quiz. A venue with no quiz has
+    LET'S GUESS! closed all night. A venue nobody listed still gets a room, named by what
     was typed, with case, accents, punctuation, `&` for `and` and a leading
     `the` let go (`app/lib/typed.js`), so "the Fortitude Music Hall" and
-    "Fortitude Music Hall!" are one room and not two. `SHOWS` names a file to use instead (fly.toml sets
+    "Fortitude Music Hall!" are one room and not two. The people in such a
+    room can say what it is: the venue's name, the act and the times, first
+    in wins, and two people saying a field is wrong clear it (two on the
+    venue take it off every list). A made room is listed after the shows
+    for the rest of the night, three a network and two hundred a relay, and
+    goes at 06:00. A phone lists tonight's rooms nearest first, working out
+    the distance itself; its own place never leaves it except rounded to
+    about 100 m, as the place of a room it makes, and it asks "Wrong
+    place?" when the room it is in is more than 500 m away
+    (`app/lib/where.js`, `docs/superpowers/specs/2026-10-13-venue-cards-design.md`).
+    A show may give its venue's `lat` and `lon`. `SHOWS` names a file to use instead (fly.toml sets
     `/data/shows.json`, on the volume), read at start, so the shows change
     with a restart and not a deploy (`docs/show-night.md`). A file that is
     missing or bad leaves this list, and the log says which; a bad entry is

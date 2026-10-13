@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { HUE, MEET, hueVars, matchName, spotShort } from '../copy.js';
 import { reducedMotion } from '../lib/device.js';
+import { scoreText } from '../lib/guess.js';
 import { FOUND_MINE, foundBoth, metCount, metItem } from '../lib/found.js';
 import { PHASES, hhmm, phaseOf, timesOf } from '../lib/phase.js';
 import { tonightKey } from '../lib/store.js';
@@ -36,21 +37,34 @@ export function Match({ match, number, held, onMyWay, onNotThis, onPick }) {
       ) : null}
       <div className="match" style={hueVars(match.intent)}>
         <div className="h2">You both said yes.</div>
-        <div className="pair">
-          <div>
-            <span className="micro">you</span>
-            {match.yourPick ? <span className="body">{match.yourPick}</span> : (
-              <button type="button" onClick={onPick} style={{ alignSelf: 'flex-start', margin: '-6px -6px -6px 0', minHeight: 44, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2, textAlign: 'left' }}>
-                <span className="body muted">not picked yet</span>
-                <span className="micro" style={{ color: 'var(--song)' }}>pick one ›</span>
-              </button>
-            )}
+        {match.intent === 'guess' ? (
+          <div className="pair">
+            <div>
+              <span className="micro">you</span>
+              <span className="body">{scoreText(match.yourScore)}</span>
+            </div>
+            <div>
+              <span className="micro" style={{ color: 'var(--c)' }}>{name}</span>
+              <span className="body">{scoreText(match.score)}</span>
+            </div>
           </div>
-          <div>
-            <span className="micro" style={{ color: 'var(--c)' }}>{name}</span>
-            <span className="body" style={{ color: match.pick ? '#fff' : 'var(--text-2)' }}>{match.pick || 'no pick yet'}</span>
+        ) : (
+          <div className="pair">
+            <div>
+              <span className="micro">you</span>
+              {match.yourPick ? <span className="body">{match.yourPick}</span> : (
+                <button type="button" onClick={onPick} style={{ alignSelf: 'flex-start', margin: '-6px -6px -6px 0', minHeight: 44, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2, textAlign: 'left' }}>
+                  <span className="body muted">not picked yet</span>
+                  <span className="micro" style={{ color: 'var(--song)' }}>pick one ›</span>
+                </button>
+              )}
+            </div>
+            <div>
+              <span className="micro" style={{ color: 'var(--c)' }}>{name}</span>
+              <span className="body" style={{ color: match.pick ? '#fff' : 'var(--text-2)' }}>{match.pick || 'no pick yet'}</span>
+            </div>
           </div>
-        </div>
+        )}
         <div className="lede" style={{ marginTop: 20, minHeight: 52 }} aria-label={full}>
           <span aria-hidden="true">{typed}</span>
           {typed.length < full.length ? <span aria-hidden="true" className="caret" style={{ color: 'var(--c)' }}>▍</span> : null}
@@ -137,6 +151,7 @@ const matchLine = (m) => {
   const name = matchName(m);
   if (m.intent === 'song') return 'matched with ' + name + (m.pick ? ' over ' + m.pick : '');
   if (m.intent === 'dance') return 'danced with ' + (m.name ? name : name.toLowerCase());
+  if (m.intent === 'guess') return 'teamed up with ' + name + (m.yourScore && m.score ? ', ' + scoreText(m.yourScore) + ' and ' + scoreText(m.score) : '');
   return 'said hi to ' + name;
 };
 

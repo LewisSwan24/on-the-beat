@@ -16,6 +16,9 @@ import { HUE } from '../copy.js';
 /** Arriving on one of these arms its card, as the canvas does. */
 export const INTENT_OF = Object.fromEntries(CARDS.flatMap((c) => c.screens.map((screen) => [screen, c.id])));
 
+/** The card arriving on `to` arms, or none. A match's PICK ONE only asks for the opening track: it keeps the card (F1). */
+export const intentFor = (to, { keepCard = false } = {}) => (keepCard ? null : INTENT_OF[to] ?? null);
+
 export const FOLLOW_SAY = {
   armed: (intent) => 'Armed from your wristband: ' + HUE[intent].label,
   off: 'Your wristband turned your card off',
@@ -32,7 +35,8 @@ export const FOLLOW_SAY = {
  *                        seq: the last seq it sent or followed; asked: the seq of its own last tap;
  *                        refused: the seq of its last showing tap the relay refused as `changed`
  * @param {object} view   the relay's view
- * @returns {null | { armed, invisible, seq, said, screen, clearStack, toast, events }}
+ * @returns {null | { armed, invisible, seq, said, screen, clearStack, toast, events, card }}
+ *          card: the card the wrist just lit, for the phone to turn its carousel to; null for none
  *          null when the view is older than what this phone last said (rule 4) and is not followed
  */
 export function follow(phone, view) {
@@ -49,6 +53,7 @@ export function follow(phone, view) {
     clearStack: false,
     toast: null,
     events: [],
+    card: null,
   };
   const cardMoved = armed !== (phone.armed ?? null);
   const quietMoved = invisible !== !!phone.invisible;
@@ -64,12 +69,18 @@ export function follow(phone, view) {
   if (armed === 'hi' && cardMoved) out.events.push('hi');
   if (invisible) out.screen = 'quiet';
   else if (phone.screen === 'quiet' || (INTENT_OF[phone.screen] && INTENT_OF[phone.screen] !== armed)) out.screen = 'home';
+  // A card lit from the wrist: the phone goes home, its carousel on that card, from whatever screen it was on.
+  if (me.by === 'band' && armed && !invisible) {
+    out.screen = 'home';
+    out.card = armed;
+  }
 
   const toast = (text, unpair = false) => { out.toast = { text, unpair }; };
   if (me.fresh && phone.armed && !armed) {
     toast(FOLLOW_SAY.away);
   } else if (me.by === 'staff' && phone.armed && !armed) {
     toast(FOLLOW_SAY.closed(phone.armed));
+    out.events.push({ kind: 'closed', text: 'the venue closed ' + HUE[phone.armed].label + ' for tonight' });
   } else if (me.by === 'band') {
     // Going dark from the wrist says itself: the quiet screen, as before.
     if (!invisible && quietMoved) toast(armed ? FOLLOW_SAY.backOn(armed) : FOLLOW_SAY.visible, true);
@@ -78,6 +89,9 @@ export function follow(phone, view) {
     // This phone's own tap was the last thing it said, and the relay shows otherwise.
     toast(phone.refused === phone.seq ? FOLLOW_SAY.changed : FOLLOW_SAY.lost);
   }
+  // Practising (the wristband guide): the state is followed, but the phone stays on the guide, which says each step
+  // itself; nothing is toasted over it.
+  if (phone.screen === 'guide') Object.assign(out, { screen: 'guide', card: null, toast: null, clearStack: false });
   return out;
 }
 

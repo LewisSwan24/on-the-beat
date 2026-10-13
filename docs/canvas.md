@@ -42,7 +42,11 @@
   up*, and *Look for a wristband or phone showing* on every phone, since
   nobody is told who wears one; the armed SAY HI reads *Find blue screens &
   wristbands*; a wave is a toast and a dot until it is seen. How this works
-  also says what the three cards do and that a match needs both.
+  also says what the four cards do and that a match needs both.
+- **A fourth card, LET'S GUESS!** The canvas has three. The owner chose on
+  13 Oct 2026, from the team's v3 flow, a quiz card: answer tonight's
+  questions alone, then team up with someone else who finished; the
+  questions come with the show, and the relay keeps the answers.
 - **Real empty states** where the canvas always had a crowd: nobody saying
   hi, no picks on the wall, an empty floor.
 - **A camera that is refused** says so and offers to try again; nothing is

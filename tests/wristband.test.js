@@ -1127,7 +1127,8 @@ test('staff close a card: the band showing it goes off, is told which are closed
     staff.send(JSON.stringify({ t: 'staff', venue: 'closed-room', code: 'test-passcode-closed' }));
     while (!told.some((m) => m.t === 'staff' && m.ok)) await pause(20);
     staff.send(JSON.stringify({ t: 'closed', cards: ['song'] }));
-    const off = await band.until((s) => s.kind === 'off' && s.closed === 'song');
+    // This venue has no quiz, so LET'S GUESS is closed all night and the band is told so beside what staff closed.
+    const off = await band.until((s) => s.kind === 'off' && s.closed === 'song,guess');
     await ana.until((v) => v.me.armed === null && v.me.by === 'staff' && v.cards.join() === 'hi,dance');
     const refused = on.reply(band, 'set');
     band.send({ t: 'set', intent: 'song', basis: off.rev });
@@ -1135,13 +1136,29 @@ test('staff close a card: the band showing it goes off, is told which are closed
     await pause(200);
     assert.equal(ana.view.me.armed, null);
     band.send({ t: 'set', intent: 'dance', basis: off.rev });
-    await band.until((s) => s.kind === 'dance' && s.closed === 'song');
+    await band.until((s) => s.kind === 'dance' && s.closed === 'song,guess');
     staff.send(JSON.stringify({ t: 'closed', cards: [] }));
-    await band.until((s) => s.kind === 'dance' && !('closed' in s));
+    await band.until((s) => s.kind === 'dance' && s.closed === 'guess');
     staff.close();
     close(ana, band);
   } finally {
     on.cleanup();
     await own.close();
   }
+});
+
+test('a venue with no quiz: a band set to LET\'S GUESS is refused as closed, and NOT NOW stays on', async () => {
+  const band = await wristband();
+  const ana = await phone('no-quiz-room');
+  await pairBand(ana, band);
+  ana.send({ t: 'arm', intent: 'song' });
+  await band.until((s) => s.kind === 'song');
+  ana.send({ t: 'invisible', on: true });
+  const quiet = await band.until((s) => s.kind !== 'song');
+  const refused = reply(band, 'set');
+  band.send({ t: 'set', intent: 'guess', basis: quiet.rev });
+  assert.deepEqual(await refused, { t: 'set', ok: false, why: 'closed' });
+  await pause(200);
+  assert.deepEqual([ana.view.me.invisible, ana.view.me.armed], [true, null]);
+  close(ana, band);
 });

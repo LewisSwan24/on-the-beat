@@ -52,3 +52,20 @@ export const toBase64 = (blob) => new Promise((resolve, reject) => {
   r.onerror = () => reject(r.error);
   r.readAsDataURL(blob);
 });
+
+/** Where the phone is, once, or null: denied, no fix in time, or no GPS. Kept by the caller in memory only. */
+export const locate = ({ timeout = 8000 } = {}) => new Promise((resolve) => {
+  try {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: false, timeout, maximumAge: 60_000 },
+    );
+  } catch { resolve(null); }
+});
+
+/** Granted before, so the venue screen may locate without a tap. */
+export async function locationGranted() {
+  try { return (await navigator.permissions?.query({ name: 'geolocation' }))?.state === 'granted'; } catch { return false; }
+}

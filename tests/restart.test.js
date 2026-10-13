@@ -644,3 +644,32 @@ test('the command line says there is nothing to keep when the night is empty at 
     c.child.kill();
   }
 });
+
+test('a venue card comes back with its room after a restart, still first in wins', async () => {
+  const n = night();
+  await n.start();
+  const ana = await n.on.phone('restart-card');
+  ana.send({ t: 'fill', venue: 'The Lexington', act: 'KAYO LANE' });
+  await ana.until((v) => v.card?.act === 'KAYO LANE');
+  await n.restart();
+  const shows = await (await fetch('http://127.0.0.1:' + n.relay.port + '/api/shows')).json();
+  assert.equal(shows.find((s) => s.id === 'restart-card')?.venue, 'The Lexington');
+  const ben = await n.on.phone('restart-card');
+  ben.send({ t: 'fill', act: 'SOMEONE ELSE' });
+  await until(() => ben.errors.includes('fill taken'));
+});
+
+test('06:00 takes last night\'s venue cards, and the room with nobody in it goes with them', async () => {
+  const n = night();
+  await n.start();
+  const ana = await n.on.phone('restart-card-six');
+  ana.send({ t: 'fill', venue: 'Gone By Six' });
+  await ana.until((v) => v.card?.venue === 'Gone By Six');
+  const left = n.on.reply(ana, 'left');
+  ana.send({ t: 'leave' });
+  await left;
+  n.clock.t = Date.UTC(2026, 8, 29, 20, 0, 30);   // 06:00:30 on 30 Sep at the venue
+  n.relay.expire(n.clock.t);
+  const shows = await (await fetch('http://127.0.0.1:' + n.relay.port + '/api/shows')).json();
+  assert.equal(shows.some((s) => s.id === 'restart-card-six'), false);
+});

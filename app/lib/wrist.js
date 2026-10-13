@@ -68,6 +68,12 @@ export const cardAfter = (card, closed = []) => {
   const i = order.indexOf(card);
   return i < 0 ? order[0] : order[(i + 1) % order.length];
 };
+
+/**
+ * The card one SIDE out of NOT NOW comes back on (N3): the one the person had, when the show names it and it is still
+ * open, or else the first open card. band_logic.h backTo() is its twin.
+ */
+export const backTo = (was, closed = []) => (INTENTS.includes(was) && !closed.includes(was) ? was : cardAfter('off', closed));
 const LIT = [...INTENTS, 'meet'];
 
 /**
@@ -162,6 +168,7 @@ function readShow(s) {
     armed: typeof s.armed === 'string' ? s.armed : '',
     rev: Number.isInteger(s.rev) ? s.rev : 0,
     closed: typeof s.closed === 'string' ? s.closed.split(',') : [],
+    was: str(s.was),
   };
 }
 
@@ -438,7 +445,7 @@ export function createWrist({ key }) {
     if (mode === 'look') {
       const cur = current();
       fromQuiet = cur === 'notnow';
-      preview = cardAfter(fromQuiet ? 'off' : cur, show.closed);   // out of NOT NOW: the first open card
+      preview = fromQuiet ? backTo(show.was, show.closed) : cardAfter(cur, show.closed);   // out of NOT NOW: the card they had
       mode = 'choosing';
       stepAt = now;
       return;
@@ -454,9 +461,22 @@ export function createWrist({ key }) {
     if (!wifi && !link.up && (stale(now) || mode === 'look')) { out.push('SETUP'); return; }
     if (mode === 'choosing') commit(now, true);
     else if (mode === 'waves') waveBack(now);
-    else if (mode === 'look') stepAt = now;
+    else if (mode === 'look') comeBack(now) || (stepAt = now);
     else if ((mode === 'rest' || mode === 'result') && meetingFace(now)) sayFound(now);
-    else if (mode === 'rest' || mode === 'result') step(now);
+    else if (mode === 'rest' || mode === 'result') { step(now); if (mode === 'look') comeBack(now); }
+  }
+
+  /**
+   * In NOT NOW one SIDE hold comes back, as the phone says (F11): the card they had (N3), or else the first open
+   * card, sent at once. Stray presses
+   * still only look, and a NOT NOW the relay has not yet heard is not undone by the next hold.
+   */
+  function comeBack(now) {
+    if (current() !== 'notnow' || quiet.pending) return false;
+    step(now);
+    if (mode !== 'choosing') return false;
+    commit(now, true);
+    return true;
   }
 
   function tick(now) {

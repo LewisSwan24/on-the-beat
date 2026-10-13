@@ -256,3 +256,14 @@ test('every show that ships with the relay is the right kind in every field', ()
   const raw = JSON.parse(readFileSync(bundled, 'utf8'));
   assert.equal(shipped.length, raw.length, 'none of the shipped shows is dropped');
 });
+
+test('a listed show may carry lat/lon numbers; anything else there drops the entry', () => {
+  const { shows, said } = choose(fileWith('placed.json', [{ ...show('a'), lat: 51.5, lon: -0.1 }, { ...show('b'), lat: '51.5' }]));
+  assert.deepEqual(shows.map((s) => s.id), ['a']);
+  assert.deepEqual([shows[0].lat, shows[0].lon], [51.5, -0.1]);
+  assert.ok(said.some((l) => /entry 2 of .* dropped: "lat" must be a number/.test(l)), said.join('\n'));
+});
+
+test('the shipped shows each carry a place', () => {
+  for (const s of shipped) assert.ok(Number.isFinite(s.lat) && Number.isFinite(s.lon), s.id);
+});

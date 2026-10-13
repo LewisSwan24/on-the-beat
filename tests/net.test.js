@@ -65,3 +65,15 @@ test('a leave is re-said on every connection until it is forgotten', () => {
   n.forget('leave');
   n.close();
 });
+
+test('practice is re-said on every connection while it runs, before anything that shows the person', () => {
+  const n = open();
+  n.keep('arm', { t: 'arm', intent: 'hi', seq: 7 });
+  n.say('practice', { t: 'practice', on: true });
+  FakeSocket.all[0].open();
+  const again = FakeSocket.all[0].sent.filter((m) => m.again).map((m) => m.t);
+  assert.ok(again.includes('practice'), 'a relay restart or a long drop does not end it');
+  assert.ok(again.indexOf('practice') < again.indexOf('arm'), 'hidden before the card shows them');
+  FakeSocket.all[0].drop();
+  n.forget('practice');
+});

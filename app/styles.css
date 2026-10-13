@@ -19,7 +19,7 @@
   --ink-0: #000000; --ink-1: #08080A; --ink-2: #101014;
   --line: rgba(255,255,255,.14); --line-2: rgba(255,255,255,.07);
   --text: #FFFFFF; --text-2: #9A99A4; --text-3: #5E5D67;
-  --hi: #4ED7F1; --hi-g: #0C9DE2; --song: #F2D65E; --song-g: #C79A1E; --dance: #DA8CF2; --dance-g: #A93FD9;
+  --hi: #4ED7F1; --hi-g: #0C9DE2; --song: #F2D65E; --song-g: #C79A1E; --dance: #DA8CF2; --dance-g: #A93FD9; --guess: #8FB4FF; --guess-g: #4F7FE0;
   --ok: #4ADE80; --warn: #FBBF24; --stop: #FF6B6B;
   --fast: 160ms; --base: 260ms; --slow: 380ms; --breathe: 3400ms;
   --ease: cubic-bezier(.2,.8,.2,1); --ease-io: cubic-bezier(.4,0,.2,1);
@@ -222,6 +222,10 @@ h1 { margin: 0; font-weight: 400; }
 .notice { display: flex; align-items: center; gap: 10px; margin: 10px 16px 0; padding: 8px 6px 8px 14px; border: 1.5px solid var(--warn); border-radius: 16px; background: var(--ink-2); }
 .notice .icon-btn { width: 40px; height: 40px; flex: none; }
 .notice-text { overflow-wrap: anywhere; }
+/* The wrong-room banner's two answers, and a made room's where line, which opens its card (venue cards spec §2). */
+.away-btn { height: 36px; padding: 0 14px; border: 1.5px solid var(--line-2); border-radius: 999px; color: #fff; font: var(--label); letter-spacing: .08em; }
+.where-btn { display: block; padding: 2px 24px 0; text-align: left; color: var(--text-2); }
+.where-btn .add { color: var(--hi); text-decoration: underline; text-underline-offset: 3px; }
 .yours { border: 1.5px solid var(--song); border-radius: 20px; background: var(--ink-2); padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 11px; box-shadow: 0 0 34px -18px var(--song-g); flex: none; }
 .add-yours { border: 1px dashed var(--line); border-radius: 20px; padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 56px; flex: none; }
 .add-yours:hover { border-color: rgba(255,255,255,.35); }
@@ -360,3 +364,33 @@ h1 { margin: 0; font-weight: 400; }
 .bar .cta { position: relative; }
 @media (prefers-reduced-motion: no-preference) { .wavedot { animation: wavedot 1.6s ease-in-out infinite; } }
 @keyframes wavedot { 50% { transform: scale(1.25); } }
+
+/* The wristband guide: the practice after a first pairing, and the page to look things up */
+.guide { gap: 12px; padding-bottom: 40px; }
+.guide h2 { margin: 24px 0 8px; letter-spacing: .08em; font-size: 14px; color: #fff; }
+.guide section { font: var(--body-s); color: var(--text-2); }
+.guide ol, .guide ul { padding-left: 20px; display: grid; gap: 6px; }
+.guide b { color: #fff; }
+.guide-band { width: 100%; max-width: 320px; margin: 8px auto; display: block; flex: none; }
+.guide-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.guide-chips button { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; background: none; color: #fff; font-size: 12px; }
+.guide-table-wrap { overflow-x: auto; max-width: 100%; }
+.guide-table { border-collapse: collapse; font-size: 12px; min-width: 560px; }
+.guide-table th, .guide-table td { border-top: 1px solid var(--line); padding: 6px; text-align: left; vertical-align: top; }
+.guide-table th { color: #fff; }
+.band-words { display: inline-block; background: #000; color: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; margin: 1px 2px; font-size: 11px; letter-spacing: .04em; }
+.guide .guide-rows { list-style: none; padding: 0; gap: 8px; }
+.guide-rows li { display: flex; align-items: center; gap: 8px; }
+.swatch { width: 18px; height: 18px; border-radius: 50%; flex: none; }
+.guide-play { background: none; border: 1px solid var(--line); border-radius: 50%; width: 32px; height: 32px; color: #fff; flex: none; display: grid; place-items: center; }
+.guide-tick { color: var(--ok); display: flex; align-items: center; gap: 6px; }
+.guide-foot { display: flex; justify-content: space-between; margin-top: 16px; }
+.guide details { border-top: 1px solid var(--line); padding: 8px 0; }
+.guide summary { color: #fff; }
+.link { background: none; border: none; color: inherit; text-decoration: underline; padding: 0; font: inherit; }
+
+/* LET'S GUESS: an option, then how it went once the relay says. */
+.opt { min-height: 52px; width: 100%; text-align: left; padding: 12px 16px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--ink-2); color: #fff; font: var(--body-l); }
+.opt[aria-pressed="true"] { border-color: var(--guess); box-shadow: 0 0 24px -12px var(--guess-g); }
+.opt.right { border-color: var(--ok); }
+.opt.wrong { border-color: var(--stop); }

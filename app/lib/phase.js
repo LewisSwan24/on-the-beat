@@ -38,16 +38,24 @@ const inMins = (n) => {
   return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60 ? (m % 60) + ' min' : '').trim();
 };
 
+/** Where you are tonight, as the show is listed: the act, then the venue (F4). */
+export const whereLine = (show) => [show?.act, show?.venue].filter(Boolean).join(' · ');
+
 /** The line under the phase bar, as the canvas writes it. */
 export function phaseLine(show, date = new Date()) {
   const now = minsOf(date);
   const t = timesOf(show);
   const phase = phaseOf(show, date);
   const act = String(show?.act || 'the headline').toLowerCase();
+  // A time nobody gave is never shown, nor counted down to (N1): the phase still runs on an ordinary evening.
+  if (!givenTimes(show).length) return NO_TIMES;
+  const till = (label, k) => (show?.[k] ? label + ' · ' + k + ' in ' + inMins(t[k] - now) : label);
   switch (phase) {
-    case 'DOORS': return now < t.doors ? 'DOORS · open at ' + (show?.doors || DEFAULT_TIMES.doors) : 'DOORS OPEN · support in ' + inMins(t.support - now);
-    case 'SUPPORT': return 'SUPPORT ACT · break in ' + inMins(t.break - now);
-    case 'BREAK': return 'BREAK · headline in ' + inMins(t.headline - now);
+    case 'DOORS':
+      if (now < t.doors) return show?.doors ? 'DOORS · open at ' + show.doors : 'DOORS';
+      return till('DOORS OPEN', 'support');
+    case 'SUPPORT': return till('SUPPORT ACT', 'break');
+    case 'BREAK': return till('BREAK', 'headline');
     case 'HEADLINE': return 'HEADLINE · ' + act + ', on now';
     default: return 'AFTER · lights up, last calls';
   }
@@ -65,7 +73,15 @@ export const hhmm = (ms) => {
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 };
 
-/** "Doors 19:00 · Support 20:00 · Headline 21:30" */
-export const timesLine = (show) =>
-  'Doors ' + (show?.doors || DEFAULT_TIMES.doors) + ' · Support ' + (show?.support || DEFAULT_TIMES.support) +
-  ' · Headline ' + (show?.headline || DEFAULT_TIMES.headline);
+/** What a room says before anyone has given it a time. */
+export const NO_TIMES = 'no times yet';
+
+/** The times a show was given, of the five, in the night's order. */
+const givenTimes = (show) => Object.keys(DEFAULT_TIMES).filter((k) => show?.[k]);
+
+/** "Doors 19:00 · Support 20:00 · Headline 21:30": only the times given, or NO_TIMES (N1). */
+export function timesLine(show) {
+  const shown = ['doors', 'support', 'headline'].filter((k) => show?.[k]);
+  if (!shown.length) return givenTimes(show).length ? '' : NO_TIMES;
+  return shown.map((k) => k[0].toUpperCase() + k.slice(1) + ' ' + show[k]).join(' · ');
+}

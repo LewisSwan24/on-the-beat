@@ -32,3 +32,12 @@ export function unlooked(view, looked) {
 
 /** The toast for a new wave on a phone with no live wristband to call it. */
 export const WAVE_SAY = 'Someone near you waved.';
+
+/**
+ * SAY HI rows in the order each was first seen, so a row never moves under a finger about to WAVE (F3): someone new
+ * goes to the end. `order` is the phone's list of handles seen tonight, kept between views; it is added to here.
+ */
+export function steady(order, rows) {
+  for (const r of rows) if (!order.includes(r.handle)) order.push(r.handle);
+  return [...rows].sort((x, y) => order.indexOf(x.handle) - order.indexOf(y.handle));
+}

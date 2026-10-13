@@ -63,7 +63,7 @@ async function start({ staffCheck, ...more } = {}) {
   /** A staff page's socket: each answer to a sign-in, each list it is sent, and how it closed. */
   async function staff({ ip = '203.0.113.' + (1 + (addresses++ % 199)) } = {}) {
     const ws = new WebSocket('ws://127.0.0.1:' + relay.port + WS_PATH, { headers: { 'cf-connecting-ip': ip } });
-    const s = { ws, answers: [], lists: [], openers: [], notices: [], waits: [], times: [], shut: [], closed: null, waiters: [] };
+    const s = { ws, answers: [], lists: [], openers: [], notices: [], waits: [], times: [], shut: [], quizzes: [], closed: null, waiters: [] };
     const wake = () => { s.waiters = s.waiters.filter((w) => !w()); };
     ws.on('message', (d) => {
       const m = JSON.parse(String(d));
@@ -73,6 +73,7 @@ async function start({ staffCheck, ...more } = {}) {
       if (m.t === 'notice') (m.wait ? s.waits : s.notices).push(m.wait ? m : m.notice);
       if (m.t === 'times') s.times.push(m.times);
       if (m.t === 'closed') s.shut.push(m.closed);
+      if (m.t === 'quiz') s.quizzes.push(m.quiz);
       wake();
     });
     ws.on('close', (code) => { s.closed = code; wake(); });
@@ -457,6 +458,8 @@ test('staff close cards for tonight: phones lay out the rest, whoever showed one
   const one = await signedIn();
   await one.until(() => one.shut.length === 1);
   assert.equal(one.shut[0], null, 'told at sign-in that every card is open');
+  await one.until(() => one.quizzes.length === 1);
+  assert.deepEqual(one.quizzes, [false], "and that this venue has no quiz, so LET'S GUESS is shut all night");
   const ana = await phone('staff-venue');
   const ben = await phone('staff-venue');
   await ana.until((v) => v.cards?.join() === 'hi,song,dance');

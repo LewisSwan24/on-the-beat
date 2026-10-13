@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { HUE, cards, hueVars } from '../copy.js';
-import { PHASES, hhmm } from '../lib/phase.js';
+import { HUE, WHERE, cards, hueVars } from '../copy.js';
+import { DEFAULT_TIMES, PHASES, hhmm, whereLine } from '../lib/phase.js';
+import { wrongLine } from '../lib/where.js';
 import { Icon } from '../ui.jsx';
 import { bandLine } from './Band.jsx';
 
@@ -37,8 +38,30 @@ function Notice({ notice, onHide }) {
   );
 }
 
+/** The phone is far from the room it is in: asked, never assumed (venue cards spec §2.4). */
+function Away({ away, show, onNearby, onHere }) {
+  return (
+    <div className="notice" role="status">
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="body notice-text">{wrongLine(away, show)}</div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+          <button type="button" className="away-btn" onClick={onNearby}>{WHERE.seeNearby}</button>
+          <button type="button" className="away-btn" onClick={onHere}>{WHERE.imHere}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A made room's card with a field still empty: the act first, then the times. Null when there is nothing to add. */
+const toAdd = (show) => {
+  if (!show?.made) return null;
+  if (!show.act) return WHERE.addAct;
+  return Object.keys(DEFAULT_TIMES).some((k) => show[k]) ? null : WHERE.addTimes;
+};
+
 /** S3 — where the night is, and the cards open tonight, each arming one thing. `open`: their ids, or all of them. */
-export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm, onOpen, onHow, band, onBand, notice, onHideNotice, dot }) {
+export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm, onOpen, onHow, band, onBand, notice, onHideNotice, dot, away, onNearby, onHere, onCard, focus, onFocused }) {
   const deck = useRef(null);
   const [w, setW] = useState(393);
   const [drag, setDrag] = useState({ on: false, dx: 0 });
@@ -46,6 +69,13 @@ export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm,
   const pi = Math.max(0, PHASES.indexOf(phase));
   const list = cards(show?.act, !!band).filter((c) => !open || open.includes(c.id));
   const ci = Math.min(chosen, list.length - 1);   // a card closed while it was the one in front
+  // The card the wrist just lit: the carousel turns to it, once.
+  useEffect(() => {
+    if (!focus) return;
+    const i = list.findIndex((c) => c.id === focus);
+    if (i >= 0) setCi(i);
+    onFocused?.();
+  }, [focus]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   useLayoutEffect(() => {
     const el = deck.current;
@@ -97,6 +127,12 @@ export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm,
           {PHASES.map((p, i) => <span key={p} className="label" style={{ color: i <= pi ? '#fff' : 'var(--text-2)' }}>{p}</span>)}
         </div>
         <div className="label tnum" aria-live="polite" style={{ padding: '9px 24px 0' }}>{line}</div>
+        {show?.made && onCard ? (
+          <button type="button" className="small where-btn" onClick={onCard}>
+            {whereLine(show)}{toAdd(show) ? <> · <span className="add">{toAdd(show)}</span></> : null}
+          </button>
+        ) : whereLine(show) ? <div className="small" style={{ padding: '2px 24px 0', color: 'var(--text-2)' }}>{whereLine(show)}</div> : null}
+        {away ? <Away away={away} show={show} onNearby={onNearby} onHere={onHere} /> : null}
         {notice ? <Notice notice={notice} onHide={onHideNotice} /> : null}
       </div>
 

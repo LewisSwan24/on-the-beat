@@ -25,7 +25,18 @@ test('a different card from the wrist: adopted, stack cleared, off a screen of t
   assert.deepEqual(f.toast, { text: FOLLOW_SAY.armed('song'), unpair: true });
   assert.equal(f.toast.text, 'Armed from your wristband: FIRST SONG');
   const same = follow(phone({ armed: 'hi', screen: 'tonight' }), view({ armed: 'song', by: 'band' }));
-  assert.equal(same.screen, 'tonight', 'a screen of no card stays');
+  assert.equal(same.screen, 'home', 'from any screen: home, to the card the wrist lit');
+});
+
+test('a card lit from the wrist is the one the phone turns to: home, the carousel on it', () => {
+  assert.equal(follow(phone({ armed: 'hi' }), view({ armed: 'dance', by: 'band' })).card, 'dance');
+  assert.equal(follow(phone(), view({ armed: 'hi', by: 'band' })).card, 'hi');
+  const back = follow(phone({ armed: 'song', invisible: true, screen: 'quiet' }), view({ armed: 'song', by: 'band' }));
+  assert.deepEqual([back.screen, back.card], ['home', 'song'], 'back on from NOT NOW, at its card');
+  assert.equal(follow(phone({ armed: 'hi' }), view({ armed: null, by: 'band' })).card, null, 'turned off: the carousel stays');
+  assert.equal(follow(phone({ armed: 'hi' }), view({ armed: 'song', by: 'phone' })).card, null, 'a phone tap is not the wrist');
+  assert.equal(follow(phone({ armed: 'song' }), view({ armed: 'song', by: 'band' })).card, null, 'nothing moved');
+  assert.equal(follow(phone({ armed: 'hi' }), view({ armed: 'song', invisible: true, by: 'band' })).card, null, 'gone dark: quiet, not a card');
 });
 
 test('the wrist turned the card off', () => {
@@ -88,7 +99,7 @@ test('the first view after a relay restart: no wristband in it, nothing said abo
 
 test('following sends nothing: it only returns what to keep', () => {
   const f = follow(phone({ armed: 'hi' }), view({ armed: 'song', by: 'band' }));
-  assert.deepEqual(Object.keys(f).sort(), ['armed', 'clearStack', 'events', 'invisible', 'said', 'screen', 'seq', 'toast']);
+  assert.deepEqual(Object.keys(f).sort(), ['armed', 'card', 'clearStack', 'events', 'invisible', 'said', 'screen', 'seq', 'toast']);
 });
 
 test('every tap that shows the person names the rev it was chosen from; a tap that hides names none', () => {
@@ -120,4 +131,34 @@ test('on a screen of a card the venue closed, armed or not, the phone goes home;
   const quiet = follow(phone({ armed: null, screen: 'floor' }), { ...view({ armed: null, invisible: true }), cards });
   assert.equal(quiet.screen, 'quiet', 'NOT NOW still wins');
   assert.equal(follow(phone({ armed: null, screen: 'floor' }), view({ armed: null })).screen, 'floor', 'a view that names no cards closes none');
+});
+
+test('F1: going to the pick screen arms FIRST SONG?, but not when a match asks for the opening track', async () => {
+  const { intentFor } = await import('../app/lib/follow.js');
+  assert.equal(intentFor('pick'), 'song', 'from the card: arriving arms it');
+  assert.equal(intentFor('pick', { keepCard: true }), null, 'PICK ONE on a match: the card stays as it is');
+  assert.equal(intentFor('beacon'), 'hi');
+  assert.equal(intentFor('tonight'), null);
+});
+
+
+test('F14: a card the venue closed is kept on Tonight too, not only in a toast that is gone in seconds', () => {
+  const f = follow(phone({ armed: 'dance', screen: 'floor' }), view({ armed: null, by: 'staff' }));
+  assert.deepEqual(f.events, [{ kind: 'closed', text: "the venue closed LET'S DANCE for tonight" }]);
+  assert.deepEqual(follow(phone({ armed: null }), view({ armed: null, by: 'staff' })).events, [], 'nothing was on');
+});
+
+test('practice: on the guide the phone follows the state but stays put, and says nothing over it', () => {
+  const phone = { armed: 'hi', invisible: false, seq: 10, asked: 10, screen: 'guide' };
+  const lit = follow(phone, { me: { armed: 'song', invisible: false, seq: 11, by: 'band' } });
+  assert.equal(lit.armed, 'song');
+  assert.equal(lit.screen, 'guide', 'a card lit from the wrist does not send it home');
+  assert.equal(lit.card, null);
+  assert.equal(lit.toast, null);
+  assert.equal(lit.clearStack, false);
+  const dark = follow(phone, { me: { armed: null, invisible: true, seq: 11, by: 'band' } });
+  assert.equal(dark.screen, 'guide', 'nor does going dark send it to the quiet screen');
+  assert.equal(dark.invisible, true);
+  const lost = follow(phone, { me: { armed: null, invisible: false, seq: 11, by: 'phone' } });
+  assert.equal(lost.toast, null, 'its own taps are not toasted there either');
 });

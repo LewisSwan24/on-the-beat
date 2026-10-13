@@ -78,8 +78,9 @@ export function bandShow({ view = null, battery = null, code = null, check = nul
   // The cards the venue closed tonight, so SIDE steps over them: said only when there are some.
   const closed = view.cards ? INTENTS.filter((id) => !view.cards.includes(id)) : [];
   const about = { armed: view.me.armed ?? null, rev: view.me.rev ?? 0, ...(closed.length ? { closed: closed.join(',') } : {}), ...said };
-  // NOT NOW is black, completely. Nothing broadcasting, and nothing to read.
-  if (view.me.invisible) return { kind: 'off', battery, quiet: true, ...about };
+  // NOT NOW is black, completely. Nothing broadcasting, and nothing to read. It does say which card one SIDE hold
+  // comes back to (N3), when there is one.
+  if (view.me.invisible) return { kind: 'off', battery, quiet: true, ...about, ...(view.me.was ? { was: view.me.was } : {}) };
   const waved = view.me.armed === 'hi' && waves.length ? { waves: { ref: waves[0].handle, n: waves.length, seq: waves[0].n } } : {};
   const done = view.matches
     .filter((m) => m.foundAt && now - m.foundAt < FOUND_SHOW_MS)

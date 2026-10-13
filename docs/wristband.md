@@ -64,7 +64,9 @@ that was taken.
   the card that is armed; each press after moves a preview — HI, SONG,
   DANCE, OFF — and 3 s after the last one the choice goes to the relay,
   which decides; the face says `SET`, `CHANGED` or `NOT SENT`.
-  Coming back from NOT NOW takes holding the side button. The pair screen
+  Coming back from NOT NOW takes holding the side button, and comes back on
+  the card its person had before, while the venue still has it open; from
+  the phone's TURN BACK ON too. With none, it is the first open card. The pair screen
   says to *press* its face button, not to hold it.
 - **It answers in sound and light**, and is quiet unless its wearer did
   something on it or something came for them. Every key ticks as it goes
@@ -343,13 +345,35 @@ is. It joins 2.4 GHz with a password or open, never a sign-in page: a phone's
 hotspot works, a school's or hotel's sign-in Wi-Fi does not, and the page says
 so. Proven on a StickC Plus, 7 Oct 2026, from a laptop that joined its Wi-Fi:
 the page, both sign-in checks sent to it, a short password refused, a save, and
-the band back on its hotspot and the relay. Not yet tried: a phone, and the
-SIDE hold by hand. The hold asks only once the face says `NO WI-FI`: while a
+the band back on its hotspot and the relay. On 13 Oct 2026 by hand, from a
+phone: hotspot off, `NO WI-FI`, the SIDE hold, a second phone on `OTB-…`, the
+name typed (a hotspot that is off is not in the list), saved, the hotspot on,
+and the band on it and the relay within seconds. The hold asks only once the face says `NO WI-FI`: while a
 show is still believed (ten seconds, `STALE_MS`) a Wi-Fi blip under a meeting
 leaves its FOUND hold alone, and with only the relay out of reach (`NO
 SIGNAL` / `NO RELAY`) the hold does nothing, since the Wi-Fi is not what is
 wrong. It was first asked for with both buttons held as the band starts, and
 changed the same day at his word: a start-up window is easy to miss.
+
+**It knows a few networks.** Until 13 Oct 2026 a band knew one: set up to a
+teammate's hotspot, it came back to its owner and showed `NO WI-FI`, the
+network it was built with forgotten. Now it keeps the last three set on it
+(from setup or `ssid`/`pass`), newest first, and the one in `secrets.h` last
+(`Nets` in `band_logic.h`). Setting one it knows again moves it to the front
+with its new password; a fourth pushes the oldest out. Knowing one, it joins
+it as before; knowing more, each time it needs Wi-Fi it scans without holding
+the loop and joins the first one near, newest first. After a try that did not
+join, it takes the next one near in turn, so a wrong password on one does not
+keep it off the others; with none heard by name (a hidden network is never),
+it tries each in turn, blind. It waits for the scan's own end, 15 s at most:
+the core calls a scan failed after 6 s, a scan that does not hold the loop
+took 6.2 s on a StickC Plus, and taken at the core's word the first build of
+this never heard a network and never joined (found on the band, 13 Oct 2026,
+with a timer that also read a try begun after the loop's `now` as long
+overdue). `show` names them all, the setup page says them
+too, and `forget` goes back to the built one alone. A band from before kept
+one network as `ssid`/`pass`: on its first start it becomes the newest one
+known.
 
 **The battery in the corner.** Every lit face on black that does not already
 say the battery (`READY`, `NOT NOW` and `NO SIGNAL` do) carries it small in

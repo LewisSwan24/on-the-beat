@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BAND_OFF, HUE } from '../copy.js';
+import { BAND_OFF, GUIDE, HUE } from '../copy.js';
 import { CODE_LETTERS, cleanCode } from '../../relay/band.js';
 import { pairUrl } from '../lib/pairing.js';
 import { qrMatrix, qrPath } from '../lib/qr.js';
@@ -114,7 +114,7 @@ function faceLabel(s, awake, battery, pairAt) {
 }
 
 /** S2b — pair a wristband: scan what its screen shows, or type its four letters. */
-export function Pair({ error, initial, pending, onCode, onScan, onSkip, onBack }) {
+export function Pair({ error, initial, pending, onCode, onScan, onSkip, onBack, onGuide }) {
   const [v, setV] = useState(initial || '');
   const input = useRef(null);
   useEffect(() => { if (error) setV(''); }, [error]);
@@ -144,6 +144,7 @@ export function Pair({ error, initial, pending, onCode, onScan, onSkip, onBack }
       <button type="button" className="btn-s pairscan" onClick={onScan}>
         <Icon name="qr_code_scanner" size={20} />SCAN IT INSTEAD
       </button>
+      {onGuide && <button type="button" className="link small" style={{ marginTop: 14, alignSelf: 'center' }} onClick={onGuide}>{GUIDE.page.newTo}</button>}
       <div className="foot">
         <Ghost onClick={onSkip}>no wristband — use my phone</Ghost>
       </div>

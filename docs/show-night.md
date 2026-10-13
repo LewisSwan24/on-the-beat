@@ -96,7 +96,26 @@ starts, so a change is a restart, and a *Before doors* job like any other
    spaces, as in `roundhouse-bruno-mars`. The rest is optional, but what is
    there must be the right kind: `act`, `venue`, `doors`, `support`, `break`,
    `headline` and `end` are text (`"19:00"`, in quotes), `spots` and `setlist`
-   are lists of text. An entry with anything else in one of them is dropped.
+   are lists of text, and `lat` and `lon` are numbers (`51.5453`, no quotes):
+   the venue's door, which puts the show first for phones near it. An entry
+   with anything else in one of them is dropped.
+
+   An entry may also carry `quiz`, tonight's questions for LET'S GUESS!: a
+   list of one to five, each a question `q` (up to 140 characters), exactly
+   four different `options` (up to 60 each), the `answer` as the place of the
+   right option counting from 0, and an optional `fact` shown once someone
+   answers (up to 140):
+
+   ```json
+   "quiz": [{ "q": "Which country is Zara Larsson from?",
+              "options": ["Norway", "Sweden", "Denmark", "Finland"],
+              "answer": 1, "fact": "She grew up in Stockholm." }]
+   ```
+
+   A quiz that breaks any of that is dropped with a `shows: the quiz of …`
+   line in the log, and its show stands without one, which closes LET'S
+   GUESS! there. Change a quiz before doors: a restart with a corrected quiz
+   starts everyone's answers and team-ups again.
 2. Upload it beside the old one, then move it into place. flyctl's `put` will
    not overwrite a file that is already there, so a straight `put` works only
    the first time; the move works every time and leaves no gap:

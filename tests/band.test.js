@@ -23,6 +23,13 @@ test('nothing armed, or NOT NOW, is black', () => {
   assert.equal(bandShow({ view: null, now: T }).kind, 'off', 'a person not in a room lights nothing');
 });
 
+test('N3: in NOT NOW the band is told the card one SIDE hold comes back to, and only then', () => {
+  const quiet = bandShow({ view: view({ invisible: true, was: 'dance' }), battery: 62, now: T });
+  assert.deepEqual([quiet.kind, quiet.quiet, quiet.was], ['off', true, 'dance']);
+  assert.equal('was' in bandShow({ view: view({ invisible: true, was: null }), now: T }), false, 'nothing to come back to: not said');
+  assert.equal('was' in bandShow({ view: view({ armed: 'hi', was: 'dance' }), now: T }), false, 'not in NOT NOW: not said');
+});
+
 test('after a mutual yes: the meeting number, the same on both wrists, for a while — then back to what you armed', () => {
   const m = { id: 'm1', intent: 'song', number: 27, at: T };
   const a = bandShow({ view: view({ armed: 'hi' }, [m]), now: T + 60_000 });

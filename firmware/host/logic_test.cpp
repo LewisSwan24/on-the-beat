@@ -488,6 +488,12 @@ void rejoin() {
   w.began(0xFFFFFFFFu - 1000);
   CHECK(!w.due(true, false, REJOIN_MS - 1002));
   CHECK(w.due(true, false, REJOIN_MS - 1001));
+  // Begun a moment after the loop read `now` (a scan ended, and the band began on what it heard): not due at once.
+  // Unsigned, that moment read as 49 days, and the band dropped each try 33 ms after beginning it (13 Oct 2026).
+  Rejoin s;
+  s.began(5000);
+  CHECK(!s.due(true, false, 4990));
+  CHECK(!s.due(true, false, 5000 + REJOIN_MS - 1) && s.due(true, false, 5000 + REJOIN_MS));
 }
 
 void console() {
@@ -738,6 +744,55 @@ void markers() {
     CHECK(pickPinned(seen, "venue", 13) == -1);
     CHECK(pickPinned(seen, "nobody", 6) == -1);
     CHECK(pickPinned({}, "venue", 6) == -1);
+  }
+
+  // The networks a band knows: those set on it, newest first, at most NETS_KEPT, then the one it was built with.
+  {
+    Nets n({"Y70", "built"});
+    CHECK(n.all().size() == 1 && n.all()[0].ssid == "Y70" && n.all()[0].pass == "built" && n.set().empty());
+    n.add("cimi", "c1");
+    CHECK(n.all().size() == 2 && n.all()[0].ssid == "cimi" && n.all()[1].ssid == "Y70");
+    // Set again, a network moves to the front with its new password, and is not kept twice.
+    n.add("home", "h1");
+    n.add("cimi", "c2");
+    CHECK(n.set().size() == 2 && n.set()[0].ssid == "cimi" && n.set()[0].pass == "c2" && n.set()[1].ssid == "home");
+    // A fourth pushes the oldest out; the built one is never pushed out, and is last.
+    n.add("cafe", "");
+    n.add("venue", "v");
+    CHECK(n.set().size() == NETS_KEPT && n.set()[0].ssid == "venue" && n.set()[2].ssid == "cimi");
+    CHECK(n.all().size() == NETS_KEPT + 1 && n.all().back().ssid == "Y70");
+    // The built one set on the band is listed once, where it was set, with the password set.
+    n.add("Y70", "new");
+    CHECK(n.all().size() == NETS_KEPT && n.all()[0].ssid == "Y70" && n.all()[0].pass == "new");
+    CHECK(n.names() == "Y70, venue, cafe");
+    // A nameless network is no network.
+    n.add("", "x");
+    CHECK(n.set().size() == NETS_KEPT && n.set()[0].ssid == "Y70");
+    // `pass` at the console is for the newest one.
+    n.setNewestPass("newer");
+    CHECK(n.all()[0].pass == "newer");
+    n.forgetAll();
+    CHECK(n.all().size() == 1 && n.all()[0].pass == "built");
+    // Built with none, and none set: nothing to join.
+    CHECK(Nets({"", ""}).all().empty() && Nets({"", ""}).names().empty());
+  }
+
+  // Which known network to join from a scan: the first one near, newest first, and after a try that failed, the
+  // next one near, round to the start; none near, -1.
+  {
+    Nets n({"Y70", "p"});
+    n.add("home", "h");
+    n.add("cimi", "c");   // all(): cimi, home, Y70
+    CHECK(n.pick({"S1", "Y70", "cimi"}, -1) == 0);
+    CHECK(n.pick({"S1", "Y70"}, -1) == 2);
+    CHECK(n.pick({"S1", "Y70", "cimi"}, 0) == 2);   // cimi failed: Y70 next
+    CHECK(n.pick({"S1", "Y70", "cimi"}, 2) == 0);   // Y70 failed: round to cimi
+    CHECK(n.pick({"cimi"}, 0) == 0);                // the only one near is tried again
+    CHECK(n.pick({"S1"}, -1) == -1 && n.pick({}, 1) == -1);
+    CHECK(n.pick({"Cimi", "y70 "}, -1) == -1);       // a name is exact
+    // None heard (a hidden one is never heard by name): each in turn, blind, newest first.
+    CHECK(n.next(-1) == 0 && n.next(0) == 1 && n.next(2) == 0);
+    CHECK(Nets({"", ""}).next(-1) == -1);
   }
 
   // Its face is dark; a key lights it for WAKE_MS with what it is, in the screen's alphabet.
@@ -1161,6 +1216,10 @@ void wifiSetup() {
   CHECK(page.find("Home - fair") == std::string::npos);
   CHECK(page.find("phone&quot; - weak, open") != std::string::npos);
   CHECK(page.find("It joins Home now.") != std::string::npos);
+  // Knowing more than one, it says them all, newest first, each only as words.
+  const std::string knows = setupPage(heard, "Home", "", {"Home", "<i>Y70</i>"});
+  CHECK(knows.find("It knows Home, &lt;i&gt;Y70&lt;/i&gt;, and joins the first of them that is near.") != std::string::npos);
+  CHECK(knows.find("value=\"Home\" selected>") != std::string::npos);
   CHECK(savedPage("<x>").find("<x>") == std::string::npos);
   // It says the way back in that the band has: a SIDE hold on NO WI-FI, not a start-up hold it no longer has.
   CHECK(savedPage("x").find("hold its side button there") != std::string::npos);

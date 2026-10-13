@@ -1,0 +1,7 @@
+[
+  { "q": "Which country is Zara Larsson from?", "options": ["Norway", "Sweden", "Denmark", "Finland"], "answer": 1, "fact": "She grew up in Stockholm." },
+  { "q": "At 10, Zara won a TV talent show. Which one?", "options": ["Idol", "The Voice", "Talang (Sweden's Got Talent)", "The X Factor"], "answer": 2, "fact": "She won Talang in 2008." },
+  { "q": "Which song was the official song of UEFA Euro 2016?", "options": ["This One's for You", "Lush Life", "Symphony", "Ain't My Fault"], "answer": 0, "fact": "David Guetta featuring Zara Larsson." },
+  { "q": "Who did Zara team up with on \"Symphony\"?", "options": ["Calvin Harris", "Kygo", "Marshmello", "Clean Bandit"], "answer": 3, "fact": "Clean Bandit featuring Zara Larsson, a UK number one in 2017." },
+  { "q": "Her 2024 album shares its name with a planet. Which one?", "options": ["Mars", "Venus", "Saturn", "Jupiter"], "answer": 1, "fact": "Venus came out in February 2024." }
+]

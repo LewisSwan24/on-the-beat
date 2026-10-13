@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { connectStaff } from './line.js';
-import { REFUSED, freshIds, openCount, ordered, timeOf, titleFor, whereLine, whoLine } from './list.js';
+import { REFUSED, freshIds, openCards, openCount, ordered, timeOf, titleFor, whereLine, whoLine } from './list.js';
 import { NOTICE_TAG, NOTIFY_WORDS, fromB64u, sameKey, startState } from './notify.js';
 import { fiveOf, inOrder, shiftFrom } from '../lib/venue.js';
 import { CARDS } from '../../relay/cards.js';
@@ -178,13 +178,14 @@ const TIME_NAMES = { doors: 'Doors', support: 'Support', break: 'Break', headlin
  * Tonight's cards: staff close one the night has no room for, and open it again. Closing asks once, since whoever is
  * showing it goes off; the last open card cannot be closed.
  */
-function CardsPanel({ closed, onSet }) {
+function CardsPanel({ closed, quiz, onSet }) {
   const shut = closed?.cards ?? [];
   const [asking, setAsking] = useState(null);
   // Another screen opening or closing a card meanwhile is a new question: asking again is a tap away.
   useEffect(() => setAsking(null), [closed?.at]);
   const set = (cards) => { setAsking(null); onSet(cards); };
-  const stillOpen = CARDS.length - shut.length;
+  // LET'S GUESS with no quiz tonight is shut all night, and counts as shut: never every card.
+  const stillOpen = openCards(CARDS.map((c) => c.id), shut, quiz).length;
   return (
     <section className="staff-opener staff-cards" aria-label="Tonight's cards">
       <div className="label">Tonight's cards</div>
@@ -192,6 +193,14 @@ function CardsPanel({ closed, onSet }) {
       <Said>{closed ? 'Closed tonight: ' + CARDS.filter((c) => shut.includes(c.id)).map((c) => c.label).join(', ') + '.' : ''}</Said>
       {CARDS.map((c) => {
         const isShut = shut.includes(c.id);
+        if (c.id === 'guess' && !quiz && !isShut) {
+          return (
+            <div key={c.id} className="staff-line staff-card-row">
+              <span className="body">{c.label}</span>
+              <span className="small">no quiz tonight</span>
+            </div>
+          );
+        }
         return (
           <div key={c.id} className="staff-line staff-card-row">
             <span className="body">{c.label}</span>
@@ -277,6 +286,7 @@ export default function Staff() {
   const [notice, setNotice] = useState(undefined);   // the notice standing, as the relay holds it: undefined until told
   const [noticeWait, setNoticeWait] = useState(0);   // seconds before a new one may go, once one was sent too soon
   const [times, setTimes] = useState(undefined);     // tonight's times as moved, null as listed: undefined until told
+  const [quiz, setQuiz] = useState(true);   // whether tonight's show has a quiz: LET'S GUESS is shut all night without one
   const [closed, setClosed] = useState(undefined);   // the cards closed tonight ({ cards, at }), null for none: undefined until told
   const [flash, setFlash] = useState(0);
   const [hearing, setHearing] = useState(false);
@@ -342,6 +352,10 @@ export default function Staff() {
     if (m.t === 'notice') {
       setNotice(m.notice && typeof m.notice.text === 'string' ? m.notice : null);
       setNoticeWait(Number.isInteger(m.wait) && m.wait > 0 ? m.wait : 0);
+      return;
+    }
+    if (m.t === 'quiz') {
+      setQuiz(m.quiz !== false);
       return;
     }
     if (m.t === 'closed') {
@@ -495,7 +509,7 @@ export default function Staff() {
             onSet={(next) => line.current?.send({ t: 'times', times: next })} />
         ) : null}
         {closed !== undefined ? (
-          <CardsPanel closed={closed} onSet={(cards) => line.current?.send({ t: 'closed', cards })} />
+          <CardsPanel closed={closed} quiz={quiz} onSet={(cards) => line.current?.send({ t: 'closed', cards })} />
         ) : null}
         {opener !== undefined ? (
           <OpenerPanel opener={opener} setlist={shows.find((x) => x.id === session.venue)?.setlist}

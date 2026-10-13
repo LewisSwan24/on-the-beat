@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { REFUSED, freshIds, openCount, ordered, timeOf, titleFor, whereLine, whoLine } from '../app/staff/list.js';
+import { REFUSED, freshIds, openCards, openCount, ordered, timeOf, titleFor, whereLine, whoLine } from '../app/staff/list.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const report = (x) => ({
@@ -41,6 +41,13 @@ test('the tab counts the open ones, and a time reads as the venue\'s clock', () 
   assert.equal(titleFor('The Roundhouse, Camden · BRUNO MARS', 2), '(2) Staff · The Roundhouse, Camden · BRUNO MARS');
   assert.equal(titleFor('The Roundhouse, Camden · BRUNO MARS', 0), 'Staff · The Roundhouse, Camden · BRUNO MARS');
   assert.match(timeOf(Date.UTC(2026, 8, 28, 10, 5)), /^\d{2}:\d{2}$/);
+});
+
+test("the cards staff can still close: never one staff closed, nor LET'S GUESS where there is no quiz", () => {
+  const ids = ['hi', 'song', 'dance', 'guess'];
+  assert.deepEqual(openCards(ids, [], true), ids);
+  assert.deepEqual(openCards(ids, ['song'], false), ['hi', 'dance']);
+  assert.deepEqual(openCards(ids, ['hi', 'song'], false), ['dance'], 'one left: its CLOSE is off');
 });
 
 test('every refusal the relay can give has words of its own', () => {

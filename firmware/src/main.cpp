@@ -66,7 +66,15 @@ Preferences prefs;
 WebSocketsClient socket_;
 M5Canvas face(&M5.Display);  // drawn off-screen, then pushed whole: no half-drawn frames on the wrist
 
-std::string ssid, pass, relayText;
+std::string ssid, pass, relayText;  // ssid and pass: the network it is joining now, one of nets.all()
+Nets nets({OTB_WIFI_SSID, OTB_WIFI_PASS});
+int tried = -1;         // nets.all()'s index of the network last begun and not yet joined; -1 once on one
+bool scanning = false;  // a scan for which known network is near runs, without holding the loop
+std::atomic<bool> scanDone{false};  // the core says that scan ended, its results kept
+uint32_t scanAskedAt = 0;
+// How long a scan is waited for before the band tries the networks it knows blind. The core calls one failed after
+// 20 times its 300 ms a channel, 6 s; one that does not hold the loop took 6.2 s on a StickC Plus (13 Oct 2026).
+constexpr uint32_t SCAN_WAIT_MS = 15000;
 int pinned = 0;   // `channel`: the one Wi-Fi channel this band joins on, or 0 for any
 Relay relay;
 
@@ -131,9 +139,42 @@ std::string setting(const char* key, const char* fallback) {
   return prefs.getString(key, fallback).c_str();
 }
 
+/** NVS keys for the n-th network set on the band. */
+std::string netKey(size_t n) { return "net" + std::to_string(n); }
+std::string netPassKey(size_t n) { return "netpass" + std::to_string(n); }
+
+void saveNets() {
+  for (size_t i = 0; i < NETS_KEPT; ++i) {
+    if (i < nets.set().size()) {
+      prefs.putString(netKey(i).c_str(), nets.set()[i].ssid.c_str());
+      prefs.putString(netPassKey(i).c_str(), nets.set()[i].pass.c_str());
+    } else {
+      if (prefs.isKey(netKey(i).c_str())) prefs.remove(netKey(i).c_str());
+      if (prefs.isKey(netPassKey(i).c_str())) prefs.remove(netPassKey(i).c_str());
+    }
+  }
+}
+
+/** The network to try first: the newest it knows. */
+void newestNet() {
+  const std::vector<KnownNet> known = nets.all();
+  ssid = known.empty() ? "" : known[0].ssid;
+  pass = known.empty() ? "" : known[0].pass;
+  tried = -1;
+}
+
 void loadSettings() {
-  ssid =setting("ssid", OTB_WIFI_SSID);
-  pass = setting("pass", OTB_WIFI_PASS);
+  nets = Nets({OTB_WIFI_SSID, OTB_WIFI_PASS});
+  for (size_t i = NETS_KEPT; i-- > 0;)  // oldest first, so each add puts the next newer in front
+    if (prefs.isKey(netKey(i).c_str())) nets.add(setting(netKey(i).c_str(), ""), setting(netPassKey(i).c_str(), ""));
+  // A band from before it knew several kept one network as `ssid` and `pass`: it is the one set on it.
+  if (prefs.isKey("ssid") || prefs.isKey("pass")) {
+    nets.add(setting("ssid", OTB_WIFI_SSID), setting("pass", OTB_WIFI_PASS));
+    saveNets();
+    if (prefs.isKey("ssid")) prefs.remove("ssid");
+    if (prefs.isKey("pass")) prefs.remove("pass");
+  }
+  newestNet();
   relayText = setting("relay", OTB_RELAY);
   pinned = std::max(0, wifiChannel(setting("channel", "0")));
 }
@@ -311,29 +352,67 @@ void startRelay() {
   if (!relay.ok) Serial.println("no relay yet. Type:  relay https://<the address npm run tunnel printed>");
 }
 
+/** Begin on nets.all()[i]. */
+void beginNet(int i) {
+  const std::vector<KnownNet> known = nets.all();
+  tried = i;
+  ssid = known[static_cast<size_t>(i)].ssid;
+  pass = known[static_cast<size_t>(i)].pass;
+  rejoin.began(millis());
+  if (known.size() > 1) Serial.printf("trying %s\n", ssid.c_str());
+  WiFi.begin(ssid.c_str(), pass.empty() ? nullptr : pass.c_str());
+}
+
+/** A scan for which known network is near has ended: begin on the one Nets picks, or the next in turn, blind. */
+void scanned(int16_t n) {
+  scanning = false;
+  std::vector<std::string> heard;
+  for (int16_t i = 0; i < n; ++i) heard.push_back(WiFi.SSID(i).c_str());
+  WiFi.scanDelete();
+  const int near = nets.pick(heard, tried);
+  beginNet(near >= 0 ? near : nets.next(tried));
+}
+
 void startWifi() {
   WiFi.disconnect();
-  if (ssid.empty()) {
+  scanning = false;
+  if (nets.all().empty()) {
     Serial.println("no wi-fi yet. Type:  ssid <network name>  then  pass <password>");
     return;
   }
   rejoin.began(millis());
   if (!pinned) {
-    WiFi.begin(ssid.c_str(), pass.empty() ? nullptr : pass.c_str());
+    // Knowing one, it joins it, as it always did. Knowing more, it looks first, without holding the loop: watchWifi()
+    // begins on the one near once the scan is done.
+    if (nets.all().size() == 1) return beginNet(0);
+    scanDone = false;
+    scanAskedAt = millis();
+    scanning = WiFi.scanNetworks(true) == WIFI_SCAN_RUNNING;
+    if (!scanning) scanned(0);
     return;
   }
   // Pinned: a scan of that channel alone (a few hundred ms, the face held meanwhile), then the point it chose, by its
   // address, so the core cannot wander to another channel. With none there, the next rejoin scans again.
-  const int16_t n = WiFi.scanNetworks(false, false, false, 300, static_cast<uint8_t>(pinned), ssid.c_str());
+  const int16_t n = WiFi.scanNetworks(false, false, false, 300, static_cast<uint8_t>(pinned));
   std::vector<SeenPoint> seen;
-  for (int16_t i = 0; i < n; ++i) seen.push_back({WiFi.SSID(i).c_str(), static_cast<int>(WiFi.RSSI(i)), static_cast<int>(WiFi.channel(i))});
-  const int pick = pickPinned(seen, ssid, pinned);
+  std::vector<std::string> heard;
+  for (int16_t i = 0; i < n; ++i) {
+    seen.push_back({WiFi.SSID(i).c_str(), static_cast<int>(WiFi.RSSI(i)), static_cast<int>(WiFi.channel(i))});
+    if (seen.back().channel == pinned) heard.push_back(seen.back().ssid);
+  }
+  const int known = nets.pick(heard, tried);
+  if (known >= 0) {
+    tried = known;
+    ssid = nets.all()[static_cast<size_t>(known)].ssid;
+    pass = nets.all()[static_cast<size_t>(known)].pass;
+  }
+  const int pick = known < 0 ? -1 : pickPinned(seen, ssid, pinned);
   uint8_t point[6] = {0};
   if (pick >= 0) memcpy(point, WiFi.BSSID(pick), sizeof point);
   WiFi.scanDelete();
   rejoin.began(millis());
   if (pick < 0) {
-    Serial.printf("no %s on channel %d; looking again in %u s\n", ssid.c_str(), pinned, static_cast<unsigned>(REJOIN_MS / 1000));
+    Serial.printf("no %s on channel %d; looking again in %u s\n", nets.names().c_str(), pinned, static_cast<unsigned>(REJOIN_MS / 1000));
     return;
   }
   WiFi.begin(ssid.c_str(), pass.empty() ? nullptr : pass.c_str(), pinned, point);
@@ -350,12 +429,19 @@ std::string wifiReason() {
 /** Says when the Wi-Fi comes and goes, and begins again while a network is set and not joined (see Rejoin). */
 void watchWifi(uint32_t now) {
   const bool joined = WiFi.status() == WL_CONNECTED;
+  if (scanning) {
+    // The core's own word that the scan ended, not WiFi.scanComplete() alone: asked after 6 s, that calls a scan
+    // still running failed, and the begin that followed cut it short, so the band never heard a network.
+    if (!scanDone.load() && static_cast<int32_t>(millis() - scanAskedAt) < static_cast<int32_t>(SCAN_WAIT_MS)) return;
+    scanned(scanDone.load() ? WiFi.scanComplete() : 0);
+  }
+  if (joined) tried = -1;  // on one: the next time it drops, the newest is looked for first
   if (joined != onWifi) {
     onWifi = joined;
     if (joined) Serial.printf("on the wi-fi: %s\n", WiFi.localIP().toString().c_str());
     else Serial.printf("lost the wi-fi (%s)\n", wifiReason().c_str());
   }
-  if (rejoin.due(!ssid.empty(), joined, now)) {
+  if (rejoin.due(!nets.all().empty(), joined, now)) {
     Serial.printf("no wi-fi (%s); trying %s again\n", wifiReason().c_str(), ssid.c_str());
     startWifi();
   }
@@ -952,7 +1038,7 @@ std::string apName, apPass;  // setup's own Wi-Fi, made fresh each time
 
 void help() {
   Serial.println(
-      "  ssid <network name>     the venue's Wi-Fi\n"
+      "  ssid <network name>     a Wi-Fi to join; it keeps the last 3 set, and the one it was built with\n"
       "  pass <password>         its password (leave it out for an open network)\n"
       "  channel <1-13>|0        join the venue's Wi-Fi only on that channel, so every band hears every other (kept); 0 any\n"
       "  relay <address>         https://....trycloudflare.com from npm run tunnel, or ws://<laptop>:8790 on a LAN\n"
@@ -988,6 +1074,7 @@ void helpMarker() {
 void report() {
   Serial.printf("wi-fi   %s%s  (%s)\n", ssid.empty() ? "(none)" : ssid.c_str(), pass.empty() ? "" : ", with a password",
                 WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString().c_str() : "not connected");
+  if (nets.all().size() > 1) Serial.printf("        knows %s, the newest first\n", nets.names().c_str());
   Serial.printf("relay   %s  (%s)\n", relay.ok ? relay.origin.c_str() : "(none)", wrist->up() ? "on it" : "not on it");
   const auto charging = M5.Power.isCharging();
   Serial.printf("battery %d%%%s\n", battery,
@@ -1039,8 +1126,13 @@ void run(const Command& c) {
     return;
   }
   if (c.verb == "ssid") {
-    ssid = trim(c.arg);
-    prefs.putString("ssid", ssid.c_str());
+    const std::string name = trim(c.arg);
+    std::string kept;  // a network it knows keeps its password until `pass` says another
+    for (const KnownNet& k : nets.all())
+      if (k.ssid == name) kept = k.pass;
+    nets.add(name, kept);
+    saveNets();
+    newestNet();
     startWifi();
   } else if (c.verb == "channel") {
     const std::string a = trim(c.arg);
@@ -1058,9 +1150,10 @@ void run(const Command& c) {
     if (pinned) Serial.printf("channel %d: joins %s only there, on it now: %d\n", pinned, ssid.c_str(), WiFi.isConnected() ? WiFi.channel() : 0);
     else Serial.printf("channel 0: joins %s on any channel\n", ssid.c_str());
   } else if (c.verb == "pass") {
-    pass = c.arg;
-    prefs.putString("pass", pass.c_str());
-    Serial.println("password kept");
+    nets.setNewestPass(c.arg);
+    saveNets();
+    newestNet();
+    Serial.printf("password kept, for %s\n", ssid.c_str());
     startWifi();
   } else if (c.verb == "relay") {
     if (!parseRelay(c.arg).ok) {
@@ -1115,11 +1208,10 @@ void run(const Command& c) {
   } else if (c.verb == "marker") {
     setMarker(trim(c.arg));
   } else if (c.verb == "forget") {
-    prefs.remove("ssid");
-    prefs.remove("pass");
-    prefs.remove("channel");
-    prefs.remove("relay");
-    prefs.remove("turn");
+    nets.forgetAll();
+    saveNets();
+    for (const char* k : {"ssid", "pass", "channel", "relay", "turn"})  // only those set: NVS logs an error for the rest
+      if (prefs.isKey(k)) prefs.remove(k);
     usbRight = false;
     applyTurn();
     loadSettings();
@@ -1193,6 +1285,13 @@ void askSetup() {
   ESP.restart();
 }
 
+/** The names of every network it knows, newest first, for the setup page. */
+std::vector<std::string> knownNames() {
+  std::vector<std::string> out;
+  for (const KnownNet& k : nets.all()) out.push_back(k.ssid);
+  return out;
+}
+
 void scanNets() {
   seenNets.clear();
   const int16_t n = WiFi.scanNetworks(false, false);
@@ -1230,7 +1329,7 @@ void startSetup() {
   web = new WebServer(80);
   web->on("/", HTTP_GET, [] {
     setupMode.asked(millis());
-    sendPage(200, setupPage(seenNets, ssid, ""));
+    sendPage(200, setupPage(seenNets, ssid, "", knownNames()));
   });
   web->on("/scan", HTTP_POST, [] {
     setupMode.asked(millis());
@@ -1244,9 +1343,9 @@ void startSetup() {
     const std::string chosen = setupChosen(web->arg("ssid").c_str(), web->arg("pick").c_str());
     const std::string password = web->arg("pass").c_str();
     const std::string why = setupCheck(chosen, password);
-    if (!why.empty()) return sendPage(400, setupPage(seenNets, ssid, why));
-    prefs.putString("ssid", chosen.c_str());
-    prefs.putString("pass", password.c_str());
+    if (!why.empty()) return sendPage(400, setupPage(seenNets, ssid, why, knownNames()));
+    nets.add(chosen, password);
+    saveNets();
     // A channel pinned for one venue's Wi-Fi would keep it off this one.
     if (prefs.isKey("channel")) prefs.remove("channel");
     savedSsid = chosen;
@@ -1416,6 +1515,8 @@ void setup() {
         if (why != WIFI_REASON_ASSOC_LEAVE) wifiWhy = why;
       },
       ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+  // A scan has ended: the core has kept its results before it tells anyone, so watchWifi() may read them now.
+  WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t) { scanDone = true; }, ARDUINO_EVENT_WIFI_SCAN_DONE);
   startWifi();
   startRelay();
   // A handshake that checks the relay's certificate holds this core for seconds on end: from

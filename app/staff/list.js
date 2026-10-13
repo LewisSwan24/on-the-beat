@@ -17,6 +17,9 @@ export const ordered = (reports) => [...reports].sort((a, b) => (a.handledAt ? 1
 
 export const openCount = (reports) => reports.filter((r) => !r.handledAt).length;
 
+/** The cards still open, of `ids`: not closed by staff, and not LET'S GUESS where the show has no quiz. */
+export const openCards = (ids, shut, quiz) => ids.filter((id) => !shut.includes(id) && (quiz || id !== 'guess'));
+
 /** About someone · P-4F2A91 · reported 3 times by 2 people, or Something else. */
 export function whoLine(r) {
   if (!r.about) return 'Something else';

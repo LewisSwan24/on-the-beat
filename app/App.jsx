@@ -1,31 +1,36 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cardOf } from '../relay/cards.js';
-import { BAND_OFF, HOW, HUE, PROMISES, REPORT, matchName, someone, teamHere } from './copy.js';
+import { BAND_OFF, GUIDE, HOW, HUE, LEAVE, PROMISES, REPORT, WHERE, matchName, someone, teamHere } from './copy.js';
 import { SOUND_SAY, soundRow } from './lib/bandsound.js';
-import { battery, buzz, toBase64 } from './lib/device.js';
-import { INTENT_OF, follow, nextSeq, tapMessage } from './lib/follow.js';
-import { meetingOn, newlyFound } from './lib/found.js';
+import { battery, buzz, locate, locationGranted, toBase64 } from './lib/device.js';
+import { FOLLOW_SAY, follow, intentFor, nextSeq, tapMessage } from './lib/follow.js';
+import { restoreTaps } from './lib/guide.js';
+import { matchScreen, meetingOn, newlyFound, reportable, shownMatch } from './lib/found.js';
 import { connect } from './lib/net.js';
 import { openerArrived, openerNews } from './lib/opener.js';
 import { noticeArrived, showWith, timesArrived } from './lib/venue.js';
-import { phaseLine, phaseOf } from './lib/phase.js';
+import { DEFAULT_TIMES, phaseLine, phaseOf } from './lib/phase.js';
 import { refusalWords } from './lib/refusals.js';
+import { roomOf } from './lib/typed.js';
 import { saveCard } from './lib/vcard.js';
+import { cardOver, chosenRow, freshPlace, roundPlace, wrongRoom } from './lib/where.js';
 import * as store from './lib/store.js';
-import { WAVES_HOW, WAVE_SAY, buzzes, newWaves, unlooked } from './lib/waved.js';
+import { WAVES_HOW, WAVE_SAY, buzzes, newWaves, steady, unlooked } from './lib/waved.js';
 import { Bar, Home } from './screens/Home.jsx';
 import { Beacon, Near, WristBeacon } from './screens/Hi.jsx';
 import { Pair, bandLine } from './screens/Band.jsx';
+import { BandGuide, Practice } from './screens/Guide.jsx';
 import { Scan } from './screens/Scan.jsx';
 import { PAIR_SAY, codeFrom } from './lib/pairing.js';
 import { Name, Promises, Splash, Venue } from './screens/Onboard.jsx';
 import { Pick, Wall } from './screens/Song.jsx';
+import { Quiz, Teams } from './screens/Guess.jsx';
 import { Camera, Floor } from './screens/Dance.jsx';
 import { Leaving, Match, Mate, Quiet, Tonight } from './screens/Met.jsx';
 import { Cta, Sheet } from './ui.jsx';
 
 const ONBOARDING = new Set(['splash', 'promises', 'venue', 'name']);
-const EMPTY = { me: null, near: [], wall: [], floor: [], matches: [] };
+const EMPTY = { me: null, near: [], wall: [], floor: [], teams: [], quiz: null, matches: [] };
 
 function useStore() {
   const [s, set] = useState(store.load);
@@ -46,6 +51,33 @@ function ContactForm({ initial, onSave }) {
         <input value={v} onChange={(e) => setV(e.target.value.slice(0, 60))} placeholder="@handle, number, anything" aria-label="How they can reach you" />
       </div>
       <button type="submit" className="cta" style={{ '--c': 'var(--ok)', '--g': 'transparent' }} disabled={!v.trim()}>KEEP IT</button>
+    </form>
+  );
+}
+
+const TIMES = Object.keys(DEFAULT_TIMES);
+const TIME_NAMES = { doors: 'Doors', support: 'Support', break: 'Break', headline: 'Headline', end: 'End' };
+
+/** A made room's empty fields, to fill (venue cards spec §2.3). Only what is empty is asked; the first to say it has it. */
+function CardForm({ show, onSave }) {
+  const empty = ['act', ...TIMES].filter((k) => !show[k]);
+  const [v, setV] = useState({});
+  const said = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x.trim()]).filter(([, x]) => x));
+  const ok = Object.keys(said).length > 0;
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (ok) onSave(said); }} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {empty.includes('act') ? (
+        <div className="field" style={{ '--c': 'var(--hi)' }}>
+          <input value={v.act || ''} onChange={(e) => setV({ ...v, act: e.target.value.slice(0, 60) })} placeholder="who's playing" aria-label="Who is playing" />
+        </div>
+      ) : null}
+      {empty.filter((k) => k !== 'act').map((k) => (
+        <label key={k} className="field" style={{ '--c': 'var(--hi)', justifyContent: 'space-between' }}>
+          <span className="small">{TIME_NAMES[k]}</span>
+          <input type="time" value={v[k] || ''} onChange={(e) => setV({ ...v, [k]: e.target.value })} aria-label={TIME_NAMES[k] + ' time'} style={{ flex: 'none', width: 'auto' }} />
+        </label>
+      ))}
+      <button type="submit" className="cta" style={{ '--c': 'var(--hi)', '--g': 'transparent' }} disabled={!ok}>SAVE</button>
     </form>
   );
 }
@@ -74,15 +106,28 @@ export default function App() {
   const [stack, setStack] = useState([]);
   const [shows, setShows] = useState(null);
   const [view, setView] = useState(EMPTY);
-  // The show as tonight runs it: its times as the venue's staff moved them, if they did.
-  const show = showWith(listed, view.times);
+  const viewRoom = useRef(null);   // the room the view on screen came from
+  // The show as tonight runs it: what the people there said it is, for a room nobody listed, and its times as the
+  // venue's staff moved them, if they did.
+  const show = showWith(cardOver(listed, view.card), view.times);
+  // Where the phone is, when it was asked ({ lat, lon, at }): in memory only, never stored (venue cards spec §2.5),
+  // and stood for where it is only while fresh: a place found at home is not the gig.
+  const [here, setHere] = useState(null);
+  const placeNow = freshPlace(here);
+  // SEE NEARBY: the venue screen opens on the nearest room, not on the one the phone is in.
+  const [nearbyAsked, setNearbyAsked] = useState(false);
+  const [finding, setFinding] = useState(false);
   const [status, setStatus] = useState('connecting');
   const [sheet, setSheet] = useState(null);
   const [toast, setToast] = useState(null);
   const [now, setNow] = useState(() => new Date());
   const [ci, setCi] = useState(0);
+  // The card the wrist just lit, for the home carousel to turn to once; cleared once it has.
+  const [focusCard, setFocusCard] = useState(null);
   const [pickText, setPickText] = useState(night?.state?.pick || '');
   const [matchId, setMatchId] = useState(null);
+  const [pickFor, setPickFor] = useState(null);   // the match a PICK ONE came from, or none
+  const nearOrder = useRef([]);   // SAY HI handles in the order first seen tonight (F3)
   const [backTo, setBackTo] = useState(null);
   const [dim, setDim] = useState(false);
   const [pairError, setPairError] = useState(null);
@@ -147,13 +192,25 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
+  // Tonight's rooms, read again each time the venue screen opens: a room someone made a minute ago is on it.
+  const onVenue = screen === 'venue';
   useEffect(() => {
+    if (!onVenue && shows) return undefined;
     let off = false;
     fetch('/api/shows').then((r) => r.json()).then((list) => {
       if (!off) setShows(list.map((x) => ({ ...x, room: x.id })));
-    }).catch(() => { if (!off) setShows([]); });
+    }).catch(() => { if (!off) setShows((was) => was || []); });
     return () => { off = true; };
-  }, []);
+  }, [onVenue]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const find = useCallback(async () => {
+    setFinding(true);
+    const p = await locate();
+    setFinding(false);
+    if (p) setHere({ ...p, at: Date.now() }); else say(WHERE.cant);
+  }, [say]);
+  // Granted before: the venue screen finds the phone afresh with no tap, each time it opens.
+  useEffect(() => { if (!onVenue) setNearbyAsked(false); else locationGranted().then((ok) => { if (ok) find(); }); }, [onVenue]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------- the room ----------
 
@@ -164,7 +221,7 @@ export default function App() {
     if (!inRoom) return undefined;
     const n = connect({
       venue: room, me: night.me,
-      onView: (v) => setView(v),
+      onView: (v) => { viewRoom.current = room; setView(v); },
       onStatus: setStatus,
       onMessage: (m) => onRelay.current?.(m),
     });
@@ -264,7 +321,9 @@ export default function App() {
       net.current?.keep('pair', { t: 'pair', band: m.band, secret: m.secret });
       setPairError(null);
       say(PAIR_SAY.paired);
-      if (screen === 'pair') { setStack([]); setScreen('home'); }
+      // A first pairing on this phone opens the practice (the wristband guide); after that, home as before.
+      if (!s.guideSeen) startPractice();
+      else if (screen === 'pair') { setStack([]); setScreen('home'); }
     }
     // A check that ended without YES: no answer in time, or turned away on the wrist it reached.
     if (m.t === 'check' && m.ok === false) pairFailed(m.why === 'refused' ? PAIR_SAY.refused : PAIR_SAY.timeout);
@@ -297,7 +356,7 @@ export default function App() {
     setScreen('match');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
-  useEffect(() => { seen.current = null; }, [night?.me]);
+  useEffect(() => { seen.current = null; nearOrder.current = []; }, [night?.me]);
 
   // A wave at you the phone has not seen: one buzz, unless a live wristband calls instead. Seen either way.
   const wavesSeen = useRef(null);
@@ -385,7 +444,9 @@ export default function App() {
       setNightState({ armed: f.armed, invisible: f.invisible, seq: f.seq });
     }
     if (f.events.includes('hi') && !store.hasEvent(s, 'hi')) update((prev) => store.addEvent(prev, 'hi', 'started saying hi'));
+    for (const e of f.events) if (e?.kind === 'closed') update((prev) => store.addEvent(prev, e.kind, e.text));
     if (f.clearStack) { setStack([]); setSheet(null); }
+    if (f.card) setFocusCard(f.card);
     if (f.screen !== screen && !ONBOARDING.has(screen) && screen !== 'leaving') setScreen(f.screen);
     if (f.toast) say(f.toast.text, f.toast.unpair ? { label: 'NOT YOU? UNPAIR', onTap: unpair } : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -419,8 +480,8 @@ export default function App() {
     return true;
   }, [s, setNightState, update, tap, cannotShow]);
 
-  const go = useCallback((to, { replace = false } = {}) => {
-    const intent = INTENT_OF[to];
+  const go = useCallback((to, { replace = false, keepCard = false } = {}) => {
+    const intent = intentFor(to, { keepCard });
     // Nothing moves when the card could not be armed.
     if (intent && armed !== intent && !arm(intent)) return;
     setSheet(null);
@@ -431,16 +492,19 @@ export default function App() {
 
   // Back walks the stack, never into onboarding or a match already answered —
   // and while invisible, nowhere at all.
-  const now_ = useRef({ stack, invisible: false });
-  now_.current = { stack, invisible };
+  const now_ = useRef({ stack, invisible: false, screen });
+  now_.current = { stack, invisible, screen };
   const back = useCallback(() => {
     setSheet(null);
     setBackTo(null);
-    const { stack: st, invisible: quiet } = now_.current;
+    const { stack: st, invisible: quiet, screen: on } = now_.current;
+    // Leaving the practice, by any back, ends it and puts back what it opened on.
+    if (on === 'guide') { endPracticeRef.current?.(); return; }
     if (quiet) { setStack([]); setScreen('quiet'); return; }
     const prev = st[st.length - 1];
     setStack(st.slice(0, -1));
-    setScreen(prev && !ONBOARDING.has(prev) && prev !== 'match' ? prev : 'home');
+    // The guide's page can be opened from onboarding (How this works): back from it returns there.
+    setScreen(prev && (on === 'band-guide' || !ONBOARDING.has(prev)) && prev !== 'match' ? prev : 'home');
   }, []);
 
   // The phone's own back gesture walks the app's stack instead of leaving it.
@@ -464,10 +528,48 @@ export default function App() {
   const backOn = () => {
     if (cannotShow()) return;
     const seq = tap('invisible', false);
-    setNightState({ invisible: false, seq });
+    // The relay puts back the card they had (N3); expect it, so it is not taken for a tap that did not go through.
+    setNightState({ invisible: false, armed: view.me?.was ?? null, seq });
     setStack([]);
     setScreen('home');
   };
+
+  // The wristband guide's practice (spec section 1): what it opened on is put back on every way out, then practice ends.
+  const practiceFrom = useRef(null);
+  const startPractice = () => {
+    practiceFrom.current = { armed: view.me?.armed ?? null, invisible: !!view.me?.invisible };
+    net.current?.say('practice', { t: 'practice', on: true });
+    setSheet(null);
+    setStack([]);
+    setScreen('guide');
+  };
+  const endPractice = () => {
+    const was = practiceFrom.current;
+    const steps = restoreTaps(was, view.me, view.cards);
+    // A tap that shows the person needs the relay now: offline, the practice stays on (and says so) rather than end
+    // with the practice's own card waiting to show them.
+    if (steps.some(([kind, v]) => (kind === 'arm' ? !!v : v === false)) && cannotShow()) return;
+    practiceFrom.current = null;
+    for (const [kind, v] of steps) {
+      if (kind === 'arm') arm(v);
+      else setNightState({ invisible: v, armed: null, seq: tap('invisible', v) });
+    }
+    // The card it opened on was closed by the venue meanwhile: said here, as the practice kept it quiet (follow()).
+    if (was?.armed && Array.isArray(view.cards) && !view.cards.includes(was.armed)) say(FOLLOW_SAY.closed(was.armed));
+    net.current?.forget('practice');
+    net.current?.send({ t: 'practice', on: false });
+    update((prev) => ({ ...prev, guideSeen: true }));
+    setStack([]);
+    setScreen(was?.invisible ? 'quiet' : 'home');
+  };
+  const endPracticeRef = useRef(endPractice);
+  endPracticeRef.current = endPractice;
+  // While on the guide, practice is said again each minute, so it never lapses mid-step.
+  useEffect(() => {
+    if (screen !== 'guide') return undefined;
+    const iv = setInterval(() => net.current?.send({ t: 'practice', on: true }), 60_000);
+    return () => clearInterval(iv);
+  }, [screen]);
 
   const savePick = () => {
     const t = pickText.trim();
@@ -477,6 +579,8 @@ export default function App() {
       setNightState({ pick: t });
       update((prev) => store.addEvent(prev, 'pick', 'picked ' + t));
     }
+    // Picked for a match (PICK ONE): back to that match, its card left as it was (F1).
+    if (pickFor) { setMatchId(pickFor); setPickFor(null); go('match', { replace: true }); return; }
     go('wall');
   };
 
@@ -512,6 +616,41 @@ export default function App() {
     ],
   });
 
+  // A made room's card: fill what is empty, or say a field is wrong (venue cards spec §2.3).
+  const wrongSheet = () => setSheet({
+    title: WHERE.wrongHere, sub: 'which part? if someone else here says so too, it clears.', close: 'Cancel',
+    rows: ['venue', 'act', ...TIMES].filter((k) => show?.[k]).map((k) => ({
+      icon: 'flag', label: k === 'venue' ? 'the venue: ' + show.venue : k === 'act' ? 'the act: ' + show.act : TIME_NAMES[k] + ' ' + show[k],
+      fg: 'var(--stop)', onTap: () => { net.current?.send({ t: 'wrong', field: k }); setSheet(null); say(WHERE.wrongSaid); },
+    })),
+  });
+  const cardSheet = () => setSheet({
+    title: show?.venue || 'This venue', sub: 'made by people here tonight. the first to say each thing has it.', close: 'Cancel',
+    body: ['act', ...TIMES].some((k) => !show?.[k])
+      ? <CardForm show={show} onSave={(fields) => { net.current?.send({ t: 'fill', ...fields }); setSheet(null); }} />
+      : null,
+    rows: [{ icon: 'flag', label: WHERE.wrongHere, sub: 'two people saying so clears it.', fg: 'var(--stop)', onTap: wrongSheet }],
+  });
+
+  // Wrong room: on joining and each time the app comes back, with location granted and the room's place known,
+  // more than 500 m away asks once; I'M HERE stops it for this room tonight (spec §2.4).
+  const [away, setAway] = useState(null);
+  const hereOk = night?.state?.hereOk;
+  const checkHere = useCallback(async () => {
+    if (!inRoom || !show || hereOk === show.room || !(await locationGranted())) { setAway(null); return; }
+    const p = await locate();
+    if (p) setHere({ ...p, at: Date.now() });
+    setAway(p ? wrongRoom(p, show) : null);
+  }, [inRoom, show, hereOk]);
+  const checkRef = useRef(checkHere);
+  checkRef.current = checkHere;
+  useEffect(() => { checkRef.current(); }, [inRoom, show?.room, show?.lat, hereOk]);
+  useEffect(() => {
+    const on = () => { if (document.visibilityState === 'visible') checkRef.current(); };
+    document.addEventListener('visibilitychange', on);
+    return () => document.removeEventListener('visibilitychange', on);
+  }, []);
+
   const howSheet = () => setSheet({
     title: 'How this works', sub: 'four promises. they hold all night.', close: 'Got it',
     rows: [
@@ -522,6 +661,7 @@ export default function App() {
       { icon: 'touch_app', label: 'Press the side button to see your card, and again to change it. Your phone follows.', fg: '#fff', onTap: () => {} },
       { icon: 'waving_hand', label: WAVES_HOW, fg: '#fff', onTap: () => {} },
       { icon: 'watch', label: BAND_OFF.how, fg: '#fff', onTap: () => {} },
+      { icon: 'touch_app', label: GUIDE.page.how, fg: '#fff', onTap: () => { setSheet(null); go('band-guide'); } },
     ],
   });
 
@@ -545,6 +685,7 @@ export default function App() {
   const bandSheet = () => setSheet({
     title: 'Your wristband', sub: bandLine(bandShown), close: 'Done',
     rows: [
+      { icon: 'watch', label: GUIDE.page.open, sub: GUIDE.page.sub, fg: '#fff', onTap: () => { setSheet(null); go('band-guide'); } },
       ...(bandShown?.offline ? [{ icon: 'link', label: 'PAIR AGAIN', sub: 'it has been away a while. show its letters and pair it again.', fg: '#fff',
         onTap: () => { unpair(); go('pair'); } }] : []),
       ...(bandShown?.off ? [] : [{ icon: 'flashlight_on', label: 'TEST THE LIGHT', sub: 'it flashes white for two seconds, and chirps unless its sound is off or it is in NOT NOW.', fg: '#fff',
@@ -630,6 +771,11 @@ export default function App() {
     setScreen('leaving');
   };
 
+  const leaveSheet = () => setSheet({
+    title: LEAVE.title, sub: LEAVE.sub, close: 'Cancel',
+    rows: [{ icon: 'logout', label: LEAVE.row, fg: 'var(--stop)', onTap: leftVenue }],
+  });
+
   const quietBlock = () => setSheet({
     title: 'Block someone', close: 'Cancel',
     sub: view.matches.length ? 'instant, silent, and permanent for tonight.' : 'nobody you’ve met tonight. you can block anyone from their card, any time.',
@@ -639,7 +785,7 @@ export default function App() {
   const quietReport = () => (!team ? report(null) : setSheet({
     title: 'Report something', sub: REPORT.goes, close: 'Cancel',
     rows: [
-      ...view.matches.map((m) => ({ icon: 'flag', label: matchName(m), fg: 'var(--stop)', onTap: () => report(m.id) })),
+      ...reportable(view, night?.matches).map((m) => ({ icon: 'flag', label: matchName(m), fg: 'var(--stop)', onTap: () => report(m.id) })),
       { icon: 'report', label: 'Something else', sub: 'not about anyone here — something the team should know.', fg: 'var(--stop)', onTap: () => report(null) },
     ],
   }));
@@ -687,17 +833,40 @@ export default function App() {
   }, [s.promisesSeen, s.name, night]);
 
   const chooseShow = (chosen) => {
-    update((prev) => store.startNight(prev, chosen));
+    update((prev) => store.startNight(prev, chosenRow(chosen)));
     setStack([]);
     setScreen(s.name ? 'home' : 'name');
   };
+  // NOT HERE? ADD IT: the room is joined at once, as a typed one, and its card goes as the first fill once the room
+  // has answered (below). The phone's place goes with it only rounded, only if it was found lately, and the card waits
+  // in memory, never in the night's record (spec §2.5).
+  const making = useRef(null);
+  const makeVenue = (name, act) => {
+    const venue = name.trim();
+    const who = act.trim();
+    const key = roomOf(venue);
+    chooseShow({ id: null, room: key, venue, act: who, setlist: [], typed: true });
+    making.current = { room: key, fields: { venue, ...(who ? { act: who } : {}), ...(placeNow ? roundPlace(placeNow) : {}) } };
+  };
+  // The first view from that room (not one still on the screen from the room before): the card goes unless someone
+  // there made one first, and is never sent twice.
+  useEffect(() => {
+    const m = making.current;
+    if (!view.me || !m || viewRoom.current !== m.room) return;
+    if (!view.card) net.current?.send({ t: 'fill', ...m.fields });
+    making.current = null;
+  }, [view.me, view.card]);
 
   // ---------- drawing ----------
 
-  const match = useMemo(() => {
-    const live = view.matches.find((m) => m.id === matchId);
-    return live || night?.matches?.[matchId] || null;
-  }, [view.matches, matchId, night]);
+  const match = useMemo(() => shownMatch(view, night?.matches, matchId), [view, matchId, night]);
+  // A PICK ONE is for its match only while the pick screen is up.
+  useEffect(() => { if (screen !== 'pick' && pickFor) setPickFor(null); }, [screen, pickFor]);
+  // A meeting answered elsewhere moves its screen on: found from the wrist to S11, ended (a block) home, quietly.
+  useEffect(() => {
+    const next = matchScreen(screen, match);
+    if (next !== screen) setScreen(next);
+  }, [screen, match]);
 
   const barHue = invisible ? null : armed;
   const barFor = {
@@ -708,6 +877,8 @@ export default function App() {
     wall: { label: 'POCKET IT', tap: () => go('home') },
     camera: { label: 'THE FLOOR', tap: () => go('floor') },
     floor: { label: 'POCKET IT', tap: () => go('home') },
+    quiz: view.quiz?.done ? { label: 'FIND A TEAMMATE', tap: () => go('teams') } : undefined,
+    teams: { label: 'POCKET IT', tap: () => go('home') },
   }[screen];
 
   // The check, while there is one, over any screen: it asks about the number on the wrist.
@@ -724,9 +895,10 @@ export default function App() {
     case 'splash': body = <Splash onNext={afterSplash} />; break;
     case 'promises': body = <Promises onIn={() => { update((p) => ({ ...p, promisesSeen: true })); setScreen('venue'); }} onHow={howSheet} />; break;
     case 'venue':
-      body = <Venue shows={shows || []} loading={shows === null} chosen={night && !night.left ? show : null} onChoose={chooseShow}
+      body = <Venue shows={shows || []} loading={shows === null} chosen={night && !night.left && !nearbyAsked ? show : null} onChoose={chooseShow}
         onBack={night?.show && !night.left && s.name ? () => setScreen('home') : null}
-        onNotAtShow={() => say('no problem. the app sits quiet until you are at one.')} />;
+        onNotAtShow={() => say('no problem. the app sits quiet until you are at one.')}
+        here={placeNow} finding={finding} onFind={find} onMake={makeVenue} />;
       break;
     case 'name':
       body = <Name name={s.name} onBack={s.name ? back : () => setScreen('venue')}
@@ -736,7 +908,7 @@ export default function App() {
       const dropLink = () => { try { sessionStorage.removeItem('otb:pair-link'); } catch { /* private window */ } };
       body = <Pair error={pairError} initial={pairCode} pending={pairPending}
         onCode={(code) => { dropLink(); pairWith(code); }} onScan={() => go('scan')}
-        onSkip={() => { dropLink(); setStack([]); setScreen('home'); }} onBack={stack.length ? back : null} />;
+        onSkip={() => { dropLink(); setStack([]); setScreen('home'); }} onBack={stack.length ? back : null} onGuide={() => go('band-guide')} />;
       break;
     }
     case 'scan':
@@ -746,7 +918,9 @@ export default function App() {
       body = <Home show={show} phase={phase} line={line} armed={invisible ? null : armed} open={view.cards} ci={ci} setCi={setCi}
         notice={notice} onHideNotice={() => setNightState({ noticeHidden: notice.at })}
         band={bandShown} onBand={() => (paired ? bandSheet() : go('pair'))}
-        onArm={(id) => arm(armed === id ? null : id)} onOpen={(id) => go(cardOf(id).open)} onHow={howSheet} dot={waveDot ? 'hi' : null} />;
+        onArm={(id) => arm(armed === id ? null : id)} onOpen={(id) => go(cardOf(id).open)} onHow={howSheet} dot={waveDot ? 'hi' : null}
+        focus={focusCard} onFocused={() => setFocusCard(null)}
+        away={away} onNearby={() => { setNearbyAsked(true); go('venue'); }} onHere={() => { setNightState({ hereOk: show.room }); setAway(null); }} onCard={cardSheet} />;
       break;
     case 'beacon':
       body = paired
@@ -754,7 +928,7 @@ export default function App() {
         : <Beacon count={view.near.length} dim={dim} onStop={() => { arm(null); setStack([]); setScreen('home'); }} />;
       break;
     case 'near':
-      body = <Near near={view.near} offline={status === 'offline'} onBack={back}
+      body = <Near near={steady(nearOrder.current, view.near)} offline={status === 'offline'} onBack={back}
         onWave={(handle) => net.current?.send({ t: 'wave', handle })} onMore={personSheet} />;
       break;
     case 'pick': body = <Pick show={show} text={pickText} setText={setPickText} onBack={back} />; break;
@@ -764,7 +938,7 @@ export default function App() {
       break;
     case 'match':
       body = match ? (
-        <Match match={match} number={match.number} held={!paired} onPick={() => go('pick')}
+        <Match match={match} number={match.number} held={!paired} onPick={() => { setPickFor(match.id); go('pick', { keepCard: true }); }}
           onMyWay={() => { say('on your way. ' + matchName(match) + ' has the same hint.'); go('mate', { replace: true }); }}
           onNotThis={() => notThis(match)} />
       ) : null;
@@ -775,6 +949,14 @@ export default function App() {
         onNotThis={() => { setBackTo(null); go('floor', { replace: true }); }} />;
       break;
     case 'floor': body = <Floor floor={view.floor} mine={view.me?.clip} room={room} onBack={back} onTile={tileSheet} />; break;
+    case 'quiz':
+      body = <Quiz quiz={view.quiz} offline={status === 'offline'} onBack={back}
+        onAnswer={(q, choice) => net.current?.send({ t: 'answer', q, choice })} onTeams={() => go('teams')} />;
+      break;
+    case 'teams':
+      body = <Teams teams={view.teams || []} score={view.quiz?.score} onBack={back}
+        onTeam={(handle) => net.current?.send({ t: 'team', handle })} onMore={personSheet} />;
+      break;
     case 'mate':
       body = match ? (
         <Mate match={match} number={meetingOn(match, now.getTime()) ? match.number : null} held={!paired}
@@ -788,8 +970,10 @@ export default function App() {
         onBack={back} onKeep={keep} onOpen={(m) => { setMatchId(m.id); go('mate'); }} onName={() => go('name')}
         onSave={(m) => saveContact(m.night ? m : tonightCard(m))} />;
       break;
+    case 'guide': body = <Practice view={view} onEnd={endPractice} onTest={() => net.current?.send({ t: 'testLight' })} />; break;
+    case 'band-guide': body = <BandGuide onBack={back} onPractise={bandId ? startPractice : null} />; break;
     case 'quiet':
-      body = <Quiet paired={paired} onBackOn={backOn} onBlock={quietBlock} onReport={quietReport} onLeft={leftVenue} />;
+      body = <Quiet paired={paired} onBackOn={backOn} onBlock={quietBlock} onReport={quietReport} onLeft={leaveSheet} />;
       break;
     case 'leaving': body = <Leaving offline={status !== 'live'} />; break;
     default: body = null;

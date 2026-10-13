@@ -20,6 +20,7 @@ export const CARDS = [
   { id: 'hi', label: 'SAY HI', band: 'HI :)', c: '#4ED7F1', g: '#0C9DE2', open: 'beacon', screens: ['beacon', 'near'] },
   { id: 'song', label: 'FIRST SONG', band: 'FIRST SONG?', c: '#F2D65E', g: '#C79A1E', open: 'pick', screens: ['pick', 'wall'] },
   { id: 'dance', label: "LET'S DANCE", band: "LET'S DANCE!", c: '#DA8CF2', g: '#A93FD9', open: 'camera', screens: ['camera', 'floor'] },
+  { id: 'guess', label: "LET'S GUESS", band: "LET'S GUESS!", c: '#8FB4FF', g: '#4F7FE0', open: 'quiz', screens: ['quiz', 'teams'] },
 ];
 
 export const INTENTS = CARDS.map((c) => c.id);

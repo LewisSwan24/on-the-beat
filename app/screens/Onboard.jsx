@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PROMISES } from '../copy.js';
+import { PROMISES, WHERE } from '../copy.js';
 import { timesLine } from '../lib/phase.js';
-import { roomOf } from '../lib/typed.js';
+import { byPlace, distanceLabel } from '../lib/where.js';
 import { Back, Cta, Ghost, Icon } from '../ui.jsx';
 
 /** S0 — three lights and the name. Tap, or wait. */
@@ -47,30 +47,74 @@ export function Promises({ onIn, onHow }) {
   );
 }
 
-/** S2 — where are you tonight? Tonight's shows, or your word for it. */
-export function Venue({ shows, loading, chosen, onChoose, onNotAtShow, onBack }) {
+/** S2 — where are you tonight? Tonight's rooms, nearest first when the phone knows, or one made here. */
+export function Venue({ shows, loading, chosen, onChoose, onNotAtShow, onBack, here, finding, onFind, onMake }) {
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(chosen || null);
-  const [typed, setTyped] = useState(null);
+  // NOT HERE? ADD IT: the form for a venue nobody listed, or null while the list is up.
+  const [making, setMaking] = useState(null);
 
-  const all = useMemo(() => (typed ? [...shows, typed] : shows), [shows, typed]);
+  // Tonight's rooms within 2 km first, nearest first, when the phone knows where it is; the rest after, as listed.
+  const { near, rest } = useMemo(() => byPlace(shows, here), [shows, here]);
+  const all = useMemo(() => [...near, ...rest], [near, rest]);
   const qq = q.trim().toLowerCase();
-  const found = all.filter((s) => !qq || (s.act + ' ' + s.venue).toLowerCase().includes(qq));
+  const found = all.filter((s) => !qq || ((s.act || '') + ' ' + s.venue).toLowerCase().includes(qq));
   const picked = sel ? all.find((s) => s.room === sel.room) || sel : null;
   const missing = !picked && qq.length > 0 && found.length === 0 && !loading;
 
-  const useTyped = () => {
-    const name = q.trim();
-    const s = { id: null, room: roomOf(name), act: name.toUpperCase(), venue: 'your word for it', setlist: [], typed: true };
-    setTyped(s);
-    setSel(s);
-    setQ('');
-  };
+  // The nearest is chosen already, so one tap on THAT'S THE ONE joins it (spec §2).
+  const nearest = near[0]?.room;
+  useEffect(() => { if (nearest && !q) setSel((was) => was || near[0]); }, [nearest]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const title = (s) => s.act || s.venue;
+  const sub = (s) => (s.act ? s.venue : s.made ? WHERE.made : '');
+  const side = (s) => (s.away != null ? distanceLabel(s.away) : s.typed ? 'here' : s.made ? WHERE.made : s.doors ? 'doors ' + s.doors : '');
+
+  if (making) {
+    const ok = making.name.trim().length > 0;
+    return (
+      <form className="scr tall" onSubmit={(e) => { e.preventDefault(); if (ok) onMake(making.name, making.act); }}>
+        <Back onClick={() => setMaking(null)} />
+        <h1 className="h1" style={{ marginBottom: 18 }}>Which venue is it?</h1>
+        <div className="field" style={{ '--c': 'var(--hi)' }}>
+          <input value={making.name} onChange={(e) => setMaking({ ...making, name: e.target.value.slice(0, 80) })}
+            placeholder="the venue's name" aria-label="The venue's name" autoFocus />
+        </div>
+        <div className="field" style={{ '--c': 'var(--hi)', marginTop: 12 }}>
+          <input value={making.act} onChange={(e) => setMaking({ ...making, act: e.target.value.slice(0, 60) })}
+            placeholder="who's playing (optional)" aria-label="Who is playing, optional" />
+        </div>
+        {near.length ? (
+          <div className="scroll" style={{ marginTop: 20 }}>
+            <span className="label" style={{ marginBottom: 8 }}>{WHERE.oneOfThese}</span>
+            {near.map((s) => (
+              <button key={s.room} type="button" className="show" onClick={() => { setSel(s); setQ(''); setMaking(null); }}>
+                <span className="sdot" />
+                <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                  <span className="body" style={{ fontWeight: 600, letterSpacing: '.01em' }}>{title(s)}</span>
+                  <span className="small">{sub(s)}</span>
+                </span>
+                <span className="label tnum" style={{ flex: 'none' }}>{side(s)}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="foot">
+          <button type="submit" className="cta" style={{ '--c': 'var(--hi)', '--g': 'var(--hi-g)' }} disabled={!ok}>{WHERE.make}</button>
+        </div>
+      </form>
+    );
+  }
+
+  const addIt = () => setMaking({ name: q.trim(), act: '' });
 
   return (
     <div className="scr tall">
       {onBack ? <Back onClick={onBack} /> : null}
       <h1 className="h1" style={{ marginBottom: 18 }}>Where are you tonight?</h1>
+      {!here && onFind ? (
+        <Cta plain style={{ height: 48, marginBottom: 12 }} disabled={finding} onClick={onFind}>{finding ? WHERE.finding : WHERE.find}</Cta>
+      ) : null}
       <div className="field" style={{ '--c': 'var(--hi)' }}>
         <Icon name="search" size={20} color="var(--text-3)" />
         <input value={q} onChange={(e) => { setQ(e.target.value); setSel(null); }} placeholder="venue or act" aria-label="Search venues and acts" enterKeyHint="search" />
@@ -79,8 +123,8 @@ export function Venue({ shows, loading, chosen, onChoose, onNotAtShow, onBack })
       {missing ? (
         <div className="card" style={{ marginTop: 22, display: 'flex', flexDirection: 'column', gap: 6, animation: 'ob-pop var(--base) var(--ease)' }}>
           <span className="h2">Can't find that one.</span>
-          <span className="body muted">Type it in and we'll go with your word for it.</span>
-          <Cta plain style={{ marginTop: 14, height: 52 }} onClick={useTyped}>USE WHAT I TYPED</Cta>
+          <span className="body muted">Add it, and the next person here finds it.</span>
+          <Cta plain style={{ marginTop: 14, height: 52 }} onClick={addIt}>{WHERE.notHere}</Cta>
         </div>
       ) : null}
 
@@ -91,27 +135,28 @@ export function Venue({ shows, loading, chosen, onChoose, onNotAtShow, onBack })
             <button key={s.room} type="button" className="show" aria-pressed={sel?.room === s.room} onClick={() => setSel(s)}>
               <span className="sdot" />
               <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                <span className="body" style={{ fontWeight: 600, letterSpacing: '.01em' }}>{s.act}</span>
-                <span className="small">{s.venue}</span>
+                <span className="body" style={{ fontWeight: 600, letterSpacing: '.01em' }}>{title(s)}</span>
+                <span className="small">{sub(s)}</span>
               </span>
-              <span className="label tnum" style={{ flex: 'none' }}>{s.typed ? 'here' : s.doors ? 'doors ' + s.doors : ''}</span>
+              <span className="label tnum" style={{ flex: 'none' }}>{side(s)}</span>
             </button>
           ))}
+          {!loading ? <Ghost onClick={addIt}>{WHERE.notHere}</Ghost> : null}
         </div>
       ) : null}
 
       {picked ? (
         <div className="picked">
-          <div className="label" style={{ color: 'var(--hi)', marginBottom: 10 }}>tonight</div>
-          <div className="h1">{picked.act}</div>
-          <div className="body muted" style={{ marginTop: 4 }}>{picked.venue}</div>
+          <div className="label" style={{ color: 'var(--hi)', marginBottom: 10 }}>tonight{picked.away != null ? ' · ' + distanceLabel(picked.away) : ''}</div>
+          <div className="h1">{title(picked)}</div>
+          <div className="body muted" style={{ marginTop: 4 }}>{sub(picked)}</div>
           <div className="small tnum" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line-2)' }}>{timesLine(picked)}</div>
         </div>
       ) : null}
 
       <div className="foot">
         <Cta hue="hi" disabled={!picked} onClick={() => picked && onChoose(picked)}>THAT'S THE ONE</Cta>
-        <Ghost onClick={onNotAtShow}>I'm not at a show</Ghost>
+        {picked ? <Ghost onClick={() => setSel(null)}>not this one</Ghost> : <Ghost onClick={onNotAtShow}>I'm not at a show</Ghost>}
       </div>
     </div>
   );

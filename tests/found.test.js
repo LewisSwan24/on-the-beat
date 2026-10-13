@@ -55,3 +55,40 @@ test("the words: found on your side says the other won't know; found by both say
   assert.equal(FOUND_MINE, "found on your side. they won't know unless they say so too.");
   assert.equal(foundBoth(T + 10 * 60_000), 'you found each other at 21:14');
 });
+
+test('shownMatch() takes the live match, and none once the relay no longer has it: a block ends it on this phone too (F8)', async () => {
+  const { shownMatch } = await import('../app/lib/found.js');
+  const stored = { m1: match('m1'), m2: match('m2') };
+  const live = { me: { handle: 'x' }, matches: [match('m1', { found: true })] };
+  assert.equal(shownMatch(live, stored, 'm1').found, true, 'the live copy wins');
+  assert.equal(shownMatch(live, stored, 'm2'), null, 'gone from a live view: ended, so nothing is shown');
+  assert.equal(shownMatch({ me: null, matches: [] }, stored, 'm2').id, 'm2', 'no view yet (offline, starting): the stored copy');
+  assert.equal(shownMatch(live, stored, null), null);
+});
+
+test('matchScreen() moves an answered meeting on: found on either side goes to the met screen, an ended one goes home (F2, F8)', async () => {
+  const { matchScreen } = await import('../app/lib/found.js');
+  assert.equal(matchScreen('match', match('m1')), 'match', 'not found yet: stays');
+  assert.equal(matchScreen('match', match('m1', { found: true })), 'mate', 'said found from the wrist: the phone follows');
+  assert.equal(matchScreen('match', match('m1', { foundAt: T + 1 })), 'mate', 'found by both');
+  assert.equal(matchScreen('match', null), 'home', 'the match ended');
+  assert.equal(matchScreen('mate', null), 'home');
+  assert.equal(matchScreen('mate', match('m1', { found: true })), 'mate');
+  assert.equal(matchScreen('wall', null), 'wall', 'other screens are left alone');
+});
+
+test('reportable(): tonight\'s matches to report, live ones first, then any a block ended, each once (F12)', async () => {
+  const { reportable } = await import('../app/lib/found.js');
+  const live = { me: { handle: 'x' }, matches: [match('m1')] };
+  const stored = { m1: match('m1'), m2: match('m2', { name: 'Max' }) };
+  assert.deepEqual(reportable(live, stored).map((m) => m.id), ['m1', 'm2']);
+  assert.deepEqual(reportable({ me: null, matches: [] }, stored).map((m) => m.id), ['m1', 'm2'], 'offline: what the phone kept');
+  assert.deepEqual(reportable(live, {}).map((m) => m.id), ['m1']);
+});
+
+test('F4: arriving names the venue as listed and the act, not a lowercased first word', async () => {
+  const s = store.startNight(store.load(), { id: 'moth-club-kayo-lane', act: 'KAYO LANE', venue: 'Moth Club, Hackney' });
+  assert.equal(store.tonight(s).events[0].text, 'arrived at Moth Club, Hackney for KAYO LANE');
+  const typed = store.startNight(store.load(), { id: 'x', venue: 'The Shacklewell Arms' });
+  assert.equal(store.tonight(typed).events[0].text, 'arrived at The Shacklewell Arms');
+});

@@ -1193,3 +1193,87 @@ test('a page of another site cannot open the socket; this site\'s pages, the wri
     assert.equal(await handshake(origin), 403, JSON.stringify(origin));
   }
 });
+
+// ---------- venue cards (docs/superpowers/specs/2026-10-13-venue-cards-design.md) ----------
+
+const until = async (ok, ms = 3000) => {
+  const end = Date.now() + ms;
+  while (!(await ok())) { if (Date.now() > end) throw new Error('timed out'); await pause(20); }
+};
+const listedNow = async () => (await (await fetch(url('/api/shows'))).json());
+
+test('venue cards: made on the socket, shown in the room, listed after the listed shows, first in wins', async () => {
+  const a = await phone('the lexington');
+  const b = await phone('the lexington');
+  a.send({ t: 'fill', venue: 'The Lexington', lat: 51.531863, lon: -0.110427 });
+  await b.until((v) => v.card?.venue === 'The Lexington');
+  const listed = await listedNow();
+  assert.deepEqual(listed.find((s) => s.id === 'the lexington'), { id: 'the lexington', venue: 'The Lexington', lat: 51.532, lon: -0.11, made: true });
+  assert.ok(listed.findIndex((s) => s.made) > listed.findIndex((s) => !s.made), 'listed shows first');
+  b.send({ t: 'fill', venue: 'Somewhere Else' });
+  await until(() => b.errors.includes('fill taken'));
+  b.send({ t: 'fill', act: 'KAYO LANE' });
+  await a.until((v) => v.card?.act === 'KAYO LANE');
+});
+
+test('venue cards: refused on a listed show, and bad input is refused by name', async () => {
+  const listedId = (await listedNow()).find((s) => !s.made).id;
+  const l = await phone(listedId);
+  l.send({ t: 'fill', venue: 'Mine Now' });
+  await until(() => l.errors.includes('fill listed'));
+  const x = await phone('card bad');
+  x.send({ t: 'fill', venue: 'x'.repeat(81) });
+  await until(() => x.errors.includes('fill bad'));
+});
+
+test('venue cards: past three from one address, the fourth is refused', async () => {
+  const ip = '203.0.113.9';
+  for (const name of ['one', 'two', 'three']) {
+    const p = await phone('card ' + name, { ip });
+    p.send({ t: 'fill', venue: 'Card ' + name });
+    await p.until((v) => v.card?.venue === 'Card ' + name);
+  }
+  const fourth = await phone('card four', { ip });
+  fourth.send({ t: 'fill', venue: 'Card four' });
+  await until(() => fourth.errors.includes('fill limit'));
+});
+
+test('venue cards: two different people saying the venue is wrong take it off the list', async () => {
+  const maker = await phone('card hide');
+  maker.send({ t: 'fill', venue: 'Not Real' });
+  await maker.until((v) => v.card?.venue === 'Not Real');
+  const x = await phone('card hide');
+  const y = await phone('card hide');
+  x.send({ t: 'wrong', field: 'venue' });
+  await pause(100);
+  assert.ok((await listedNow()).some((s) => s.id === 'card hide'), 'one is not enough');
+  y.send({ t: 'wrong', field: 'venue' });
+  await until(async () => !(await listedNow()).some((s) => s.id === 'card hide'));
+});
+
+test('venue cards: the night holds at most cardsMax, counted from the rooms', async () => {
+  const r2 = await createRelay({ port: 0, host: '127.0.0.1', root: join(base, 'dist'), cardsMax: 1 });
+  const h = helpers(() => r2.port);
+  try {
+    const p = await h.phone('first');
+    p.send({ t: 'fill', venue: 'First' });
+    await p.until((v) => v.card?.venue === 'First');
+    const q = await h.phone('second');
+    q.send({ t: 'fill', venue: 'Second' });
+    await until(() => q.errors.includes('fill full'));
+  } finally {
+    h.cleanup();
+    await r2.close();
+  }
+});
+
+test('venue cards: a room with a card is kept when everyone has left it', async () => {
+  const p = await phone('card kept');
+  p.send({ t: 'fill', venue: 'Kept' });
+  await p.until((v) => v.card?.venue === 'Kept');
+  const left = reply(p, 'left');
+  p.send({ t: 'leave' });
+  await left;
+  relay.expire(Date.now());
+  assert.ok((await listedNow()).some((s) => s.id === 'card kept'));
+});

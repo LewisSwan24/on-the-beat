@@ -259,6 +259,7 @@ constexpr Hue CARDS[] = {
   {"hi", {0x4E, 0xD7, 0xF1}, {0x0C, 0x9D, 0xE2}, "HI :)"},
   {"song", {0xF2, 0xD6, 0x5E}, {0xC7, 0x9A, 0x1E}, "FIRST SONG?"},
   {"dance", {0xDA, 0x8C, 0xF2}, {0xA9, 0x3F, 0xD9}, "LET'S DANCE!"},
+  {"guess", {0x8F, 0xB4, 0xFF}, {0x4F, 0x7F, 0xE0}, "LET'S GUESS!"},
 };
 constexpr size_t CARD_COUNT = sizeof(CARDS) / sizeof(CARDS[0]);
 
@@ -318,10 +319,11 @@ struct Show {
   std::string armed;      // hi | song | dance, or empty for none
   int64_t rev = 0;        // the state it was made from: a choice names it back as its basis
   std::string closed;     // the cards the venue closed tonight, as the relay lists them ("song,dance"); empty for none
+  std::string was;        // in NOT NOW, the card one SIDE hold comes back to (N3); empty for none
   bool operator==(const Show& o) const {
     return kind == o.kind && intent == o.intent && big == o.big && small == o.small && code == o.code &&
            dim == o.dim && quiet == o.quiet && away == o.away && hasArmed == o.hasArmed && armed == o.armed &&
-           rev == o.rev && closed == o.closed;
+           rev == o.rev && closed == o.closed && was == o.was;
   }
   bool operator!=(const Show& o) const { return !(*this == o); }
 };
@@ -622,6 +624,7 @@ inline bool readFrame(const std::string& text, Frame& f) {
       if (k == "small") return text_(s.small, 128);
       if (k == "code") return text_(s.code, 8);
       if (k == "closed") return text_(s.closed, 64);
+      if (k == "was") return text_(s.was, 16);
       if (k == "dim") return flag(s.dim);
       if (k == "quiet") return flag(s.quiet);
       if (k == "away") return flag(s.away);
@@ -1010,7 +1013,8 @@ class Rejoin {
       since_ = now;
       return false;
     }
-    if (now - since_ < REJOIN_MS) return false;
+    // Signed: begun a moment after the loop read `now` is not 49 days ago.
+    if (static_cast<int32_t>(now - since_) < static_cast<int32_t>(REJOIN_MS)) return false;
     since_ = now;
     return true;
   }
@@ -1019,6 +1023,81 @@ class Rejoin {
 
  private:
   uint32_t since_ = 0;
+};
+
+// ---------- the networks it knows ----------
+//
+// A band handed from one person to another keeps the Wi-Fi it knew: on 13 Oct 2026 a band set up to a teammate's
+// hotspot came back to its owner and showed NO WI-FI, its built-in network forgotten. So it knows a few: those set on
+// it (from a phone in setup, or at the console), newest first, and the one it was built with, last.
+
+constexpr size_t NETS_KEPT = 3;  // networks set on a band that it keeps, beside the one it was built with
+
+struct KnownNet {
+  std::string ssid, pass;
+};
+
+class Nets {
+ public:
+  explicit Nets(KnownNet built) : built_(std::move(built)) {}
+
+  /** Set on the band: to the front, with this password, and kept once; the oldest goes past NETS_KEPT. */
+  void add(const std::string& ssid, const std::string& pass) {
+    if (ssid.empty()) return;
+    for (size_t i = 0; i < set_.size(); ++i)
+      if (set_[i].ssid == ssid) {
+        set_.erase(set_.begin() + static_cast<std::ptrdiff_t>(i));
+        break;
+      }
+    set_.insert(set_.begin(), {ssid, pass});
+    if (set_.size() > NETS_KEPT) set_.resize(NETS_KEPT);
+  }
+  /** The console's `pass`: for the newest network set, or the built one when none is. */
+  void setNewestPass(const std::string& pass) {
+    if (set_.empty()) add(built_.ssid, pass);
+    else set_[0].pass = pass;
+  }
+  void forgetAll() { set_.clear(); }
+  /** Those set on it, newest first. */
+  const std::vector<KnownNet>& set() const { return set_; }
+  /** Every network it may join, in the order it prefers them: those set on it, then the built one if not among them. */
+  std::vector<KnownNet> all() const {
+    std::vector<KnownNet> out = set_;
+    if (built_.ssid.empty()) return out;
+    for (const KnownNet& n : set_)
+      if (n.ssid == built_.ssid) return out;
+    out.push_back(built_);
+    return out;
+  }
+  /** Their names, as the console says them: "cimi, Y70". */
+  std::string names() const {
+    std::string s;
+    for (const KnownNet& n : all()) s += (s.empty() ? "" : ", ") + n.ssid;
+    return s;
+  }
+  /**
+   * Which of all() to join, from the names a scan heard: the first one near, or after `failed` (the index of a try
+   * that did not join, -1 for none) the next one near, round to the start. None near, -1.
+   */
+  int pick(const std::vector<std::string>& seen, int failed) const {
+    const std::vector<KnownNet> known = all();
+    const int count = static_cast<int>(known.size());
+    for (int k = 1; k <= count; ++k) {
+      const int i = (failed + k) % count;
+      for (const std::string& s : seen)
+        if (s == known[static_cast<size_t>(i)].ssid) return i;
+    }
+    return -1;
+  }
+  /** None heard: the one after `failed`, round to the start, blind; a hidden network is never heard by name. */
+  int next(int failed) const {
+    const int count = static_cast<int>(all().size());
+    return count ? (failed + 1) % count : -1;
+  }
+
+ private:
+  KnownNet built_;
+  std::vector<KnownNet> set_;
 };
 
 // ---------- where the relay is ----------
@@ -1496,6 +1575,16 @@ inline std::string cardAfter(const std::string& card, const std::string& closed 
   for (size_t i = 0; i < order.size(); ++i)
     if (order[i] == card) return order[(i + 1) % order.size()];
   return order[0];
+}
+
+/**
+ * The card one SIDE out of NOT NOW comes back on (N3): the one the person had, when the show names it and it is still
+ * open, or else the first open card. wrist.js backTo() is its twin.
+ */
+inline std::string backTo(const std::string& was, const std::string& closed = "") {
+  for (size_t i = 0; i < CARD_COUNT; ++i)
+    if (was == CARDS[i].id && !closedIn(closed, was)) return was;
+  return cardAfter("off", closed);
 }
 
 /** What the screen shows: two lines on one field, the backlight, the KEEP HOLDING bar, and letters to draw with their QR. */
@@ -2218,7 +2307,7 @@ class Wrist {
     if (mode_ == LOOK) {
       const std::string cur = current();
       fromQuiet_ = cur == "notnow";
-      preview_ = cardAfter(fromQuiet_ ? "off" : cur, show_.closed);   // out of NOT NOW: the first open card
+      preview_ = fromQuiet_ ? backTo(show_.was, show_.closed) : cardAfter(cur, show_.closed);   // out of NOT NOW: the card they had
       mode_ = CHOOSING;
       stepAt_ = now;
       return;
@@ -2239,9 +2328,21 @@ class Wrist {
     }
     if (mode_ == CHOOSING) commit(now, true);
     else if (mode_ == WAVES) waveBack(now);
-    else if (mode_ == LOOK) stepAt_ = now;
+    else if (mode_ == LOOK) { if (!comeBack(now)) stepAt_ = now; }
     else if ((mode_ == REST || mode_ == RESULT) && meetingFace(now)) sayFound(now);
-    else if (mode_ == REST || mode_ == RESULT) step(now);
+    else if (mode_ == REST || mode_ == RESULT) { step(now); if (mode_ == LOOK) comeBack(now); }
+  }
+
+  /**
+   * In NOT NOW one SIDE hold comes back, as the phone says (F11): the card they had (N3), or else the first open
+   * card, sent at once. Stray presses still only look, and a NOT NOW the relay has not yet heard is not undone by the next hold.
+   */
+  bool comeBack(uint32_t now) {
+    if (current() != "notnow" || quiet_.dark()) return false;
+    step(now);
+    if (mode_ != CHOOSING) return false;
+    commit(now, true);
+    return true;
   }
 
   std::string key_, id_, secret_, air_;
@@ -2654,7 +2755,8 @@ constexpr char TAIL[] = "</main></body></html>";
  * heard over the air, so every one is escaped: a network called <script> is
  * only words. The password it has now is never put in the page.
  */
-inline std::string setupPage(const std::vector<SeenNet>& seen, const std::string& now, const std::string& note) {
+inline std::string setupPage(const std::vector<SeenNet>& seen, const std::string& now, const std::string& note,
+                             const std::vector<std::string>& knows = {}) {
   std::string h = setup_page::HEAD;
   h += "<h1>Wristband Wi-Fi</h1><p>Pick the Wi-Fi this wristband joins. It needs 2.4 GHz, with a password or "
        "open, and no page to sign in on: a phone's hotspot works, a school's or a hotel's sign-in Wi-Fi does not.</p>";
@@ -2671,7 +2773,12 @@ inline std::string setupPage(const std::vector<SeenNet>& seen, const std::string
        "<label>Password<input name=pass type=password maxlength=64 autocomplete=off></label>"
        "<button>SAVE AND RESTART</button></form>"
        "<form method=post action=/scan><button class=again>LOOK AGAIN</button></form>";
-  h += "<p class=small>" + (now.empty() ? std::string("It has no Wi-Fi yet.") : "It joins " + htmlEscape(now) + " now.") +
+  std::string known;
+  for (const std::string& k : knows) known += (known.empty() ? "" : ", ") + htmlEscape(k);
+  h += "<p class=small>" +
+       (knows.size() > 1 ? "It knows " + known + ", and joins the first of them that is near."
+        : now.empty()    ? std::string("It has no Wi-Fi yet.")
+                         : "It joins " + htmlEscape(now) + " now.") +
        " A press on either of its buttons leaves this without changing anything.</p>";
   return h + setup_page::TAIL;
 }

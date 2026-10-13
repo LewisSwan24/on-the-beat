@@ -11,10 +11,11 @@ https://github.com/user-attachments/assets/87d6690f-96b9-4829-8848-19cd1f69d0fc
 
 </details>
 
-A phone app for one night at one venue. You arm one of three cards — **SAY HI**
+A phone app for one night at one venue. You arm one of four cards — **SAY HI**
 (your screen turns blue: hello), **FIRST SONG?** (pick the opening track and
 like other people's picks), **LET'S DANCE!** (five seconds of you dancing, on a
-shared floor) — and when two people both say yes, and only then, each learns
+shared floor), **LET'S GUESS!** (tonight's quiz: answer it, then team up with
+someone else who finished) — and when two people both say yes, and only then, each learns
 the other's first name and where to meet. It is built from the Claude Design
 canvas `On The Beat.dc.html`; the canvas is the design, this is the working
 thing.
@@ -70,6 +71,7 @@ floor, a notice to every phone, moved set times, and naming the opening song.
 | [docs/how-it-works.md](docs/how-it-works.md) | the four promises and where each is kept, how the relay and app are built |
 | [docs/staff-page.md](docs/staff-page.md) | the staff page, sign-in and notifications |
 | [docs/wristband.md](docs/wristband.md) | the wristband and its firmware: pairing, waves, meeting, markers, power |
+| [docs/wristband-guide.md](docs/wristband-guide.md) | the wristband, step by step: turning it on, Wi-Fi, pairing, every button, trouble |
 | [docs/canvas.md](docs/canvas.md) | where this build differs from the design canvas, on purpose |
 | [docs/abuse-resistance.md](docs/abuse-resistance.md) | every guard against misuse, each with its test |
 | [docs/not-done.md](docs/not-done.md) | known limits and capacity numbers |

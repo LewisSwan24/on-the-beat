@@ -21,6 +21,7 @@ export function load() {
     contact: typeof s.contact === 'string' ? s.contact : '',
     promisesSeen: !!s.promisesSeen,
     bandSound: s.bandSound !== false,   // the wristband's sound switch: the person's own, on unless kept off
+    guideSeen: s.guideSeen === true,   // the wristband guide's practice, once run or put off: kept for good
     nights: s.nights && typeof s.nights === 'object' ? s.nights : {},
     kept: Array.isArray(s.kept) ? s.kept : [],
   };
@@ -50,14 +51,15 @@ export function startNight(s, show) {
   // same night on the record.
   const night = same ? { ...was, show } : {
     me: hex(16), show, state: {},
-    events: [...(was?.events || []), { at: Date.now(), kind: 'arrived', text: 'arrived at ' + placeOf(show) }],
+    events: [...(was?.events || []), { at: Date.now(), kind: 'arrived', text: arrivedAt(show) }],
     matches: was?.matches || {},
   };
   return { ...s, nights: { ...s.nights, [key]: { ...night, left: false, leaving: false } } };
 }
 
 /** "The Roundhouse, Camden" -> "the roundhouse" */
-export const placeOf = (show) => String(show?.venue || show?.act || 'the venue').split(',')[0].trim().toLowerCase();
+/** Tonight's first line names the venue as listed, and the act when there is one (F4). */
+export const arrivedAt = (show) => 'arrived at ' + String(show?.venue || 'the venue').trim() + (show?.act && show?.venue ? ' for ' + show.act : '');
 
 export function addEvent(s, kind, text, at = Date.now()) {
   const key = tonightKey();

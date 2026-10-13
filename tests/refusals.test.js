@@ -21,3 +21,10 @@ test('the app speaks its refusals through that lookup, not one by one', () => {
   assert.match(app, /refusalWords\(m\)/);
   assert.doesNotMatch(app, /why === 'clip refused'/);
 });
+
+test('every refusal of a venue card fill is spoken, each in its own words', async () => {
+  const { WHERE } = await import('../app/copy.js');
+  for (const why of ['taken', 'limit', 'full', 'listed', 'bad']) {
+    assert.equal(refusalWords({ t: 'error', why: 'fill ' + why }), WHERE[why], why);
+  }
+});

@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoom, closedOf, BANDS, MARKS, HEARD_MS } from '../relay/room.js';
+import { createRoom, closedOf, BANDS, MARKS, HEARD_MS, PRACTICE_MS } from '../relay/room.js';
 
 let channel = 1;
 /**
@@ -264,6 +264,106 @@ test('NOT NOW: an invisible person is in nobody\'s lists and sees nobody', () =>
   assert.equal(room.viewFor('ben').wall.length, 1, 'and it comes back only when she turns it on');
 });
 
+test('N3: coming back from NOT NOW puts back the card you had, and only you are told which', () => {
+  const { room } = night();
+  room.arm('ana', 'dance');
+  room.setInvisible('ana', true, 'band');
+  assert.equal(room.viewFor('ana').me.armed, null, 'NOT NOW still disarms');
+  assert.equal(room.viewFor('ana').me.was, 'dance', 'her own view says what she will come back to');
+  assert.equal(room.viewFor('ben').me.was, null, 'nobody else has one');
+  room.setInvisible('ana', false, 'phone');
+  assert.equal(room.viewFor('ana').me.armed, 'dance', 'TURN BACK ON comes back on it');
+  assert.equal(room.viewFor('ana').me.invisible, false);
+  assert.equal(room.viewFor('ana').me.was, null, 'and is spent');
+});
+
+test('N3: nothing to come back to after choosing OFF, after arming another card, or with no card before', () => {
+  const { room } = night();
+  room.setInvisible('ana', true);
+  room.setInvisible('ana', false);
+  assert.equal(room.viewFor('ana').me.armed, null, 'no card before, none after');
+  room.arm('ana', 'song');
+  room.setInvisible('ana', true);
+  room.arm('ana', null);   // the card turned off while invisible, as a phone with no signal queues it
+  room.setInvisible('ana', false);
+  assert.equal(room.viewFor('ana').me.armed, null, 'OFF chosen meanwhile is kept');
+  room.arm('ana', 'song');
+  room.setInvisible('ana', true);
+  room.arm('ana', 'hi', 'band');   // the wrist chose another card on the way back
+  assert.equal(room.viewFor('ana').me.armed, 'hi');
+  assert.equal(room.viewFor('ana').me.was, null);
+});
+
+test('N3: a card the venue closed meanwhile is not come back to', () => {
+  const { room } = night();
+  room.arm('ana', 'dance');
+  room.setInvisible('ana', true);
+  room.setClosed(['dance']);
+  assert.equal(room.viewFor('ana').me.was, null, 'a closed card is not offered');
+  room.setInvisible('ana', false);
+  assert.equal(room.viewFor('ana').me.armed, null);
+  assert.equal(room.viewFor('ana').me.invisible, false);
+});
+
+test('N3: what NOT NOW will come back to is kept across a restart', () => {
+  const { room } = night();
+  room.arm('ana', 'song');
+  room.setInvisible('ana', true);
+  const again = createRoom({ restore: JSON.parse(JSON.stringify(room.dump())) });
+  again.setInvisible('ana', false);
+  assert.equal(again.viewFor('ana').me.armed, 'song');
+});
+
+test('practice: a practising person is on nobody\'s list and sees nobody, and their own view and card are unchanged', () => {
+  const { room, handleOf } = night();
+  room.arm('ana', 'hi');
+  room.pick('ana', 'Grenade');
+  room.arm('ben', 'hi');
+  const old = handleOf('ben', 'ana');
+  const back = handleOf('ana', 'ben');
+  room.setPractice('ana', true);
+  assert.equal(room.viewFor('ana').me.armed, 'hi', 'her card stays');
+  assert.equal(room.viewFor('ana').me.practice, true, 'her own view says she is practising');
+  assert.equal(room.viewFor('ben').me.practice, false, 'nobody else is');
+  assert.deepEqual(room.viewFor('ben').near, []);
+  assert.deepEqual(room.viewFor('ben').wall, []);
+  assert.deepEqual(room.viewFor('ana').near, [], 'she sees nobody');
+  room.wave('ben', old);
+  room.wave('ana', back);
+  assert.deepEqual(room.viewFor('ben').matches, [], 'a handle from before practice reaches nobody');
+  room.setPractice('ana', false);
+  assert.equal(room.viewFor('ben').near.length, 1, 'back on lists once practice ends');
+  assert.equal(room.viewFor('ben').near[0].wavedAtYou, false, 'and, as in NOT NOW, she waved at nobody while hidden');
+});
+
+test('practice ends by itself PRACTICE_MS after it was last said, and is never in the dump', () => {
+  const { room, tick } = night();
+  room.arm('ana', 'hi');
+  room.arm('ben', 'hi');
+  room.setPractice('ana', true);
+  assert.ok(!JSON.stringify(room.dump()).includes('practi'), 'not kept');
+  tick(PRACTICE_MS - 1);
+  assert.equal(room.sweepPractice(), false);
+  assert.deepEqual(room.viewFor('ben').near, []);
+  tick(2);
+  assert.equal(room.viewFor('ben').near.length, 1, 'past its time she shows again, even before a sweep');
+  assert.equal(room.sweepPractice(), true, 'and the sweep says someone ended, so views are pushed');
+  assert.equal(room.sweepPractice(), false);
+});
+
+test('practice is said again to stay on: each true moves its end', () => {
+  const { room, tick } = night();
+  room.arm('ana', 'hi');
+  room.arm('ben', 'hi');
+  room.setPractice('ana', true);
+  tick(PRACTICE_MS - 1000);
+  room.setPractice('ana', true);
+  tick(2000);
+  assert.deepEqual(room.viewFor('ben').near, []);
+  room.setPractice('nobody', true);   // not here: nothing
+  assert.equal(room.viewFor('ana').me.practice, true);
+});
+
 test('a yes needs what its card asks of the one it is for: a pick to like, a dance to dance back to', () => {
   const { room, handleOf } = night();
   room.arm('cai', 'hi');   // so ana and ben have a handle for cai, who has no pick and has not danced
@@ -378,6 +478,29 @@ test('block is silent and both ways, and ends a match', () => {
   assert.deepEqual(room.viewFor('ana').near, [], 'ben is gone from ana');
   assert.deepEqual(room.viewFor('ben').near, [], 'and ana from ben');
   assert.equal(JSON.stringify(room.viewFor('ana')).includes('block'), false, 'nothing tells ana why');
+});
+
+test('F12: blocked on a match, ana can still report ben by that match id; nobody else can, and it survives a restart', () => {
+  const { room, handleOf } = night();
+  const m = meet(room, handleOf, 'ana', 'ben');
+  room.block('ben', m.id);
+  assert.equal(room.report('ana', m.id, 'followed me after'), true, 'the one blocked can still report the blocker');
+  assert.equal(room.dump().reports.at(-1).about, 'ben');
+  assert.equal(room.report('cai', m.id, 'x'), false, 'a match id is only theirs');
+  const back = createRoom({ now: () => Date.UTC(2026, 8, 23, 11, 30), salt: 'test', restore: JSON.parse(JSON.stringify(room.dump())) });
+  assert.equal(back.report('ana', m.id, 'again'), true, 'kept across a restart');
+  back.forgetPerson('ben');
+  assert.equal(back.report('ana', m.id, 'x'), false, 'a person forgotten takes it with them');
+});
+
+test('F1: a pick made after the match (PICK ONE) shows on the match, on both sides', () => {
+  const { room, handleOf } = night();
+  meet(room, handleOf, 'ana', 'ben');
+  room.pick('ana', 'Teardrop');
+  assert.equal(room.viewFor('ana').matches[0].yourPick, 'Teardrop');
+  assert.equal(room.viewFor('ben').matches[0].pick, 'Teardrop');
+  room.pick('ana', 'Treasure');
+  assert.equal(room.viewFor('ben').matches[0].pick, 'Teardrop', 'a match keeps the track it first had');
 });
 
 test('a block outlives leaving the room — a phone that slept does not come back unblocked', () => {
@@ -729,7 +852,7 @@ test('a notice and moved times are carried across a restart; a dump from before 
 test('staff close only cards there are, never all of them; [] opens them all again', () => {
   assert.deepEqual(closedOf(['dance', 'hi', 'dance']), ['hi', 'dance'], 'each once, in the table order');
   assert.deepEqual(closedOf([]), []);
-  for (const bad of [['hi', 'song', 'dance'], ['nope'], 'hi', null, [1], ['constructor']]) assert.equal(closedOf(bad), null);
+  for (const bad of [['hi', 'song', 'dance', 'guess'], ['nope'], 'hi', null, [1], ['constructor']]) assert.equal(closedOf(bad), null);
 });
 
 test('a closed card: whoever showed it goes off, it cannot be armed, it lists nobody and takes no yes', () => {

@@ -14,9 +14,10 @@ import { INTENT_OF } from '../app/lib/follow.js';
 import { CONSTS, lit } from '../app/lib/wrist.js';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
+const QUIZ = JSON.parse(read('./fixtures/quiz.json'));
 
-test('the cards are the canvas three, in its order, and what the relay lets you arm', () => {
-  assert.deepEqual(INTENTS, ['hi', 'song', 'dance']);
+test('the cards are the canvas three and LET\'S GUESS, in order, and what the relay lets you arm', () => {
+  assert.deepEqual(INTENTS, ['hi', 'song', 'dance', 'guess']);
   assert.equal(ROOM_INTENTS, INTENTS);
   assert.equal(new Set(INTENTS).size, INTENTS.length, 'no id twice');
   for (const c of CARDS) assert.equal(cardOf(c.id), c);
@@ -37,7 +38,7 @@ test('every card has its words, its icon and its screens on the phone', () => {
     for (const s of card.screens) assert.equal(INTENT_OF[s], c.id, s + ' belongs to ' + c.id);
   }
   assert.equal(Object.keys(INTENT_OF).length, CARDS.reduce((n, c) => n + c.screens.length, 0), 'no screen in two cards');
-  assert.deepEqual(INTENT_OF, { beacon: 'hi', near: 'hi', pick: 'song', wall: 'song', camera: 'dance', floor: 'dance' }, 'each of the canvas screens, in its card');
+  assert.deepEqual(INTENT_OF, { beacon: 'hi', near: 'hi', pick: 'song', wall: 'song', camera: 'dance', floor: 'dance', quiz: 'guess', teams: 'guess' }, 'each screen, in its card');
   assert.deepEqual(home.find((c) => c.id === 'dance').armed[1], 'your fav Bruno’s piece!');
 });
 
@@ -74,6 +75,7 @@ const YES = {
   hi: { ready: () => {}, send: (room, a, h) => room.wave(a, h) },
   song: { ready: (room, a) => room.pick(a, 'Treasure'), send: (room, a, h) => room.like(a, h) },
   dance: { ready: (room, a) => room.postClip(a, 'clip-' + a), send: (room, a, h) => room.danceBack(a, h, 'back-' + a) },
+  guess: { ready: (room, a) => QUIZ.forEach((x, q) => room.answer(a, q, x.answer)), send: (room, a, h) => room.team(a, h) },
 };
 
 test('every card has its yes in the room, its own list on the phone, and a yes each way is its match', () => {
@@ -81,7 +83,7 @@ test('every card has its yes in the room, its own list on the phone, and a yes e
   assert.deepEqual(Object.keys(YES), INTENTS, 'this test knows every card');
   const lists = new Set();
   for (const id of INTENTS) {
-    const room = createRoom({ salt: 'c' });
+    const room = createRoom({ salt: 'c', quiz: QUIZ });
     for (const p of ['ana', 'ben']) {
       room.join(p);
       room.arm(p, id);

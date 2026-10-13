@@ -8,6 +8,30 @@ import { MEET_MS } from '../../relay/band.js';
 import { matchName } from '../copy.js';
 import { hhmm } from './phase.js';
 
+/**
+ * The match a screen shows: the relay's live copy. A live view without it means the match is over — a block
+ * from either side ends it — so nothing is shown, as the band shows nothing. Before any view, the stored copy.
+ */
+export const shownMatch = (view, stored, id) => {
+  if (!id) return null;
+  if (view?.me) return (view.matches || []).find((m) => m.id === id) || null;
+  return stored?.[id] || null;
+};
+
+/** Tonight's matches a report can be about: the live ones, then any a block ended (the relay still takes those, F12). */
+export const reportable = (view, stored) => {
+  const live = view?.matches || [];
+  const ids = new Set(live.map((m) => m.id));
+  return [...live, ...Object.values(stored || {}).filter((m) => !ids.has(m.id))];
+};
+
+/** Where a meeting's screen goes as it is answered: found on either side moves on to S11; an ended one goes home. */
+export const matchScreen = (screen, m) => {
+  if (screen !== 'match' && screen !== 'mate') return screen;
+  if (!m) return 'home';
+  return screen === 'match' && (m.found || m.foundAt) ? 'mate' : screen;
+};
+
 /** S11 shows the number to look for while the meeting is on: under MEET_MS old, and not yet found by both. */
 export const meetingOn = (m, now = Date.now()) => !m.foundAt && now - m.at < MEET_MS;
 

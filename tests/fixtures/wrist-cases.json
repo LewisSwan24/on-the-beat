@@ -95,12 +95,13 @@
         { "at": "1000", "press": 2, "face": { "small": "SIDE TO CHANGE" } },
         { "at": "2000", "press": 2, "face": { "big": "FIRST SONG?", "small": "SIDE: NEXT", "field": "black", "ink": "song", "light": "LIGHT_AWAKE" } },
         { "at": "3000", "press": 2, "face": { "big": "LET'S DANCE!", "ink": "dance" } },
-        { "at": "4000", "press": 2, "face": { "big": "OFF", "small": "SIDE: NEXT", "ink": "text2" } },
-        { "at": "4100+COMMIT_MS-1", "face": { "big": "OFF", "small": "SIDE: NEXT" } },
-        { "at": "4100+COMMIT_MS", "sent": [{ "t": "set", "intent": null, "basis": 3 }], "face": { "big": "OFF", "small": "SENDING" } },
-        { "at": "7500", "show": "OFF", "rev": 4, "sounds": ["up"], "face": { "big": "", "field": "white", "light": "LIGHT_FULL" } },
-        { "at": "7500+500", "face": { "big": "READY", "small": "SET", "light": "LIGHT_AWAKE" } },
-        { "at": "7500+RESULT_MS", "face": { "big": "", "light": "LIGHT_OFF" } }
+        { "at": "4000", "press": 2, "face": { "big": "LET'S GUESS!", "ink": "guess" } },
+        { "at": "5000", "press": 2, "face": { "big": "OFF", "small": "SIDE: NEXT", "ink": "text2" } },
+        { "at": "5100+COMMIT_MS-1", "face": { "big": "OFF", "small": "SIDE: NEXT" } },
+        { "at": "5100+COMMIT_MS", "sent": [{ "t": "set", "intent": null, "basis": 3 }], "face": { "big": "OFF", "small": "SENDING" } },
+        { "at": "8500", "show": "OFF", "rev": 4, "sounds": ["up"], "face": { "big": "", "field": "white", "light": "LIGHT_FULL" } },
+        { "at": "8500+500", "face": { "big": "READY", "small": "SET", "light": "LIGHT_AWAKE" } },
+        { "at": "8500+RESULT_MS", "face": { "big": "", "light": "LIGHT_OFF" } }
       ]
     },
     {
@@ -128,6 +129,7 @@
         { "at": "2000", "press": 2, "face": { "big": "HI :)" } },
         { "at": "2500", "press": 2, "face": { "big": "FIRST SONG?" } },
         { "at": "3000", "press": 2, "face": { "big": "LET'S DANCE!" } },
+        { "at": "3250", "press": 2, "face": { "big": "LET'S GUESS!" } },
         { "at": "3500", "press": 2, "face": { "big": "OFF" } },
         { "at": "3600+COMMIT_MS", "face": { "big": "READY", "small": "62%" } }
       ]
@@ -372,11 +374,12 @@
         { "at": "1000", "press": 2, "face": { "big": "HI :)", "small": "SIDE TO CHANGE" } },
         { "at": "2000", "press": 2 },
         { "at": "3000", "press": 2 },
-        { "at": "4000", "press": 2, "face": { "big": "OFF" } },
-        { "at": "5000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT" } },
-        { "at": "6000", "key2": "down", "sounds": ["tick"] },
-        { "at": "6000+HOLD_MS", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "light": "LIGHT_FULL" } },
-        { "at": "6000+HOLD_MS", "key2": "up" }
+        { "at": "4000", "press": 2, "face": { "big": "LET'S GUESS!" } },
+        { "at": "5000", "press": 2, "face": { "big": "OFF" } },
+        { "at": "6000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT" } },
+        { "at": "7000", "key2": "down", "sounds": ["tick"] },
+        { "at": "7000+HOLD_MS", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "light": "LIGHT_FULL" } },
+        { "at": "7000+HOLD_MS", "key2": "up" }
       ]
     },
     {
@@ -1465,17 +1468,18 @@
       ]
     },
     {
-      "name": "a card the venue closed tonight is stepped over: from OFF, SAY HI, then LET'S DANCE!, then OFF; one chosen is sent",
+      "name": "a card the venue closed tonight is stepped over: from OFF, SAY HI, then LET'S DANCE!, then LET'S GUESS!, then OFF; one chosen is sent",
       "steps": [
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
         { "at": "0", "show": "OFF", "rev": 3, "with": { "closed": "song" } },
         { "at": "1000", "press": 2, "face": { "small": "SIDE TO CHANGE" } },
         { "at": "2000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT", "ink": "hi" } },
         { "at": "3000", "press": 2, "face": { "big": "LET'S DANCE!", "small": "SIDE: NEXT", "ink": "dance" } },
-        { "at": "4000", "press": 2, "face": { "big": "OFF", "small": "SIDE: NEXT" } },
-        { "at": "5000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT", "ink": "hi" } },
-        { "at": "6000", "press": 2, "face": { "big": "LET'S DANCE!", "small": "SIDE: NEXT", "ink": "dance" } },
-        { "at": "6100+COMMIT_MS", "sent": [{ "t": "set", "intent": "dance", "basis": 3 }], "face": { "big": "LET'S DANCE!", "small": "SENDING" } }
+        { "at": "4000", "press": 2, "face": { "big": "LET'S GUESS!", "small": "SIDE: NEXT", "ink": "guess" } },
+        { "at": "5000", "press": 2, "face": { "big": "OFF", "small": "SIDE: NEXT" } },
+        { "at": "6000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT", "ink": "hi" } },
+        { "at": "7000", "press": 2, "face": { "big": "LET'S DANCE!", "small": "SIDE: NEXT", "ink": "dance" } },
+        { "at": "7100+COMMIT_MS", "sent": [{ "t": "set", "intent": "dance", "basis": 3 }], "face": { "big": "LET'S DANCE!", "small": "SENDING" } }
       ]
     },
     {
@@ -1488,6 +1492,67 @@
         { "at": "3000", "key2": "down" },
         { "at": "3000+HOLD_MS", "sent": [{ "t": "set", "intent": "song", "basis": 6 }], "face": { "big": "FIRST SONG?", "small": "SENDING" } },
         { "at": "3000+HOLD_MS", "key2": "up" }
+      ]
+    },
+    {
+      "name": "F11: in NOT NOW one SIDE hold comes back, as the phone says: from the dark face, the first open card is sent at once",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "QUIET", "rev": 6, "with": { "closed": "hi" } },
+        { "at": "1000", "key2": "down" },
+        { "at": "1000+HOLD_MS", "sent": [{ "t": "set", "intent": "song", "basis": 6 }], "face": { "big": "FIRST SONG?", "small": "SENDING" } },
+        { "at": "1000+HOLD_MS", "key2": "up" }
+      ]
+    },
+    {
+      "name": "F11: in NOT NOW a SIDE hold on the NOT NOW face comes back too",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "QUIET", "rev": 6 },
+        { "at": "1000", "press": 2, "face": { "big": "NOT NOW", "small": "SIDE TO CHANGE" }, "downSounds": [] },
+        { "at": "2000", "key2": "down" },
+        { "at": "2000+HOLD_MS", "sent": [{ "t": "set", "intent": "hi", "basis": 6 }], "face": { "big": "HI :)", "small": "SENDING" } },
+        { "at": "2000+HOLD_MS", "key2": "up" }
+      ]
+    },
+    {
+      "name": "N3: in NOT NOW one SIDE hold comes back on the card the person had, when the show names it",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "QUIET", "rev": 6, "with": { "was": "dance" } },
+        { "at": "1000", "key2": "down" },
+        { "at": "1000+HOLD_MS", "sent": [{ "t": "set", "intent": "dance", "basis": 6 }], "face": { "big": "LET'S DANCE!", "small": "SENDING" } },
+        { "at": "1000+HOLD_MS", "key2": "up" }
+      ]
+    },
+    {
+      "name": "N3: out of NOT NOW the first step is the card the person had, and the next steps on from it",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "QUIET", "rev": 6, "with": { "was": "song" } },
+        { "at": "1000", "press": 2, "face": { "big": "NOT NOW", "small": "SIDE TO CHANGE" }, "downSounds": [] },
+        { "at": "2000", "press": 2, "face": { "big": "FIRST SONG?", "small": "HOLD SIDE TO SHOW", "ink": "song" }, "downSounds": [] },
+        { "at": "3000", "press": 2, "face": { "big": "LET'S DANCE!", "small": "HOLD SIDE TO SHOW", "ink": "dance" }, "downSounds": [] }
+      ]
+    },
+    {
+      "name": "N3: a card the person had that the venue has since closed comes back on the first open one",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "QUIET", "rev": 6, "with": { "was": "song", "closed": "song" } },
+        { "at": "1000", "key2": "down" },
+        { "at": "1000+HOLD_MS", "sent": [{ "t": "set", "intent": "hi", "basis": 6 }], "face": { "big": "HI :)", "small": "SENDING" } },
+        { "at": "1000+HOLD_MS", "key2": "up" }
+      ]
+    },
+    {
+      "name": "N3: a was that names no card is read as none: the first open card",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "QUIET", "rev": 7, "with": { "was": "meet" } },
+        { "at": "1000", "key2": "down" },
+        { "at": "1000+HOLD_MS", "sent": [{ "t": "set", "intent": "hi", "basis": 7 }], "face": { "big": "HI :)", "small": "SENDING" } },
+        { "at": "1000+HOLD_MS", "key2": "up" }
       ]
     },
     {

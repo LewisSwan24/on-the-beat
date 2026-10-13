@@ -34,7 +34,30 @@ test('a show that runs past midnight is still tonight, and so is the walk home',
   assert.equal(nightOf(at(6, 0, 24)), '2026-09-24', 'six is a new day');
 });
 
-test('a venue nobody listed gets an ordinary evening', () => {
-  assert.equal(phaseOf({ act: 'THE LANTERN' }, at(21, 45)), 'HEADLINE');
-  assert.equal(timesLine({}), 'Doors 19:00 · Support 20:00 · Headline 21:30');
+test('a venue nobody listed gets an ordinary evening inside, but never shows a time nobody gave (N1)', () => {
+  assert.equal(phaseOf({ act: 'THE LANTERN' }, at(21, 45)), 'HEADLINE', 'the phase still runs on an ordinary evening');
+  assert.equal(timesLine({}), 'no times yet');
+  assert.equal(timesLine({ act: 'THE LANTERN' }), 'no times yet');
+  assert.equal(phaseLine({ act: 'THE LANTERN' }, at(13, 13)), 'no times yet');
+  assert.equal(phaseLine({ act: 'THE LANTERN' }, at(21, 45)), 'no times yet');
+});
+
+test('N1: with some times given, only those are shown, and no countdown runs to a time nobody gave', () => {
+  assert.equal(timesLine({ headline: '21:00' }), 'Headline 21:00');
+  assert.equal(timesLine({ doors: '19:30', headline: '21:00' }), 'Doors 19:30 · Headline 21:00');
+  // Doors given, support not: open, but no "support in" to an invented 20:00.
+  assert.equal(phaseLine({ doors: '19:30' }, at(19, 40)), 'DOORS OPEN');
+  assert.equal(phaseLine({ doors: '19:30' }, at(18, 0)), 'DOORS · open at 19:30');
+  // Doors not given: before an invented doors there is nothing to say "open at".
+  assert.equal(phaseLine({ headline: '21:00' }, at(18, 0)), 'DOORS');
+  assert.equal(phaseLine({ headline: '21:00' }, at(20, 50)), 'BREAK · headline in 10 min', 'a countdown to a given time stands');
+  assert.equal(phaseLine({ support: '20:00' }, at(20, 10)), 'SUPPORT ACT', 'no break given, no countdown to one');
+});
+
+test('F4: whereLine() names the act and the venue as listed, so the phone says where you are after joining', async () => {
+  const { whereLine } = await import('../app/lib/phase.js');
+  assert.equal(whereLine({ act: 'KAYO LANE', venue: 'Moth Club, Hackney' }), 'KAYO LANE · Moth Club, Hackney');
+  assert.equal(whereLine({ venue: 'Moth Club, Hackney' }), 'Moth Club, Hackney');
+  assert.equal(whereLine({ act: 'KAYO LANE' }), 'KAYO LANE');
+  assert.equal(whereLine(null), '');
 });

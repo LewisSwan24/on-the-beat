@@ -24,6 +24,7 @@ import { originAllowed } from './origin.js';
 import { checkCode, entryPrint, isEntry } from './staff.js';
 import { openClips, openNight } from './store.js';
 import { createPusher, isPushService, loadKeys, subscriptionOf } from './push.js';
+import { quizFault, quizOf, withoutQuiz } from './quiz.js';
 
 export const WS_PATH = '/api/ws';
 export const PAIR_CHECK_MS = 60_000;          // a pending pairing waits this long for YES
@@ -31,6 +32,8 @@ export const BAND_ALONE_MS = 60 * 60_000;     // a wristband alone holds its per
 export const GRACE_MS = 120_000;              // a locked screen is not leaving
 export const HEARD_GAP_MS = 5000;             // a wristband may say what it heard at most this often (near spec §2)
 export const PUSH_EVERY_MS = 10_000;          // a venue's staff devices hear of new reports at most this often
+export const CARDS_PER_ADDRESS = 3;           // venue cards one network may make a night (venue cards spec §1)
+export const CARDS_MAX = 200;                 // venue cards the relay holds a night
 const MAX_FRAME = 1_600_000;          // a five-second clip, base64, with room to spare
 const CLIP_MAX = 1_200_000;           // bytes of video per clip
 // Every room's clips together, the oldest going first. Fly's machine gives the process 207 MB, and a store of 96 MB was too much
@@ -158,7 +161,18 @@ const showFault = (s) => {
   if (key !== s.id) return `the id "${shown(s.id)}" should read "${shown(key)}"`;
   for (const f of SHOW_TEXT) if (s[f] != null && typeof s[f] !== 'string') return `"${f}" must be text`;
   for (const f of SHOW_LISTS) if (s[f] != null && !(Array.isArray(s[f]) && s[f].every((x) => typeof x === 'string'))) return `"${f}" must be a list of text`;
+  // Where the venue is, for phones that sort tonight's rooms by distance (docs/superpowers/specs/2026-10-13-venue-cards-design.md).
+  for (const f of ['lat', 'lon']) if (s[f] != null && !(typeof s[f] === 'number' && Number.isFinite(s[f]))) return `"${f}" must be a number`;
   return '';
+};
+
+/** A show with its quiz as the relay keeps it, or with none: a quiz that breaks a rule is dropped and said, and the show stands. */
+const quizChecked = (s, say, file) => {
+  if (s.quiz == null) return withoutQuiz(s);
+  const fault = quizFault(s.quiz);
+  if (!fault) return { ...s, quiz: quizOf(s.quiz) };
+  say(`shows: the quiz of "${shown(s.id)}" in ${file} dropped: ${fault}`);
+  return withoutQuiz(s);
 };
 
 /** A shows file's entries as { all }, or why there are none as { why }. A byte order mark a Windows editor left is not a fault. */
@@ -180,7 +194,7 @@ function readShowsFile(file) {
 
 /** Tonight's shows, as the venue team wrote them. A venue nobody listed still gets a room. Never complains: chooseShows says what is wrong. */
 export function loadShows(file) {
-  return (readShowsFile(file).all ?? []).filter((s) => !showFault(s));
+  return (readShowsFile(file).all ?? []).filter((s) => !showFault(s)).map((s) => quizChecked(s, () => {}, file));
 }
 
 /**
@@ -196,7 +210,7 @@ export function chooseShows(file, bundled, say = (line) => console.log(line)) {
   (read.all ?? []).forEach((s, i) => {
     const fault = showFault(s);
     if (fault) say(`shows: entry ${i + 1} of ${file} dropped: ${fault}`);
-    else kept.push(s);
+    else kept.push(quizChecked(s, say, file));
   });
   if (kept.length) {
     say(`shows: ${kept.length} from ${file}`);
@@ -259,7 +273,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   clock = Date.now, pairCheckMs = PAIR_CHECK_MS, bandAloneMs = BAND_ALONE_MS, graceMs = GRACE_MS, nightTz,
   clientIpHeader, allClipsMax = ALL_CLIPS_MAX, clipEveryMs = CLIP_EVERY_MS, lightsEveryMs = 1000, pushSlack = PUSH_SLACK, pushClock = () => performance.now(), staffTokensMax = STAFF_TOKENS_MAX, staffTokensPerVenue = STAFF_TOKENS_PER_VENUE, staffCodes = process.env.STAFF_CODES, nightFile, saveEveryMs = 1000,
   pushKeysFile, pushAllowed = isPushService, pushEveryMs = PUSH_EVERY_MS, staffCheck = checkCode,
-  loadEveryMs = 0, loadSay = (line) => console.log(line), loadMeter, appCsp = 'full', handlesMax = HANDLES_MAX } = {}) {
+  loadEveryMs = 0, loadSay = (line) => console.log(line), loadMeter, appCsp = 'full', handlesMax = HANDLES_MAX, cardsMax = CARDS_MAX } = {}) {
   const now = () => clock();
   // The handles every room of this relay holds are one budget (relay/room.js, handleLedger), so a venue of any size cannot
   // take the machine's memory with it: past it a handle is worked out each time, and is the same.
@@ -294,19 +308,32 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   // The file SHOWS names (fly.toml points it at the volume) when it holds a usable show, else the list that ships with
   // the relay: a bad file is said in the log and never leaves the relay with none (docs/show-night.md).
   const shows = chooseShows(showsFile ?? process.env.SHOWS, join(here, 'relay', 'shows.json'));
-  const showsJson = JSON.stringify(shows);
+  // A quiz's answers stay here: the list phones are given never carries one (docs/superpowers/specs/2026-10-13-lets-guess-design.md §1).
+  const showsJson = JSON.stringify(shows.map(withoutQuiz));
   // The venue list as phones are given it: a venue whose staff moved tonight's times lists them as moved.
   const showsNow = () => {
     let moved = false;
     const list = shows.map((s) => {
       const t = rooms.get(s.id)?.room.times();
-      if (!t) return s;
+      if (!t) return withoutQuiz(s);
       moved = true;
       const { at: _, ...five } = t;
-      return { ...s, ...five };
+      return { ...withoutQuiz(s), ...five };
     });
-    return moved ? JSON.stringify(list) : showsJson;
+    // Then the rooms the people at unlisted gigs made tonight, but not one two of them said is not a real venue.
+    const cards = [...rooms.values()]
+      .map((r) => [r.key, r.room.card()])
+      .filter(([, c]) => c && !c.hidden)
+      .map(([id, { hidden: _, ...c }]) => ({ id, ...c }));
+    if (!moved && !cards.length) return showsJson;
+    return JSON.stringify([...list, ...cards]);
   };
+  // Venue cards made from each address tonight (spec §1). In memory: a restart starts the count again; the cap of
+  // cardsMax is counted from the rooms, so it holds across one.
+  const cardsFrom = new Map();
+  let cardsNight = null;
+  const listedIds = new Set(shows.map((s) => s.id));
+  const cardsTonight = () => { let n = 0; for (const r of rooms.values()) if (r.room.card()) n += 1; return n; };
   // key -> { room, sockets:Set, clips:Map(ref -> {mime, buf, by, slot, at}), left:Map(id -> timer),
   //          heard:Map(id -> when a phone of theirs last spoke), staff:Set of signed-in staff sockets }
   const rooms = new Map();
@@ -342,6 +369,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     return Array.isArray(show?.spots) && show.spots.length ? show.spots.map(String) : SPOTS;
   }
 
+  /** Tonight's LET'S GUESS questions for a venue, with their answers, or null for a show with none. */
+  function quizFor(key) {
+    return shows.find((s) => s.id === key)?.quiz ?? null;
+  }
+
   function roomFor(key) {
     if (!rooms.has(key)) {
       if (rooms.size >= maxRooms) {
@@ -350,7 +382,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       }
       // sound: each person's sound switch, as their phone last said it. Leaving forgets it; the grace does not.
       // The room reads the relay's clock: a wave's number is the time it was made, so it only goes up.
-      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), now, ledger: handles }), sockets: new Set(), clips: new Clips(), left: new Map(), heard: new Map(), sound: new Map(), staff: new Set() });
+      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), quiz: quizFor(key), now, ledger: handles }), sockets: new Set(), clips: new Clips(), left: new Map(), heard: new Map(), sound: new Map(), staff: new Set() });
     }
     return rooms.get(key);
   }
@@ -543,7 +575,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (!room?.has(b.person)) return refuse('no room');
     if (m.basis !== room.revOf(b.person)) return refuse('changed');
     // A card the venue closed tonight. A band reads any no but `changed` as NOT SENT.
-    if (m.intent && room.closed()?.cards.includes(m.intent)) return refuse('closed');
+    if (m.intent && room.isClosed(m.intent)) return refuse('closed');
     if (now() - b.setAt < SET_GAP_MS) return refuse('too fast');
     b.setAt = now();
     room.setInvisible(b.person, false, 'band');
@@ -939,7 +971,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   /** What staff said for the venue (its opener, notice, times and closed cards), to its staff sockets not yet told it. */
   function saidTo(r, sockets = r.staff) {
     if (!sockets.size) return;
-    const said = { opener: r.room.opener(), notice: r.room.notice(), times: r.room.times(), closed: r.room.closed() };
+    const said = { opener: r.room.opener(), notice: r.room.notice(), times: r.room.times(), closed: r.room.closed(), quiz: r.room.hasQuiz() };
     for (const [t, value] of Object.entries(said)) {
       const text = JSON.stringify({ t, [t]: value });
       for (const ws of sockets) {
@@ -1109,10 +1141,17 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         if (typeof m.on !== 'boolean') return;
         r.sound.set(me, m.on);
         break;
+      case 'practice':
+        // The wristband guide: while it runs its person is on nobody's list (room.setPractice). Only true or false.
+        if (typeof m.on !== 'boolean') return;
+        room.setPractice(me, m.on);
+        break;
       case 'pick': room.pick(me, m.track); break;
       case 'wave': room.wave(me, m.handle); break;
       case 'like': room.like(me, m.handle); break;
       case 'unlike': room.unlike(me, m.handle); break;
+      case 'answer': room.answer(me, m.q, m.choice); break;
+      case 'team': room.team(me, m.handle); break;
       case 'block': room.block(me, m.handle); break;
       case 'report': {
         // Ten an hour a person and sixty a network. Both count every report sent, so one who keeps sending stays
@@ -1129,6 +1168,21 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         }
         break;
       }
+      case 'fill': {
+        // A venue card: made by the first fill with a venue, then each empty field first in wins (spec §1). The
+        // address is counted here and never passed to the room: the night file must not hold addresses.
+        const making = !room.card();
+        const no = (why) => ws.send(JSON.stringify({ t: 'error', why: 'fill ' + why }));
+        if (making && listedIds.has(r.key)) { no('listed'); break; }
+        if (making && cardsTonight() >= cardsMax) { no('full'); break; }
+        if (making && (cardsFrom.get(ws.addr) || 0) >= CARDS_PER_ADDRESS) { no('limit'); break; }
+        const { t: _, ...fields } = m;
+        const said = room.fillCard(me, fields);
+        if (said !== 'ok') { no(said); break; }
+        if (making) cardsFrom.set(ws.addr, (cardsFrom.get(ws.addr) || 0) + 1);
+        break;
+      }
+      case 'wrong': room.wrongCard(me, String(m.field || '')); break;
       case 'keep': room.keep(me, m.match, m.on); break;
       case 'found': room.found(me, m.match); break;
       case 'clip': {
@@ -1394,6 +1448,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (staffEntries.has(r.key) && r.room.hasReports()) return;
     // And what its staff said for tonight, so times moved before doors are there when the doors open.
     if (r.room.opener() || r.room.notice() || r.room.times() || r.room.closed()) return;
+    // And a venue card, so the room the people at an unlisted gig made is still listed for the next to arrive.
+    if (r.room.card()) return;
     for (const b of bands.values()) if (b.key === r.key && b.ws) return;
     rooms.delete(r.key);
   }
@@ -1414,6 +1470,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     // Someone held only by their wristband leaves an hour after a phone of theirs
     // was last heard, or when the night ends at 06:00 (below), whichever is first.
     for (const r of [...rooms.values()]) {
+      // A practice its phone stopped saying is over: everyone's lists show its person again.
+      if (r.room.sweepPractice(at)) push(r);
       for (const me of r.room.ids()) {
         if (phoneOf(r, me) || r.left.has(me) || !bandOf(r.key, me)?.ws) continue;
         const heard = r.heard.get(me) ?? 0;
@@ -1478,6 +1536,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     }
     // 06:00: a night's reports go, and staff signed in for it are signed out; the page asks for the passcode again.
     const tonight = night(at);
+    if (cardsNight !== tonight) { cardsFrom.clear(); cardsNight = tonight; }
     for (const [token, t] of tokens) if (t.night !== tonight) tokens.delete(token);
     for (const r of rooms.values()) {
       for (const ws of [...r.staff]) {
@@ -1597,7 +1656,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       const back = clipsBack(saved.rooms);
       built = {
         rooms: saved.rooms.map((e, i) => ({
-          key: String(e.key), room: createRoom({ spots: spotsFor(e.key), now, restore: e.room, ledger: handles, clipKept: (ref) => back[i].has(ref) }),
+          key: String(e.key), room: createRoom({ spots: spotsFor(e.key), quiz: quizFor(String(e.key)), now, restore: e.room, ledger: handles, clipKept: (ref) => back[i].has(ref) }),
           sockets: new Set(), clips: back[i], left: new Map(), heard: new Map(e.heard), sound: new Map(e.sound), staff: new Set(),
         })),
         bands: saved.bands.map((e) => Object.assign(makeBand(String(e.id), null), {
