@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CALLED_SHOW_MS, CODE_LETTERS, FOUND_SHOW_MS, MEET_MS, bandShow, cleanCode, newCode, trackKey } from '../relay/band.js';
+import { CALLED_SHOW_MS, CODE_LETTERS, FOUND_SHOW_MS, GUESSED_SHOW_MS, MEET_MS, SCORE_SHOW_MS, bandShow, cleanCode, newCode, trackKey } from '../relay/band.js';
 import { trackKey as phoneTrackKey } from '../app/lib/opener.js';
 
 const T = Date.UTC(2026, 8, 23, 11, 0);
@@ -84,6 +84,25 @@ test('a show made from the view names what is armed and its rev; the others name
     bandShow({ view: view(), testUntil: T + 1, now: T }), bandShow({ view: null, waiting: true, now: T })]) {
     assert.equal('armed' in s || 'rev' in s, false, JSON.stringify(s));
   }
+});
+
+test("the beat switch rides beside the sound switch, on the same shows and on no others", () => {
+  const m = { id: 'm1', intent: 'song', number: 27, at: T };
+  for (const beat of [true, false]) {
+    for (const s of [bandShow({ view: view({ armed: 'hi' }), beat, now: T }), bandShow({ view: view(), beat, now: T }),
+      bandShow({ view: view({ invisible: true }), beat, now: T }), bandShow({ view: view({ armed: 'hi' }, [m]), beat, now: T }),
+      bandShow({ view: view(), testUntil: T + 1, beat, now: T }), bandShow({ view: null, beat, now: T })]) {
+      assert.equal(s.beat, beat, JSON.stringify(s));
+      assert.equal('sound' in s, false, 'each switch only once its phone has said it');
+    }
+    for (const s of [bandShow({ view: view(), code: 'KXRT', beat, now: T }), bandShow({ view: view(), check: 12, beat, now: T }),
+      bandShow({ view: null, waiting: true, beat, now: T })]) {
+      assert.equal('beat' in s, false, JSON.stringify(s));
+    }
+  }
+  assert.deepEqual(bandShow({ view: view({ armed: 'song' }), sound: false, beat: false, now: T }),
+    { ...bandShow({ view: view({ armed: 'song' }), now: T }), sound: false, beat: false });
+  for (const v of [view({ armed: 'hi' }), null]) assert.equal('beat' in bandShow({ view: v, beat: null, now: T }), false);
 });
 
 test("the sound switch rides on every show to its person's band, and on none that is nobody's yet", () => {
@@ -211,4 +230,37 @@ test("the relay matches a pick as the phone does, so the band and the phone neve
   for (const t of ['Beyonc' + String.fromCodePoint(0xe9), "That's What I Like", 'That' + apostrophe + 's What I Like', '  24K   Magic!! ', 'Just-the-Way You Are', '', null, 'Ünïcödé — Song']) {
     assert.equal(trackKey(t), phoneTrackKey(t), JSON.stringify(t));
   }
+});
+
+// ---------- LET'S GUESS: each answer, and the score after the last ----------
+
+// A view's quiz after `rights` answers (true for a right one), the last given at `lastAt`.
+const quizOf = (rights, lastAt, of = 5) => ({
+  questions: [], answered: rights.map((right) => ({ right })), done: rights.length >= of,
+  score: { right: rights.filter(Boolean).length, of }, lastAt,
+});
+
+test('an answer: for GUESSED_SHOW_MS every show about its person says which one and how it went, so the band plays it once', () => {
+  const at = (me, quiz, now, matches = []) => bandShow({ view: { ...view(me, matches), quiz }, now });
+  assert.deepEqual(at({ armed: 'guess' }, quizOf([true], T), T).guessed, { n: 1, right: true });
+  assert.deepEqual(at({ armed: 'guess' }, quizOf([true, false], T), T + GUESSED_SHOW_MS - 1).guessed, { n: 2, right: false });
+  assert.equal('guessed' in at({ armed: 'guess' }, quizOf([true], T), T + GUESSED_SHOW_MS), false, 'twenty seconds on, no more');
+  assert.deepEqual(at({}, quizOf([false], T), T).guessed, { n: 1, right: false }, 'with no card lit too');
+  const meet = at({ armed: 'guess' }, quizOf([true], T), T, [{ id: 'm1', intent: 'guess', number: 27, at: T }]);
+  assert.deepEqual([meet.kind, meet.guessed], ['meet', { n: 1, right: true }], 'a meeting on the face still plays it');
+  assert.equal('guessed' in at({ armed: 'guess', invisible: true }, quizOf([true], T), T), false, 'NOT NOW is black');
+  assert.equal('guessed' in at({ armed: 'guess' }, quizOf([], null), T), false, 'nothing answered');
+  assert.equal('guessed' in at({ armed: 'guess' }, null, T), false, 'no quiz here');
+});
+
+test('the last answer given: for SCORE_SHOW_MS LET\'S GUESS on the band shows the score, then its own words again', () => {
+  const at = (me, quiz, now) => bandShow({ view: { ...view(me), quiz }, now });
+  const done = quizOf([true, true, false, true, true], T);
+  const s = at({ armed: 'guess' }, done, T + 1000);
+  assert.deepEqual([s.kind, s.intent, s.big, s.small], ['guess', 'guess', '4 / 5', 'RIGHT']);
+  assert.equal(at({ armed: 'guess' }, done, T + SCORE_SHOW_MS - 1).big, '4 / 5');
+  assert.equal(at({ armed: 'guess' }, done, T + SCORE_SHOW_MS).big, "LET'S GUESS!", 'then the card again');
+  assert.equal(at({ armed: 'guess' }, quizOf([true, true], T), T).big, "LET'S GUESS!", 'not before the last answer');
+  assert.equal(at({ armed: 'hi' }, done, T).big, 'HI :)', 'another card lit keeps its own words');
+  assert.equal(at({ armed: 'guess' }, quizOf([false, false, false, false, false], T), T).big, '0 / 5');
 });

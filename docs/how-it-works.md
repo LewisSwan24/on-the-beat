@@ -34,7 +34,7 @@ What each kind of yes shows the other side before it is returned:
 |---|---|
 | a wave (SAY HI) | yes — a blue dot on a row that is still only a band, so they can wave back; and on their wristband, a short call and a count of who waits, never who |
 | a like (FIRST SONG?) | never — it was for an answer, not a face |
-| a dance back (LET'S DANCE!) | yes — the clip goes straight to them, with no name on it |
+| a dance back (LET'S DANCE!) | yes — the clip or photo goes straight to them, with no name on it |
 | a team-up (LET'S GUESS!) | never — like a like, it shows only on your own list, as ASKED; they see your score, never your answers, and learn you asked only if they team up back |
 
 None of them is ever reported as declined. A yes that is not returned just
@@ -63,7 +63,8 @@ never becomes a match.
     room's clips together stay under 40 MB, about a hundred floor clips of
     five seconds, which is what the Fly machine's 207 MB leaves room for
     (*What is not done*, first bullet): past that the oldest go first, in
-    whichever room they are.
+    whichever room they are. A posed photo is kept the same way: a JPEG of
+    at most 300 KB, in the same one place per person.
     Each is served only to someone whose own view shows it (*Abuse
     resistance*, below).
   - Reports go to the venue's own staff page, `/staff`, live, and to its
@@ -73,8 +74,10 @@ never becomes a match.
     keys, kept in `PUSH_KEYS_FILE`; each payload sealed for one device
     (RFC 8291); and requests only to the push services' own hosts.
   - `relay/shows.json` is tonight's shows: times, quiet corners to meet at,
-    and the set list. A show may carry `quiz`, one to five questions for
-    LET'S GUESS! (`relay/quiz.js`); the relay keeps the answers, and the
+    and the set list. A show may carry `quiz`, one to twenty questions for
+    LET'S GUESS! (`relay/quiz.js`); each person is asked five of them, drawn
+    for that person, with the options in their own order (a quiz of five or
+    fewer is asked whole, still shuffled). The relay keeps the answers, and the
     venue list phones are given carries no quiz. A venue with no quiz has
     LET'S GUESS! closed all night. A venue nobody listed still gets a room, named by what
     was typed, with case, accents, punctuation, `&` for `and` and a leading

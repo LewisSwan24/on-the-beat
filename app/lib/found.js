@@ -33,7 +33,7 @@ export const matchScreen = (screen, m) => {
 };
 
 /** S11 shows the number to look for while the meeting is on: under MEET_MS old, and not yet found by both. */
-export const meetingOn = (m, now = Date.now()) => !m.foundAt && now - m.at < MEET_MS;
+export const meetingOn = (m, now = Date.now()) => !m.foundAt && !m.finishedAt && now - m.at < MEET_MS;
 
 /** The matches in a view found by both that the phone has not seen found before. */
 export const newlyFound = (view, seen) => (view?.matches || []).filter((m) => m.foundAt && !seen.has(m.id));

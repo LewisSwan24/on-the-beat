@@ -46,7 +46,7 @@
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { trackKey } from './band.js';
 import { INTENTS } from './cards.js';
-import { quizHash } from './quiz.js';
+import { QUIZ_DEAL, dealOf, quizHash } from './quiz.js';
 
 export { INTENTS };
 export const BANDS = ['in this room', 'near the bar', 'by the stage', 'somewhere out the back'];
@@ -138,6 +138,10 @@ export function timesOf(t) {
 export const HANDLES_MAX = 400_000;
 export const handleLedger = (max = HANDLES_MAX) => ({ held: 0, max });
 
+// LET'S FINISH: after a not yet, the one who asked waits this long to ask again, and asks a meeting this often at most.
+export const FINISH_AGAIN_MS = 2 * 60_000;
+export const FINISH_ASKS = 3;
+
 export function createRoom({
   now = () => Date.now(),
   salt = randomBytes(16).toString('hex'),
@@ -156,6 +160,8 @@ export function createRoom({
   // Which of the restored dump's clip refs came back with their video: the others restore as no clip, as every one did
   // before clips were kept across a restart.
   clipKept = () => false,
+  // What a clip ref holds, as the relay kept it: 'photo' for a posed photo, else 'clip' (dance-or-pose spec §2).
+  clipKind = () => 'clip',
   // The budget of held handles this room spends from (handleLedger): a relay gives all its rooms the one, and a room made
   // alone gets its own.
   ledger = handleLedger(),
@@ -170,7 +176,14 @@ export function createRoom({
   const latest = new Map();   // id -> the number of the last wave they were sent; outlives leave()
   const likes = new Map();    // 'a>b' -> true: a liked b's pick (FIRST SONG?)
   const dances = new Map();   // 'a>b' -> clip ref: a danced back to b (LET'S DANCE!)
-  const answers = new Map();  // id -> [choice, ...] in question order (LET'S GUESS); outlives leave(), as likes do
+  const answers = new Map();  // id -> [option, ...] in the order of their deal (LET'S GUESS); outlives leave(), as likes do
+  const lastAnswer = new Map();  // id -> when they last answered: what their band plays; a restart forgets it, on purpose
+  const deals = new Map();    // id -> their deal (relay/quiz.js dealOf), worked out once: it never changes for them
+  const dealFor = (id) => {
+    let d = deals.get(id);
+    if (!d) deals.set(id, (d = dealOf(quiz, id)));
+    return d;
+  };
   const teams = new Map();    // 'a>b' -> true: a asked b to team up (LET'S GUESS)
   const matches = new Map();  // pairKey -> match
   // id -> what the room keeps of someone who left tonight: their last rev, so a
@@ -250,9 +263,10 @@ export function createRoom({
       card = { fields: { ...v.fields }, lat: v.lat ?? null, lon: v.lon ?? null, at: Number(v.at) || 0, wrong: { ...(v.wrong || {}) }, hidden: !!v.hidden };
     }
     // Answers are for the quiz they were given against: a corrected quiz starts everyone again.
-    if (quiz && restore.quizHash === quizHash(quiz)) {
+    // And for the deal they were asked in: answers saved before deals, or with another size of deal, are in another order.
+    if (quiz && restore.quizHash === quizHash(quiz) && restore.quizDeal === QUIZ_DEAL) {
       for (const [id, list] of Array.isArray(restore.answers) ? restore.answers : []) {
-        if (typeof id === 'string' && Array.isArray(list)) answers.set(id, list.filter((c) => Number.isInteger(c) && c >= 0 && c <= 3).slice(0, quiz.length));
+        if (typeof id === 'string' && Array.isArray(list)) answers.set(id, list.filter((c) => Number.isInteger(c) && c >= 0 && c <= 3).slice(0, dealFor(id).length));
       }
       for (const k of Array.isArray(restore.teams) ? restore.teams : []) if (typeof k === 'string') teams.set(k, true);
     }
@@ -294,18 +308,22 @@ export function createRoom({
   const shows = (a, b) => canSee(a, b) && !people.get(b).invisible && !practises(b);
 
   // ---------- LET'S GUESS: answers ----------
-  const doneOf = (id) => !!quiz && (answers.get(id)?.length ?? 0) >= quiz.length;
+  // An answer is kept as the option's place in the quiz, in the order of the person's own deal.
+  const doneOf = (id) => !!quiz && (answers.get(id)?.length ?? 0) >= dealFor(id).length;
   const scoreOf = (id) => {
-    const list = answers.get(id) ?? [];
-    return { right: quiz ? list.filter((c, i) => c === quiz[i].answer).length : 0, of: quiz ? quiz.length : 0 };
+    if (!quiz) return { right: 0, of: 0 };
+    const deal = dealFor(id);
+    return { right: (answers.get(id) ?? []).filter((c, i) => c === quiz[deal[i].q].answer).length, of: deal.length };
   };
 
-  /** LET'S GUESS: a person's answer to the first question they have not answered. Final once given; true when taken. */
+  /** LET'S GUESS: a person's answer to the first question they have not answered, as the place they tapped. Final once given; true when taken. */
   function answer(id, q, choice) {
     if (!quiz || isClosed('guess') || !people.has(id)) return false;
     const list = answers.get(id) ?? [];
-    if (q !== list.length || q >= quiz.length || !Number.isInteger(choice) || choice < 0 || choice > 3) return false;
-    answers.set(id, [...list, choice]);
+    const deal = dealFor(id);
+    if (q !== list.length || q >= deal.length || !Number.isInteger(choice) || choice < 0 || choice > 3) return false;
+    answers.set(id, [...list, deal[q].order[choice]]);
+    lastAnswer.set(id, now());
     return true;
   }
 
@@ -348,6 +366,8 @@ export function createRoom({
     tombs.delete(id);
     latest.delete(id);
     answers.delete(id);
+    deals.delete(id);
+    lastAnswer.delete(id);
     blocks.delete(id);
     for (const ids of blocks.values()) ids.delete(id);
     const theirs = (k) => k.split('>').includes(id);
@@ -650,7 +670,7 @@ export function createRoom({
         ...row(p), pick: p.pick, liked: likes.has(id + '>' + p.id),
       })),
     },
-    // LET'S DANCE!: a dance back, your own five seconds, straight to someone who danced where you could see.
+    // LET'S DANCE!: a dance back, your own five seconds or a pose, straight to someone who danced where you could see.
     dance: {
       yeses: dances,
       may: (viewer, t, ref) => !!ref && !!(people.get(t).clip || dances.has(t + '>' + viewer)),
@@ -660,7 +680,8 @@ export function createRoom({
       rows: (id, others, row) => others.flatMap((p) => {
         const toYou = dances.get(p.id + '>' + id);
         if (!toYou && !p.clip) return [];
-        return [{ ...row(p), ref: toYou ?? p.clip.ref, toYou: !!toYou, dancedBack: dances.has(id + '>' + p.id) }];
+        const ref = toYou ?? p.clip.ref;
+        return [{ ...row(p), ref, kind: clipKind(ref), toYou: !!toYou, dancedBack: dances.has(id + '>' + p.id) }];
       }).sort((a, b) => b.toYou - a.toYou),
     },
     // LET'S GUESS: a team-up, between two people who both finished tonight's quiz.
@@ -818,6 +839,52 @@ export function createRoom({
     return false;
   }
 
+  /**
+   * LET'S FINISH: one side asks to end the meeting kindly ('ask'); the other says yes ('yes', and it is finished for
+   * both) or not yet ('no', and the ask is gone). A finished meeting stays finished. False for a match that is not
+   * theirs, one already finished, or a word that does not fit where it is.
+   */
+  function finish(viewer, matchId, word) {
+    for (const m of matches.values()) {
+      if (m.id !== matchId || (m.a !== viewer && m.b !== viewer)) continue;
+      if (m.finishedAt) return false;
+      if (word === 'ask') {
+        // The ask takes the other's screen, so it is rationed: not again for FINISH_AGAIN_MS after a not yet, and
+        // FINISH_ASKS a meeting at most from each side.
+        if (m.finishAsk) return m.finishAsk.by === viewer;
+        if (m.finishNo && m.finishNo.by !== viewer && now() - m.finishNo.at < FINISH_AGAIN_MS) return false;
+        m.finishAsks = { ...(m.finishAsks || {}) };
+        if ((m.finishAsks[viewer] || 0) >= FINISH_ASKS) return false;
+        m.finishAsks[viewer] = (m.finishAsks[viewer] || 0) + 1;
+        m.finishAsk = { by: viewer, at: now() };
+        m.finishNo = null;
+        return true;
+      }
+      if (!m.finishAsk || m.finishAsk.by === viewer) return false;
+      if (word === 'yes') {
+        m.finishedAt = now();
+        m.finishAsk = null;
+        return true;
+      }
+      if (word === 'no') {
+        m.finishNo = { by: viewer, at: now() };
+        m.finishAsk = null;
+        return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  /** The other person in one of this person's matches, or null. Only the relay asks: no view carries it. */
+  function partnerIn(viewer, matchId) {
+    for (const m of matches.values()) {
+      if (m.id !== matchId || (m.a !== viewer && m.b !== viewer)) continue;
+      return m.a === viewer ? m.b : m.a;
+    }
+    return null;
+  }
+
   /** Everyone a person may see right now: nobody while they are NOT NOW. */
   const seen = (id) => (people.get(id)?.invisible || practises(id) ? [] : [...people.values()].filter((p) => shows(id, p.id)));
   /**
@@ -957,7 +1024,7 @@ export function createRoom({
     const row = (p) => ({ handle: handle(id, p.id), band: p.band });
     return {
       me: {
-        armed: me.armed, invisible: me.invisible, was: me.invisible ? comeBackTo(me) : null, practice: practises(id), pick: me.pick, band: me.band, name: me.name, clip: me.clip?.ref ?? null,
+        armed: me.armed, invisible: me.invisible, was: me.invisible ? comeBackTo(me) : null, practice: practises(id), pick: me.pick, band: me.band, name: me.name, clip: me.clip?.ref ?? null, clipKind: me.clip ? clipKind(me.clip.ref) : null,
         rev: me.rev, seq: me.seq, by: me.by, fresh: me.by === 'relay',
       },
       // Each card's list: near, wall and floor (plays, above).
@@ -967,10 +1034,14 @@ export function createRoom({
       cards: INTENTS.filter((c) => !isClosed(c)),
       // LET'S GUESS: the questions, and for each one this person answered, how it went. Never anyone else's.
       quiz: quiz && !isClosed('guess') ? {
-        questions: quiz.map(({ q, options }) => ({ q, options: [...options] })),
-        answered: (answers.get(id) ?? []).map((c, i) => ({ choice: c, right: c === quiz[i].answer, answer: quiz[i].answer, fact: quiz[i].fact })),
+        questions: dealFor(id).map(({ q, order }) => ({ q: quiz[q].q, options: order.map((o) => quiz[q].options[o]) })),
+        answered: (answers.get(id) ?? []).map((c, i) => {
+          const { q, order } = dealFor(id)[i];
+          return { choice: order.indexOf(c), right: c === quiz[q].answer, answer: order.indexOf(quiz[q].answer), fact: quiz[q].fact };
+        }),
         done: doneOf(id),
         score: scoreOf(id),
+        lastAt: lastAnswer.get(id) ?? null,
       } : null,
       // And, once the venue's staff name FIRST SONG?'s answer: the same for everyone.
       opener: opener ? { ...opener } : null,
@@ -992,6 +1063,11 @@ export function createRoom({
           // Your own found; the time only once both said it, the later of the two.
           found: !!m.found[id],
           foundAt: m.found[m.a] && m.found[m.b] ? Math.max(m.found[m.a], m.found[m.b]) : null,
+          // LET'S FINISH: who asked to end it ('you' or 'them'), when it ended, and, to the one who asked, when the
+          // other said not yet.
+          finishAsked: m.finishAsk ? (m.finishAsk.by === id ? 'you' : 'them') : null,
+          finishedAt: m.finishedAt ?? null,
+          notYetAt: m.finishNo && m.finishNo.by !== id ? m.finishNo.at : null,
         };
       }),
     };
@@ -1027,10 +1103,12 @@ export function createRoom({
       answers: [...answers],
       teams: [...teams.keys()],
       quizHash: quiz ? quizHash(quiz) : null,
+      quizDeal: quiz ? QUIZ_DEAL : null,
     };
   }
 
   return {
+    finish,
     join, leave, forgetPerson, forgetLeft, setProfile, arm, setInvisible, setPractice, sweepPractice, fromPhone, pick, postClip, setOpener, setNotice, setTimes, letGo,
     /** The opener as staff named it ({ track, at }), or null. */
     opener: () => (opener ? { ...opener } : null),
@@ -1051,7 +1129,7 @@ export function createRoom({
     wave,wavedAtYou, wavesAt, like, unlike, danceBack, block, answer, team,
     /** The cards that have a yes here, in their order (tests/cards.test.js holds them to relay/cards.js). */
     played: () => Object.keys(plays),
-    report, keep, found, heard, nearTick, viewFor, dump,
+    report, keep, found, partnerIn, heard, nearTick, viewFor, dump,
     /** How many handles the room holds now (a count for the tests, so the ones of people who left are seen to go). */
     handlesHeld: () => { let n = 0; for (const row of handles.values()) n += row.size; return n; },
     /** For the relay: who is here, so it knows whose view to push. */

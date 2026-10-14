@@ -4,7 +4,8 @@
 
 import { createHash } from 'node:crypto';
 
-export const QUIZ_MAX = 5;
+export const QUIZ_MAX = 20;   // questions a show may carry
+export const QUIZ_DEAL = 5;   // of them, the ones each person is asked
 const Q_MAX = 140;
 const OPTION_MAX = 60;
 const FACT_MAX = 140;
@@ -35,6 +36,18 @@ export const quizOf = (quiz) => quiz.map((x) => ({
 
 /** A short print of a quiz: answers carried across a restart are for this quiz and no other. */
 export const quizHash = (quiz) => createHash('sha256').update(JSON.stringify(quizOf(quiz))).digest('hex').slice(0, 16);
+
+/**
+ * The questions one person is asked, as [{ q, order }]: `q` the place of a question in the quiz, `order` its four
+ * options as this person sees them (order[shown] = the option's place in the quiz). QUIZ_DEAL of them, or the whole
+ * quiz when it is shorter. Drawn from the quiz and the person alone, so a reload or a restart deals them the same.
+ */
+export function dealOf(quiz, id) {
+  const seed = quizHash(quiz) + ':' + id;
+  const shuffled = (n, salt) => Array.from({ length: n }, (_, i) => [i, createHash('sha256').update(seed + ':' + salt + ':' + i).digest('hex')])
+    .sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0)).map(([i]) => i);
+  return shuffled(quiz.length, 'q').slice(0, QUIZ_DEAL).map((q) => ({ q, order: shuffled(4, 'o' + q) }));
+}
 
 /** A show as phones are given it: everything but its quiz. */
 export const withoutQuiz = ({ quiz: _, ...show }) => show;

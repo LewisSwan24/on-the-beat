@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cardOf } from '../relay/cards.js';
-import { BAND_OFF, GUIDE, HOW, HUE, LEAVE, PROMISES, REPORT, WHERE, matchName, someone, teamHere } from './copy.js';
+import { BAND_OFF, FINISH, GUIDE, HOW, HUE, LEAVE, PROMISES, REPORT, WHERE, matchName, someone, teamHere } from './copy.js';
+import { BEAT_HOW, BEAT_SAY, beatRow } from './lib/bandbeat.js';
 import { SOUND_SAY, soundRow } from './lib/bandsound.js';
 import { battery, buzz, locate, locationGranted, toBase64 } from './lib/device.js';
 import { FOLLOW_SAY, follow, intentFor, nextSeq, tapMessage } from './lib/follow.js';
@@ -25,8 +26,9 @@ import { PAIR_SAY, codeFrom } from './lib/pairing.js';
 import { Name, Promises, Splash, Venue } from './screens/Onboard.jsx';
 import { Pick, Wall } from './screens/Song.jsx';
 import { Quiz, Teams } from './screens/Guess.jsx';
+import { PHOTO_MAX } from './lib/pose.js';
 import { Camera, Floor } from './screens/Dance.jsx';
-import { Leaving, Match, Mate, Quiet, Tonight } from './screens/Met.jsx';
+import { Finish, Leaving, Match, Mate, Quiet, Thanks, Tonight } from './screens/Met.jsx';
 import { Cta, Sheet } from './ui.jsx';
 
 const ONBOARDING = new Set(['splash', 'promises', 'venue', 'name']);
@@ -177,6 +179,23 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(null), action ? 5000 : 2600);
   }, []);
   const closeSheet = useCallback(() => setSheet(null), []);
+  // LET'S FINISH, on the side that asked: say once when it is finished, or when the other says not yet.
+  const finishSeen = useRef(null);
+  const finishedNow = useRef(null);   // a meeting that just finished, for the screens below to leave
+  useEffect(() => {
+    const was = finishSeen.current;
+    const nowSeen = new Map((view.matches || []).map((m) => [m.id, { done: m.finishedAt, no: m.notYetAt, asked: m.finishAsked }]));
+    finishSeen.current = nowSeen;
+    if (!was) return;
+    for (const m of view.matches || []) {
+      const before = was.get(m.id);
+      if (!before) continue;
+      if (m.finishedAt && !before.done) {
+        finishedNow.current = m.id;
+        if (before.asked === 'you') say(matchName(m) + ' finished too. enjoy the show.');
+      } else if (m.notYetAt && m.notYetAt !== before.no) say(FINISH.notYet(matchName(m)));
+    }
+  }, [view.matches, say]);
 
   const setNightState = useCallback((patch) => update((prev) => {
     const key = store.tonightKey();
@@ -230,6 +249,7 @@ export default function App() {
     const st = night.state || {};
     const seq = st.seq ?? 0;
     n.keep('sound', { t: 'sound', on: s.bandSound });
+    n.keep('beat', { t: 'beat', on: s.bandBeat });
     n.keep('profile', { t: 'profile', name: s.name, contact: s.contact });
     n.keep('invisible', { t: 'invisible', on: !!st.invisible, seq });
     n.keep('arm', { t: 'arm', intent: st.armed ?? null, seq });
@@ -661,6 +681,7 @@ export default function App() {
       { icon: 'touch_app', label: 'Press the side button to see your card, and again to change it. Your phone follows.', fg: '#fff', onTap: () => {} },
       { icon: 'waving_hand', label: WAVES_HOW, fg: '#fff', onTap: () => {} },
       { icon: 'watch', label: BAND_OFF.how, fg: '#fff', onTap: () => {} },
+      { icon: 'graphic_eq', label: BEAT_HOW, fg: '#fff', onTap: () => {} },
       { icon: 'touch_app', label: GUIDE.page.how, fg: '#fff', onTap: () => { setSheet(null); go('band-guide'); } },
     ],
   });
@@ -682,6 +703,15 @@ export default function App() {
     say(on ? SOUND_SAY.on : SOUND_SAY.off);
   };
 
+  // Its beat, the same way: whether a lit card pulses on the beat, and so whether the band may listen.
+  const flipBeat = () => {
+    const on = !s.bandBeat;
+    update((prev) => ({ ...prev, bandBeat: on }));
+    net.current?.say('beat', { t: 'beat', on });
+    setSheet(null);
+    say(on ? BEAT_SAY.on : BEAT_SAY.off);
+  };
+
   const bandSheet = () => setSheet({
     title: 'Your wristband', sub: bandLine(bandShown), close: 'Done',
     rows: [
@@ -691,6 +721,7 @@ export default function App() {
       ...(bandShown?.off ? [] : [{ icon: 'flashlight_on', label: 'TEST THE LIGHT', sub: 'it flashes white for two seconds, and chirps unless its sound is off or it is in NOT NOW.', fg: '#fff',
         onTap: () => { net.current?.send({ t: 'testLight' }); setSheet(null); say('watch your wrist.'); } }]),
       { ...soundRow(s.bandSound), fg: '#fff', onTap: flipSound },
+      { ...beatRow(s.bandBeat), fg: '#fff', onTap: flipBeat },
       { icon: 'link_off', label: 'UNPAIR', sub: 'it forgets you, and shows new letters.', fg: 'var(--stop)', onTap: unpair },
     ],
   });
@@ -726,15 +757,16 @@ export default function App() {
   };
 
   const sendClip = async (blob, type) => {
-    if (blob.size > 1_150_000) { say('that one is too big to send. try again, a little stiller.'); return; }
+    const photo = type === 'image/jpeg';
+    if (blob.size > (photo ? PHOTO_MAX : 1_150_000)) { say(photo ? 'that photo is too big to send. try another.' : 'that one is too big to send. try again, a little stiller.'); return; }
     const data = await toBase64(blob);
     net.current?.send({ t: 'clip', mime: type, data, to: backTo || undefined });
     if (backTo) {
       say('sent. only they see it — no names either way.');
       setBackTo(null);
     } else {
-      if (!store.hasEvent(s, 'clip')) update((prev) => store.addEvent(prev, 'clip', 'sent five seconds to the floor'));
-      say('sent. it loops on the floor for an hour.');
+      if (!store.hasEvent(s, 'clip')) update((prev) => store.addEvent(prev, 'clip', photo ? 'sent a pose to the floor' : 'sent five seconds to the floor'));
+      say('sent. it stays on the floor for an hour.');
     }
     go('floor', { replace: true });
   };
@@ -742,7 +774,7 @@ export default function App() {
   const keepClip = (blob, type) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'on-the-beat-' + Date.now() + (type.includes('mp4') ? '.mp4' : '.webm');
+    a.download = 'on-the-beat-' + Date.now() + (type === 'image/jpeg' ? '.jpg' : type.includes('mp4') ? '.mp4' : '.webm');
     document.body.append(a);
     a.click();
     a.remove();
@@ -755,7 +787,7 @@ export default function App() {
     title: c.toYou ? someone(c.band) + ' danced back to you' : someone(c.band),
     sub: 'dance back and they see yours. no names either way.', close: 'Cancel',
     rows: [
-      { icon: 'sensors', label: 'DANCE BACK', sub: 'five seconds, straight back to them.', fg: 'var(--dance)',
+      { icon: 'sensors', label: 'DANCE BACK', sub: 'five seconds or a pose, straight back to them.', fg: 'var(--dance)',
         onTap: () => { setBackTo(c.handle); setSheet(null); go('camera'); } },
       { icon: 'block', label: 'Block', sub: 'instant, silent, permanent for tonight.', fg: 'var(--stop)', onTap: () => block(c.handle, 'blocked.') },
     ],
@@ -890,6 +922,19 @@ export default function App() {
     ],
   } : null;
 
+  // A meeting just finished: its own screens (the number, the person) give way to home.
+  useEffect(() => {
+    const id = finishedNow.current;
+    if (!id || !match || match.id !== id || (screen !== 'match' && screen !== 'mate')) return;
+    finishedNow.current = null;
+    setStack([]);
+    setScreen('home');
+  }, [view.matches, match, screen]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // LET'S FINISH: an ask from the other side takes the screen until it is answered.
+  const finishAsk = (view.matches || []).find((m) => m.finishAsked === 'them' && !m.finishedAt);
+  const sayFinish = (m, word) => net.current?.send({ t: 'finish', match: m.id, say: word });
+
   let body = null;
   switch (screen) {
     case 'splash': body = <Splash onNext={afterSplash} />; break;
@@ -918,7 +963,7 @@ export default function App() {
       body = <Home show={show} phase={phase} line={line} armed={invisible ? null : armed} open={view.cards} ci={ci} setCi={setCi}
         notice={notice} onHideNotice={() => setNightState({ noticeHidden: notice.at })}
         band={bandShown} onBand={() => (paired ? bandSheet() : go('pair'))}
-        onArm={(id) => arm(armed === id ? null : id)} onOpen={(id) => go(cardOf(id).open)} onHow={howSheet} dot={waveDot ? 'hi' : null}
+        onArm={(id) => (id === 'finish' ? go('finish') : arm(armed === id ? null : id))} onOpen={(id) => go(cardOf(id).open)} onHow={howSheet} dot={waveDot ? 'hi' : null}
         focus={focusCard} onFocused={() => setFocusCard(null)}
         away={away} onNearby={() => { setNearbyAsked(true); go('venue'); }} onHere={() => { setNightState({ hereOk: show.room }); setAway(null); }} onCard={cardSheet} />;
       break;
@@ -948,7 +993,7 @@ export default function App() {
         backTo={backTo} onBack={back} onSend={sendClip} onKeep={keepClip}
         onNotThis={() => { setBackTo(null); go('floor', { replace: true }); }} />;
       break;
-    case 'floor': body = <Floor floor={view.floor} mine={view.me?.clip} room={room} onBack={back} onTile={tileSheet} />; break;
+    case 'floor': body = <Floor floor={view.floor} mine={view.me?.clip} mineKind={view.me?.clipKind} room={room} onBack={back} onTile={tileSheet} />; break;
     case 'quiz':
       body = <Quiz quiz={view.quiz} offline={status === 'offline'} onBack={back}
         onAnswer={(q, choice) => net.current?.send({ t: 'answer', q, choice })} onTeams={() => go('teams')} />;
@@ -976,9 +1021,13 @@ export default function App() {
       body = <Quiet paired={paired} onBackOn={backOn} onBlock={quietBlock} onReport={quietReport} onLeft={leaveSheet} />;
       break;
     case 'leaving': body = <Leaving offline={status !== 'live'} />; break;
+    case 'finish': body = <Finish matches={view.matches} onBack={back} onAsk={(m) => sayFinish(m, 'ask')} />; break;
     default: body = null;
   }
   if (!body) body = <div className="scr"><Cta plain onClick={() => setScreen('home')}>BACK TO TONIGHT</Cta></div>;
+  if (finishAsk && !['splash', 'promises', 'venue', 'name', 'pair', 'scan', 'leaving', 'guide'].includes(screen)) {
+    body = <Thanks match={finishAsk} onYes={() => { sayFinish(finishAsk, 'yes'); say(FINISH.done); }} onNo={() => sayFinish(finishAsk, 'no')} />;
+  }
 
   return (
     <div className={'app' + (invisible ? ' quiet' : '')}>

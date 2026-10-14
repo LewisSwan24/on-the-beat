@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { HUE, WHERE, cards, hueVars } from '../copy.js';
+import { FINISH_CARD, HUE, WHERE, cards, hueVars } from '../copy.js';
 import { DEFAULT_TIMES, PHASES, hhmm, whereLine } from '../lib/phase.js';
 import { wrongLine } from '../lib/where.js';
 import { Icon } from '../ui.jsx';
@@ -67,7 +67,7 @@ export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm,
   const [drag, setDrag] = useState({ on: false, dx: 0 });
   const down = useRef(null);
   const pi = Math.max(0, PHASES.indexOf(phase));
-  const list = cards(show?.act, !!band).filter((c) => !open || open.includes(c.id));
+  const list = [...cards(show?.act, !!band).filter((c) => !open || open.includes(c.id)), FINISH_CARD];
   const ci = Math.min(chosen, list.length - 1);   // a card closed while it was the one in front
   // The card the wrist just lit: the carousel turns to it, once.
   useEffect(() => {
@@ -170,7 +170,7 @@ export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm,
                     <span className="idle" aria-hidden={on}>{c.idle.map((l) => <span key={l}>{l}</span>)}</span>
                     <span className="arm" aria-hidden={!on}>{c.armed.map((l) => <span key={l}>{l}</span>)}</span>
                   </span>
-                  <span className="label hint">{on ? 'tap again to cancel' : 'tap to arm'}</span>
+                  <span className="label hint">{on ? 'tap again to cancel' : c.id === 'finish' ? 'tap to open' : 'tap to arm'}</span>
                 </button>
                 {on ? (
                   <button type="button" className="chev" style={{ color: HUE[c.id].c }} tabIndex={active ? 0 : -1}

@@ -101,7 +101,7 @@ starts, so a change is a restart, and a *Before doors* job like any other
    with anything else in one of them is dropped.
 
    An entry may also carry `quiz`, tonight's questions for LET'S GUESS!: a
-   list of one to five, each a question `q` (up to 140 characters), exactly
+   list of one to twenty, each a question `q` (up to 140 characters), exactly
    four different `options` (up to 60 each), the `answer` as the place of the
    right option counting from 0, and an optional `fact` shown once someone
    answers (up to 140):
@@ -111,6 +111,11 @@ starts, so a change is a restart, and a *Before doors* job like any other
               "options": ["Norway", "Sweden", "Denmark", "Finland"],
               "answer": 1, "fact": "She grew up in Stockholm." }]
    ```
+
+   Each person is asked five of them, drawn for that person, with the four
+   options in their own order; a quiz of five or fewer is asked whole. The
+   draw comes from the quiz and the person, so a reload or a restart asks them
+   the same five, and changing any question draws everyone again.
 
    A quiz that breaks any of that is dropped with a `shows: the quiz of …`
    line in the log, and its show stands without one, which closes LET'S

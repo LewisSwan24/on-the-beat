@@ -711,7 +711,7 @@ test('every response carries the security headers, every page is unframeable, an
     assert.equal(headers.get('x-frame-options'), 'DENY', path);
     for (const directive of [
       "default-src 'self'", "script-src 'self'", "style-src 'self'",
-      "font-src 'self'", "img-src 'self' data:", "media-src 'self' blob:",
+      "font-src 'self'", "img-src 'self' data: blob:", "media-src 'self' blob:",
       "connect-src 'self' ws: wss:", "worker-src 'self'", "manifest-src 'self'",
       "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'",
     ]) {

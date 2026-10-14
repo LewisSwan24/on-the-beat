@@ -18,12 +18,12 @@ const DEAF_MS = 6000;
 const QUEUE_MAX = 40;
 
 /**
- * The order facts are re-said in. The sound switch first: it touches nothing in the room, and a wristband
- * claimed after a restart gets it in its first show. Then the claim, so the wristband's kept hold lands
- * before anything that changes the room. Then practice (the wristband guide), so a person practising is hidden
- * again before their card can show them.
+ * The order facts are re-said in. The wristband's switches first: they touch nothing in the room, and a
+ * wristband claimed after a restart gets them in its first show. Then the claim, so the wristband's kept
+ * hold lands before anything that changes the room. Then practice (the wristband guide), so a person
+ * practising is hidden again before their card can show them.
  */
-export const SAID_ORDER = ['sound', 'pair', 'practice', 'invisible', 'profile', 'pick', 'arm', 'leave'];
+export const SAID_ORDER = ['sound', 'beat', 'pair', 'practice', 'invisible', 'profile', 'pick', 'arm', 'leave'];
 
 export function connect({ venue, me, onView, onStatus, onMessage }) {
   let ws = null;

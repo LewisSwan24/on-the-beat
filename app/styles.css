@@ -19,7 +19,7 @@
   --ink-0: #000000; --ink-1: #08080A; --ink-2: #101014;
   --line: rgba(255,255,255,.14); --line-2: rgba(255,255,255,.07);
   --text: #FFFFFF; --text-2: #9A99A4; --text-3: #5E5D67;
-  --hi: #4ED7F1; --hi-g: #0C9DE2; --song: #F2D65E; --song-g: #C79A1E; --dance: #DA8CF2; --dance-g: #A93FD9; --guess: #8FB4FF; --guess-g: #4F7FE0;
+  --hi: #4ED7F1; --hi-g: #0C9DE2; --song: #F2D65E; --song-g: #C79A1E; --dance: #DA8CF2; --dance-g: #A93FD9; --guess: #FF9F4A; --guess-g: #E06A12;
   --ok: #4ADE80; --warn: #FBBF24; --stop: #FF6B6B;
   --fast: 160ms; --base: 260ms; --slow: 380ms; --breathe: 3400ms;
   --ease: cubic-bezier(.2,.8,.2,1); --ease-io: cubic-bezier(.4,0,.2,1);
@@ -245,7 +245,7 @@ h1 { margin: 0; font-weight: 400; }
 /* ---------- S9 camera ---------- */
 .cam { flex: 1; position: relative; overflow: hidden; animation: ob-push var(--base) var(--ease); }
 .cam .dark { position: absolute; inset: 0; background: radial-gradient(120% 80% at 50% 12%, #241832 0%, #0B0910 58%, #000 100%); }
-.cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cam video, .cam > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .cam video.mirror { transform: scaleX(-1); }
 .cam .shade { position: absolute; left: 0; right: 0; bottom: 0; height: 55%; background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.72)); pointer-events: none; }
 .cam .top { position: absolute; top: 16px; left: 24px; right: 24px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -265,7 +265,7 @@ h1 { margin: 0; font-weight: 400; }
 .tile { position: relative; aspect-ratio: 3/4; border-radius: 20px; overflow: hidden; border: 1px solid var(--line-2); background: linear-gradient(150deg, #2A1436, #0A0810); display: flex; flex-direction: column; justify-content: flex-end; padding: 12px; transition: border-color var(--base) var(--ease); }
 .tile:hover { border-color: rgba(255,255,255,.26); }
 .tile.to-you { border: 1.5px solid var(--dance); box-shadow: 0 0 30px -12px var(--dance-g); }
-.tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tile video, .tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .tile .cap { position: relative; display: flex; align-items: center; gap: 7px; text-shadow: 0 1px 8px rgba(0,0,0,.8); }
 
 /* ---------- S11 mate, S12 tonight ---------- */
@@ -372,12 +372,30 @@ h1 { margin: 0; font-weight: 400; }
 .guide ol, .guide ul { padding-left: 20px; display: grid; gap: 6px; }
 .guide b { color: #fff; }
 .guide-band { width: 100%; max-width: 320px; margin: 8px auto; display: block; flex: none; }
-.guide-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.guide-chips button { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; background: none; color: #fff; font-size: 12px; }
-.guide-table-wrap { overflow-x: auto; max-width: 100%; }
-.guide-table { border-collapse: collapse; font-size: 12px; min-width: 560px; }
-.guide-table th, .guide-table td { border-top: 1px solid var(--line); padding: 6px; text-align: left; vertical-align: top; }
-.guide-table th { color: #fff; }
+.guide-essentials { display: flex; flex-direction: column; gap: 10px; background: var(--ink-2); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin: 14px 0 6px; }
+.guide-essentials h2 { margin: 0; letter-spacing: 0; font-size: 15px; }
+.guide-essentials h3 { margin: 4px 0 6px; font-size: 12px; font-weight: 600; color: var(--text-2); letter-spacing: .06em; text-transform: uppercase; }
+.guide-essentials .guide-keys { grid-template-columns: 70px minmax(0, 1fr); gap: 8px; }
+.guide-essentials .guide-keys dd .mini-face { display: flex; width: fit-content; margin-bottom: 4px; }
+.guide-essentials .guide-keys dt { display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; }
+.guide .guide-part { border-top: 1px solid var(--line); padding: 0; }
+.guide-part > summary { padding: 11px 0; font-size: 15px; font-weight: 600; color: #fff; cursor: pointer; }
+.guide-part[open] > summary { padding-bottom: 6px; }
+.guide-part:last-of-type { border-bottom: 1px solid var(--line); }
+.guide-usual { display: flex; flex-direction: column; gap: 6px; background: var(--ink-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px; line-height: 1.45; color: #fff; }
+.guide-usual p { margin: 0; }
+.guide-group summary { margin: 18px 0 2px; font-size: 14px; color: #fff; font-weight: 600; cursor: pointer; }
+.guide-row { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line-2); padding: 8px 0; }
+.guide-row.quiet { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.guide-none { font-size: 12px; color: var(--text-3); }
+.mini-face { display: inline-flex; flex-wrap: wrap; align-items: baseline; align-self: flex-start; gap: 2px 6px; background: #000; border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; font-size: 11px; letter-spacing: .04em; color: #fff; }
+.mini-big { font-weight: 700; }
+.mini-sep { color: var(--text-3); }
+.mini-hint { font-style: italic; color: var(--text-2); letter-spacing: 0; }
+.guide-keys { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 6px 8px; margin: 0; font-size: 13px; align-items: start; }
+.guide-keys dt { display: flex; flex-wrap: wrap; gap: 4px; }
+.key-name { border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; font-size: 10.5px; letter-spacing: .05em; color: var(--text-2); white-space: nowrap; }
+.guide-keys dd { margin: 0; line-height: 1.4; color: #fff; }
 .band-words { display: inline-block; background: #000; color: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; margin: 1px 2px; font-size: 11px; letter-spacing: .04em; }
 .guide .guide-rows { list-style: none; padding: 0; gap: 8px; }
 .guide-rows li { display: flex; align-items: center; gap: 8px; }
@@ -394,3 +412,9 @@ h1 { margin: 0; font-weight: 400; }
 .opt[aria-pressed="true"] { border-color: var(--guess); box-shadow: 0 0 24px -12px var(--guess-g); }
 .opt.right { border-color: var(--ok); }
 .opt.wrong { border-color: var(--stop); }
+
+/* LET'S DANCE!: video or photo, and the pose to strike. */
+.cam .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: rgba(8,8,10,.72); }
+.cam .seg button { min-height: 36px; padding: 0 16px; border-radius: 999px; font: var(--label); letter-spacing: .08em; color: var(--text-2); background: none; border: none; }
+.cam .seg button[aria-pressed="true"] { background: var(--dance); color: #000; }
+.cam .pose { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; background: none; border: none; color: #fff; padding: 4px 12px; max-width: 320px; }

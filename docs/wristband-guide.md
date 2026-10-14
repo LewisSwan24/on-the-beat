@@ -27,6 +27,32 @@ After the first pairing on a phone, the phone offers a one-minute practice with 
 
 ## 3. Every screen, and what each button does there
 
+Almost everywhere: FACE wakes it, and FACE held is NOT NOW. The tables are grouped by what is going on; "—" means that button does nothing there.
+
+### Your card
+
+| the wristband shows | FACE | FACE held | SIDE | SIDE held |
+|---|---|---|---|---|
+| `READY` / `SIDE TO CHANGE` | wakes it for six seconds | NOT NOW: dark at once | shows your card; each press after steps HI, SONG, DANCE, GUESS, OFF; three seconds after the last it sends | as a press |
+| `your card` / `SIDE: NEXT` | wakes it | NOT NOW | the next card | sends this one now |
+| `your card` / `SENDING` | — | NOT NOW | — | — |
+| `SET` / `CHANGED` / `NOT SENT` | wakes it | NOT NOW | starts a new choice | — |
+| `NOT NOW` / `SIDE TO CHANGE` | shows NOT NOW and its battery | — | shows the card it comes back on, then steps | comes back, on the card you had |
+| `your score` / `RIGHT` | wakes it | NOT NOW | as on READY: shows your card, then steps | — |
+| `your card` / `HOLD SIDE TO SHOW` | — | — | the next card | comes back on this card |
+
+### Meeting someone
+
+| the wristband shows | FACE | FACE held | SIDE | SIDE held |
+|---|---|---|---|---|
+| `a number` / `MEET` | stops the blinking, and nothing else | NOT NOW | stops the blinking, and nothing else | — |
+| `a number` / `HOLD SIDE: FOUND` | — | NOT NOW | opens the chooser | we found each other |
+| `a number` / `FOUND: WAITING` | — | NOT NOW | — | — |
+| `SOMEONE WAVED` / `HOLD SIDE: WAVE BACK` / `WAITING - HOLD SIDE` | — | NOT NOW | — | waves back to the newest; so does raising your wrist and waving |
+| `WAVE BACK` / `SENDING` | — | NOT NOW | — | — |
+
+### Setting up and pairing
+
 | the wristband shows | FACE | FACE held | SIDE | SIDE held |
 |---|---|---|---|---|
 | `NO WI-FI` / `HOLD SIDE: SET UP` | wakes it | — | — | Wi-Fi setup |
@@ -34,17 +60,11 @@ After the first pairing on a phone, the phone offers a one-minute practice with 
 | `SAVED` / `JOINING` | nothing: it starts again by itself | — | — | — |
 | `four letters` / `PAIR ON YOUR PHONE` | says PAIR ON YOUR PHONE | — | says PAIR ON YOUR PHONE | — |
 | `a number` / `ON YOUR PHONE?` | says PAIR ON YOUR PHONE | turns the check away | says PAIR ON YOUR PHONE | — |
-| `READY` / `SIDE TO CHANGE` | wakes it for six seconds | NOT NOW: dark at once | shows your card; each press after steps HI, SONG, DANCE, GUESS, OFF; three seconds after the last it sends | as a press |
-| `your card` / `SIDE: NEXT` | wakes it | NOT NOW | the next card | sends this one now |
-| `your card` / `SENDING` | — | NOT NOW | — | — |
-| `SET` / `CHANGED` / `NOT SENT` | wakes it | NOT NOW | starts a new choice | — |
-| `NOT NOW` / `SIDE TO CHANGE` | shows NOT NOW and its battery | — | shows the card it comes back on, then steps | comes back, on the card you had |
-| `your card` / `HOLD SIDE TO SHOW` | — | — | the next card | comes back on this card |
-| `a number` / `MEET` | stops the blinking, and nothing else | NOT NOW | stops the blinking, and nothing else | — |
-| `a number` / `HOLD SIDE: FOUND` | — | NOT NOW | opens the chooser | we found each other |
-| `a number` / `FOUND: WAITING` | — | NOT NOW | — | — |
-| `SOMEONE WAVED` / `HOLD SIDE: WAVE BACK` / `WAITING - HOLD SIDE` | — | NOT NOW | — | waves back to the newest |
-| `WAVE BACK` / `SENDING` | — | NOT NOW | — | — |
+
+### Off, and when something is wrong
+
+| the wristband shows | FACE | FACE held | SIDE | SIDE held |
+|---|---|---|---|---|
 | `NO SIGNAL` / `NO RELAY` | wakes it | — | — | nothing: it is not the Wi-Fi. wait. |
 | `OPEN YOUR PHONE` / `OR SWITCH ME OFF` | — | — | — | — |
 | `OPEN YOUR PHONE` / `TO COME BACK` | — | — | — | — |
@@ -62,11 +82,12 @@ On any screen, FACE and SIDE held together for three seconds turns it off. POWER
 | SAY HI (#4ED7F1) | your colour while SAY HI is armed |
 | FIRST SONG (#F2D65E) | your colour while FIRST SONG? is armed |
 | LET'S DANCE (#DA8CF2) | your colour while LET'S DANCE! is armed |
-| LET'S GUESS (#8FB4FF) | your colour while LET'S GUESS! is armed |
+| LET'S GUESS (#FF9F4A) | your colour while LET'S GUESS! is armed |
 | half bright | battery at 15% or less |
-| white once | paired, or TEST THE LIGHT |
+| white once | paired, TEST THE LIGHT, or a wrong LET'S GUESS answer |
 | red three times | CHANGED: something moved first |
 | orange twice | NOT SENT: it could not reach ON THE BEAT |
+| LET'S GUESS's colour twice | a LET'S GUESS answer you got right |
 
 | sound | means |
 |---|---|
@@ -82,6 +103,10 @@ On any screen, FACE and SIDE held together for three seconds turns it off. POWER
 | `hello` | someone waved at you |
 | `found` | you both found each other |
 | `calledit` | you called the first song |
+| `waving` | your raised wave: waving back from SOMEONE WAVED |
+| `clink` | your two wristbands knocked together on the meeting number |
+| `right` | a LET'S GUESS answer you got right |
+| `wrong` | a LET'S GUESS answer you got wrong |
 
 ## 5. Meeting someone
 
@@ -89,6 +114,7 @@ On any screen, FACE and SIDE held together for three seconds turns it off. POWER
 - any key answers the blink.
 - find each other at the spot your phone shows.
 - hold SIDE once you have. it counts when you both have; until then yours says FOUND: WAITING.
+- or knock your two wristbands together on the number: that counts as found for both of you.
 - a meeting number lasts fifteen minutes.
 
 ## 6. Trouble

@@ -47,6 +47,10 @@
   13 Oct 2026, from the team's v3 flow, a quiz card: answer tonight's
   questions alone, then team up with someone else who finished; the
   questions come with the show, and the relay keeps the answers.
+- **LET'S DANCE! takes a pose.** The canvas records five seconds. The owner
+  chose on 14 Oct 2026, from the team's v3 selfie, to let the same card post
+  one posed photo instead, with a prompt to strike; it shares the clip's
+  place on the floor and in the store.
 - **Real empty states** where the canvas always had a crowd: nobody saying
   hi, no picks on the wall, an empty floor.
 - **A camera that is refused** says so and offers to try again; nothing is
@@ -81,6 +85,12 @@
   reaction answers something the wearer just did, or says one fact about the
   band. The two about another person are the meeting call, for a number the
   band already shows, and a wave's call.
+- **A lit card pulses on the beat.** Revision 6 §8 rules out light patterns
+  that pretend to carry a message, and says nothing about music. The owner
+  chose on 25 Sep 2026 that a lit card pulses with what everyone in the room
+  can hear, and on 27 Sep that it is on by default, with `BEAT: ON` on the
+  phone to keep it still. The pulse carries no message: it says nothing
+  about the wearer or anyone else, and is off whenever the card is.
 - **The wristband says that someone waved.** Revision 6 §8 keeps names,
   photos and other people's picks off the wristband, and it showed nothing
   about anyone else but the meeting number. The owner chose on 25 Sep 2026

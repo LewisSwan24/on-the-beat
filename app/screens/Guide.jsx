@@ -1,9 +1,9 @@
 // ON THE BEAT — the wristband guide (docs/superpowers/specs/2026-10-13-wristband-guide-design.md): the practice after a
 // first pairing, and the page to look things up. Every word is in app/copy.js (GUIDE).
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { GUIDE, HUE } from '../copy.js';
-import { GUIDE_SOUNDS, PRACTICE_STEPS, bandLive, snapshot, stepDone } from '../lib/guide.js';
+import { GUIDE_SOUNDS, PRACTICE_STEPS, bandLive, snapshot, stepDone, usualKeys } from '../lib/guide.js';
 import { createSpeaker } from '../lib/speaker.js';
 import { Back, Cta, Ghost, Icon } from '../ui.jsx';
 
@@ -88,40 +88,77 @@ export function Practice({ view, onEnd, onTest }) {
   );
 }
 
+/**
+ * One screen of the wristband as the guide shows it: one dark face, its big word first, the rest after a slash.
+ * A word in lower case is not on the screen but says what is there ("your card", "a number").
+ */
+function MiniFace({ words }) {
+  return (
+    <span className="mini-face">{words.map((w, i) => (
+      <Fragment key={w}>
+        {i > 0 && <span className="mini-sep" aria-hidden="true">/</span>}
+        <span className={/^[a-z]/.test(w) ? 'mini-hint' : i === 0 ? 'mini-big' : 'mini-small'}>{w}</span>
+      </Fragment>
+    ))}</span>
+  );
+}
+
+/** One part of the guide page, folded to its title until it is tapped. */
+function Part({ id, children }) {
+  const label = GUIDE.parts.find(([p]) => p === id)[1];
+  return <details id={'guide-' + id} className="guide-part"><summary>{label}</summary>{children}</details>;
+}
+
 /** The page to look things up: six parts, a chip to jump to each, and PRACTISE AGAIN when paired. */
 export function BandGuide({ onBack, onPractise }) {
   const speaker = useMemo(() => createSpeaker(), []);
   const play = (name) => { speaker.unlock(); setTimeout(() => speaker.play(name), 30); };
-  const jump = (id) => document.getElementById('guide-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  const Words = ({ children }) => <span className="band-words">{children}</span>;
-  const cell = (s) => s || '—';
   const lead = (t) => (/[.?!]$/.test(t) ? t : t + '.');   // "Not yours?" keeps its own mark
   return (
     <div className="scr guide guide-page">
       <Back onClick={onBack} />
       <h1 className="h1">{GUIDE.page.title}</h1>
       <p className="small">{GUIDE.page.sub}</p>
-      <nav className="guide-chips">{GUIDE.parts.map(([id, label]) => <button type="button" key={id} onClick={() => jump(id)}>{label}</button>)}</nav>
       <BandDrawing />
-      <section id="guide-start"><h2>START</h2><ol>{GUIDE.start.map(([t, d]) => <li key={t}><b>{lead(t)}</b> {d}</li>)}</ol></section>
-      <section id="guide-pair"><h2>PAIR</h2><ol>{GUIDE.pair.map(([t, d]) => <li key={t}><b>{lead(t)}</b> {d}</li>)}</ol></section>
-      <section id="guide-buttons">
-        <h2>BUTTONS</h2>
-        <div className="guide-table-wrap">
-          <table className="guide-table">
-            <thead><tr><th>the wristband shows</th>{GUIDE.columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
-            <tbody>{GUIDE.screens.map((r) => (
-              <tr key={r.face.join('|')}>
-                <td>{r.face.map((w) => <Words key={w}>{w}</Words>)}</td>
-                <td>{cell(r.facePress)}</td><td>{cell(r.faceHold)}</td><td>{cell(r.sidePress)}</td><td>{cell(r.sideHold)}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-        <p className="small">{GUIDE.anyScreen}</p>
-      </section>
-      <section id="guide-lights">
-        <h2>LIGHTS &amp; SOUNDS</h2>
+      <div className="guide-essentials">
+        <h2>{GUIDE.essentials.title}</h2>
+        {GUIDE.essentials.groups.map((g) => (
+          <div key={g.title}>
+            <h3>{g.title}</h3>
+            <dl className="guide-keys">{g.rows.map((r) => (
+              <Fragment key={r.says}>
+                <dt>{r.keys.map((k) => <span key={k} className="key-name">{k}</span>)}</dt>
+                <dd>{r.on && <MiniFace words={r.on} />}{r.says}</dd>
+              </Fragment>
+            ))}</dl>
+          </div>
+        ))}
+      </div>
+      <Part id="start"><ol>{GUIDE.start.map(([t, d]) => <li key={t}><b>{lead(t)}</b> {d}</li>)}</ol></Part>
+      <Part id="pair"><ol>{GUIDE.pair.map(([t, d]) => <li key={t}><b>{lead(t)}</b> {d}</li>)}</ol></Part>
+      <Part id="buttons">
+        <div className="guide-usual"><p>{GUIDE.usual}</p><p>{GUIDE.anyScreen}</p></div>
+        {GUIDE.groups.map(([id, title, open]) => (
+          <details key={id} className="guide-group" open={!!open}>
+            <summary>{title}</summary>
+            {GUIDE.screens.filter((r) => r.group === id).map((r) => {
+              const keys = usualKeys(r);
+              const quiet = keys.length === 1 && !keys[0][0];   // nothing of its own: said beside the screen, not under it
+              return (
+                <div key={r.face.join('|')} className={'guide-row' + (quiet ? ' quiet' : '')}>
+                  <MiniFace words={r.face} />
+                  {quiet ? <span className="guide-none">{keys[0][1]}</span> : (
+                    <dl className="guide-keys">{keys.map(([k, d]) => (
+                      <Fragment key={k + d}><dt>{k.split(' / ').map((n) => <span key={n} className="key-name">{n}</span>)}</dt><dd>{d}</dd></Fragment>
+                    ))}</dl>
+                  )}
+                </div>
+              );
+            })}
+          </details>
+        ))}
+      </Part>
+      <Part id="lights">
         <ul className="guide-rows">
           {Object.entries(GUIDE.lights.cards).map(([id, says]) => (
             <li key={id}><span className="swatch" style={{ background: HUE[id].c }} />{says}</li>
@@ -134,14 +171,13 @@ export function BandGuide({ onBack, onPractise }) {
             </li>
           ))}
         </ul>
-      </section>
-      <section id="guide-meeting"><h2>MEETING</h2><ul>{GUIDE.meeting.map((l) => <li key={l}>{l}</li>)}</ul></section>
-      <section id="guide-trouble">
-        <h2>TROUBLE</h2>
+      </Part>
+      <Part id="meeting"><ul>{GUIDE.meeting.map((l) => <li key={l}>{l}</li>)}</ul></Part>
+      <Part id="trouble">
         {GUIDE.trouble.map(([see, why, todo]) => (
           <details key={see}><summary>{see}</summary><p className="small">{why}</p><p className="body">{todo}</p></details>
         ))}
-      </section>
+      </Part>
       {onPractise && <Cta hue="hi" onClick={onPractise}>{GUIDE.page.again}</Cta>}
     </div>
   );

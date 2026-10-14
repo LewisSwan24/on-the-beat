@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { CARDS } from '../relay/cards.js';
 import { SOUNDS } from '../app/lib/wrist.js';
 import { GUIDE } from '../app/copy.js';
-import { GUIDE_SOUNDS, PRACTICE_STEPS, bandLive, snapshot, stepDone } from '../app/lib/guide.js';
+import { GUIDE_SOUNDS, PRACTICE_STEPS, bandLive, snapshot, stepDone, usualKeys } from '../app/lib/guide.js';
 
 const view = (me) => ({ me: { armed: null, invisible: false, rev: 5, by: 'phone', ...me } });
 const before = { armed: 'hi', invisible: false, rev: 5 };
@@ -117,4 +117,48 @@ test('ending the practice puts back what it opened on, in taps the relay takes, 
   assert.deepEqual(restoreTaps({ armed: 'dance', invisible: false }, me('song'), ['hi', 'song']), [['arm', null]]);
   assert.deepEqual(restoreTaps({ armed: 'dance', invisible: false }, me(null, true), ['hi', 'song']), [['arm', null], ['invisible', false]]);
   assert.deepEqual(restoreTaps(null, me('song'), all), []);
+});
+
+test('the button table comes in short groups, by what is going on, and every screen is in one', () => {
+  const ids = GUIDE.groups.map(([id]) => id);
+  assert.deepEqual(ids, ['card', 'meet', 'setup', 'other'], 'what is pressed most comes first');
+  assert.deepEqual(GUIDE.groups.map(([, , open]) => !!open), [true, true, false, false], 'the two used most are open; the rest fold');
+  for (const r of GUIDE.screens) assert.ok(ids.includes(r.group), r.face.join(' / ') + ' has no group');
+  for (const id of ids) {
+    const n = GUIDE.screens.filter((r) => r.group === id).length;
+    assert.ok(n >= 1 && n <= 7, id + ' holds ' + n + ' rows');
+  }
+});
+
+test('the two things FACE does almost everywhere are said once, above the groups, not on every row', () => {
+  assert.match(GUIDE.usual, /FACE wakes it/);
+  assert.match(GUIDE.usual, /FACE held is NOT NOW/);
+  const rest = GUIDE.screens.flatMap((r) => usualKeys(r).filter(([, d]) => /^(wakes it|NOT NOW)/.test(d)));
+  assert.deepEqual(rest, [], 'no row repeats them');
+  const ready = usualKeys(GUIDE.screens.find((r) => r.face[0] === 'READY')).map(([k]) => k);
+  assert.deepEqual(ready, ['SIDE', 'SIDE held'], 'READY keeps only what is its own');
+});
+
+test('buttons that do the same thing on a screen share one line', () => {
+  const meet = usualKeys(GUIDE.screens.find((r) => r.face[1] === 'MEET'));
+  assert.deepEqual(meet, [['FACE / SIDE', 'stops the blinking, and nothing else']]);
+  const pair = usualKeys(GUIDE.screens.find((r) => r.face[1] === 'PAIR ON YOUR PHONE'));
+  assert.deepEqual(pair, [['FACE / SIDE', 'says PAIR ON YOUR PHONE']]);
+});
+
+test('the page opens on the few things done all night, and every part below is one folded line', () => {
+  const { groups } = GUIDE.essentials;
+  assert.deepEqual(groups.map((g) => g.title), ['Your card', 'Going quiet', 'Meeting someone', 'Any time']);
+  const rows = groups.flatMap((g) => g.rows);
+  assert.ok(rows.length >= 8 && rows.length <= 12, rows.length + ' lines: enough to use it all night, not the whole table');
+  for (const r of rows) {
+    assert.ok(r.says, 'each says what it does');
+    for (const k of r.keys) assert.ok(GUIDE.columns.includes(k), 'a button the table knows: ' + k);
+    assert.ok(r.keys.length || r.on, 'a line names a button, a screen, or both');
+  }
+  // Every screen a line points at is one the band really shows.
+  const faces = GUIDE.screens.map((s) => s.face.join(' / '));
+  for (const r of rows.filter((x) => x.on)) assert.ok(faces.some((f) => f.includes(r.on.join(' / '))), r.on.join(' / '));
+  assert.deepEqual(GUIDE.parts.map(([id]) => id), ['start', 'pair', 'buttons', 'lights', 'meeting', 'trouble']);
+  for (const [, label] of GUIDE.parts) assert.match(label, /^[A-Z][a-z]/, 'a folded part reads as a line, not a shout: ' + label);
 });

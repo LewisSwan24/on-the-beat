@@ -23,8 +23,11 @@
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
+
+#include "beat_logic.h"
 
 namespace otb {
 
@@ -103,6 +106,10 @@ constexpr Segment HELLO[] = {slide(HZ_F7, HZ_A7, 60), rest(30), note(HZ_A7, 90)}
 constexpr Segment FOUND[] = {note(HZ_F7, 50), note(HZ_A7, 50), note(HZ_C8, 50), fade(HZ_D8, 180, FULL, 9830)};
 constexpr Segment CALLEDIT[] = {note(HZ_F7, 45), note(HZ_A7, 45), note(HZ_C8, 45), rest(30),
                                 note(HZ_F7, 45), note(HZ_A7, 45), note(HZ_C8, 45), fade(HZ_D8, 240, FULL, 9830)};
+constexpr Segment WAVING[] = {slide(HZ_F7, HZ_D8, 120)};
+constexpr Segment CLINK[] = {noise(9000, 6, FULL, 16384), struck(HZ_C8, 260, FULL, 90)};
+constexpr Segment RIGHT[] = {note(HZ_A7, 50), note(HZ_C8, 50), fade(HZ_D8, 160, FULL, 9830)};
+constexpr Segment WRONG[] = {note(HZ_A7, 70), rest(30), fade(HZ_F7, 220, 19660, 3277)};
 template <size_t N>
 constexpr Sound sound(const char* name, const Segment (&segments)[N]) { return {name, segments, N}; }
 }  // namespace detail
@@ -112,6 +119,8 @@ constexpr Sound SOUNDS[] = {
     detail::sound("up", detail::UP),         detail::sound("fall", detail::FALL),     detail::sound("low", detail::LOW_TONE),
     detail::sound("ask", detail::ASK),       detail::sound("jingle", detail::JINGLE), detail::sound("warn", detail::WARN),
     detail::sound("hello", detail::HELLO),   detail::sound("found", detail::FOUND),   detail::sound("calledit", detail::CALLEDIT),
+    detail::sound("waving", detail::WAVING), detail::sound("clink", detail::CLINK),   detail::sound("right", detail::RIGHT),
+    detail::sound("wrong", detail::WRONG),
 };
 
 inline const Sound* soundFor(const std::string& name) {
@@ -224,7 +233,8 @@ struct Flash {
 constexpr Flash FLASHES[] = {
     {"set", "card", 2, 150, 100},       {"changed", "red", 3, 120, 90}, {"notsent", "orange", 2, 350, 250},
     {"warn", "orange", 2, 350, 250},    {"check", "white", 2, 150, 100},   {"wave", "hi", 3, 500, 500},
-    {"found", "card", 3, 200, 150},     {"calledit", "song", 3, 200, 150},
+    {"found", "card", 3, 200, 150},     {"calledit", "song", 3, 200, 150},  {"right", "guess", 2, 150, 100},
+    {"wrong", "white", 1, 250, 100},
 };
 
 inline const Flash* flashFor(const std::string& name) {
@@ -259,7 +269,7 @@ constexpr Hue CARDS[] = {
   {"hi", {0x4E, 0xD7, 0xF1}, {0x0C, 0x9D, 0xE2}, "HI :)"},
   {"song", {0xF2, 0xD6, 0x5E}, {0xC7, 0x9A, 0x1E}, "FIRST SONG?"},
   {"dance", {0xDA, 0x8C, 0xF2}, {0xA9, 0x3F, 0xD9}, "LET'S DANCE!"},
-  {"guess", {0x8F, 0xB4, 0xFF}, {0x4F, 0x7F, 0xE0}, "LET'S GUESS!"},
+  {"guess", {0xFF, 0x9F, 0x4A}, {0xE0, 0x6A, 0x12}, "LET'S GUESS!"},
 };
 constexpr size_t CARD_COUNT = sizeof(CARDS) / sizeof(CARDS[0]);
 
@@ -571,14 +581,22 @@ struct Found {
   std::string intent;
 };
 
+/** A show's guessed (LET'S GUESS): how many answers its person has given, and whether the last was right. */
+struct Guessed {
+  int64_t n = 0;
+  bool right = false;
+};
+
 struct Frame {
   std::string t;
   bool hasShow = false;
   Show show;
   int sound = -1;          // the show's sound switch: 1 on, 0 off, -1 not said (so not part of the Show)
+  int beat = -1;           // the show's beat switch, the same way
   Waves waves;             // the show's waves, nobody unless said (so not part of the Show either)
   Found found;             // the show's found, none unless said (nor this)
   int64_t calledIt = 0;    // the show's calledIt: when the opener its person called was named, 0 unless said
+  Guessed guessed;         // the show's guessed: n 0 unless said with a whole number and a true or false
   std::string why;
   bool hasOk = false;      // {t:'set', ok:false, why}: the relay refused a choice
   bool ok = true;
@@ -654,6 +672,13 @@ inline bool readFrame(const std::string& text, Frame& f) {
         f.sound = on ? 1 : 0;
         return true;
       }
+      if (k == "beat") {
+        if (!r.peek('t') && !r.peek('f')) return r.skip();
+        bool on = false;
+        if (!r.boolean(on)) return false;
+        f.beat = on ? 1 : 0;
+        return true;
+      }
       if (k == "waves") {
         if (!r.peek('{')) return r.skip();
         return r.object([&](const std::string& w) {
@@ -682,6 +707,32 @@ inline bool readFrame(const std::string& text, Frame& f) {
           f.calledIt = whole ? v : 0;
           return true;
         });
+      }
+      if (k == "guessed") {
+        if (!r.peek('{')) return r.skip();
+        int64_t n = 0;
+        int right = -1;
+        const bool ok = r.object([&](const std::string& w) {
+          if (w == "right") {
+            if (!r.peek('t') && !r.peek('f')) return r.skip();
+            bool b = false;
+            if (!r.boolean(b)) return false;
+            right = b ? 1 : 0;
+            return true;
+          }
+          if (w != "n") return r.skip();
+          int64_t v = 0;
+          bool whole = false;
+          if (!r.integer(v, whole)) return r.skip();
+          n = whole ? v : 0;
+          return true;
+        });
+        // Both, or none: a count without a yes or no is nothing the band can play.
+        if (n && right >= 0) {
+          f.guessed.n = n;
+          f.guessed.right = right == 1;
+        }
+        return ok;
       }
       if (k == "found") {
         if (!r.peek('{')) return r.skip();
@@ -1609,6 +1660,200 @@ inline Screen withCorner(Screen s, int battery) {
   return s;
 }
 
+/**
+ * Motion: the accelerometer, in g, at about 100 Hz, read only while a face asks for it (Wrist::motionOn).
+ * A clink is two bands knocking together on their meeting faces; a raised wave answers SOMEONE WAVED.
+ * Every threshold was measured on two StickC Plus bands, 9 Oct 2026 (the wrist-motion trial).
+ */
+namespace motion {
+
+constexpr float SOFT_G = 0.7f;         // a knock: the fast part passes this...
+constexpr float HARD_G = 1.5f;         // ...and a clink needs one side this hard
+constexpr float FALL = 0.4f;           // a knock falls under this share of its own peak...
+constexpr uint32_t KNOCK_MAX_MS = 60;  // ...this soon, or it was a shove
+constexpr uint32_t KNOCK_QUIET_MS = 300;  // no second knock this soon after one
+constexpr uint32_t CLINK_WINDOW_MS = 30;  // two knocks this close are one clink
+constexpr int CLINK_RSSI = -45;        // and only from a band this loud: nearby
+constexpr float SWING_G = 0.5f;        // a swing past this, either way, on one axis
+constexpr int SWINGS = 4;              // this many alternating swings...
+constexpr uint32_t SWINGS_MS = 2000;   // ...within this long
+constexpr float STILL_G = 0.15f;       // the fast part under this is still...
+constexpr uint32_t STILL_MS = 800;     // ...for this long, as a wrist being looked at is
+constexpr uint32_t LEAD_MS = 2500;     // and the first swing comes within this after it
+constexpr uint32_t KEEP_MS = 1000;     // knocks kept this long for pairing
+constexpr uint32_t GAP_MS = 200;       // samples further apart than this start the reading again
+constexpr uint32_t TAKE_BACK_MS = 2000;  // a raised wave shows WAVING this long, a key stopping it, before it goes
+
+inline float norm3(const float v[3]) { return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); }
+
+/** A knock: when it started and how hard it peaked. at == 0: none. */
+struct Knock {
+  uint32_t at = 0;
+  float peak = 0;
+};
+
+/** What another band said over the air: its knock, in our clock. */
+struct Heard {
+  std::string air;
+  uint8_t seq = 0;
+  int rssi = 0;
+  float peak = 0;
+  uint32_t at = 0;
+  bool used = false;
+};
+
+/** The reading while a face asks for motion: on the heap only then, as the beat's tracker is. */
+struct Reading {
+  // A ~200 ms average of each axis, taken away to leave the movement. A sample far from it moves it at most
+  // 0.5 g's worth, so a hard knock does not drag it along.
+  float g[3] = {0, 0, 1};
+  bool primed = false;
+  uint32_t lastAt = 0;
+  // Knocks.
+  uint32_t knockFrom = 0, knockLast = 0;
+  float knockPeak = 0;
+  std::vector<Knock> ours;
+  std::vector<Heard> heard;
+  // Swings, and the stillness before them.
+  bool still = false;
+  uint32_t stillFrom = 0, stillSeen = 0;
+  int sign[3] = {0, 0, 0};
+  bool led[3] = {false, false, false};
+  std::vector<uint32_t> swingAt[3];
+
+  /** The movement in this sample: the sample less the average. */
+  void movement(const float a[3], float hp[3]) {
+    if (!primed) {
+      for (int i = 0; i < 3; ++i) g[i] = a[i];
+      primed = true;
+    }
+    for (int i = 0; i < 3; ++i) {
+      hp[i] = a[i] - g[i];
+      g[i] += 0.05f * std::max(-0.5f, std::min(0.5f, hp[i]));
+    }
+  }
+
+  /** A short sharp spike in `mag`: it passes SOFT_G and falls under FALL of its peak within KNOCK_MAX_MS. */
+  Knock knock(uint32_t now, float mag) {
+    Knock none;
+    if (knockFrom) {
+      knockPeak = std::max(knockPeak, mag);
+      if (mag < knockPeak * FALL) {
+        Knock k;
+        k.at = knockFrom;
+        k.peak = knockPeak;
+        knockLast = knockFrom;
+        knockFrom = 0;
+        return k;
+      }
+      if (now - knockFrom >= KNOCK_MAX_MS) {
+        knockFrom = 0;
+        knockLast = now;
+      }
+      return none;
+    }
+    if (mag >= SOFT_G && (knockLast == 0 || now - knockLast >= KNOCK_QUIET_MS)) {
+      knockFrom = now ? now : 1;
+      knockPeak = mag;
+    }
+    return none;
+  }
+
+  void forget(uint32_t now) {
+    heard.erase(std::remove_if(heard.begin(), heard.end(),
+                               [now](const Heard& h) { return h.used || now - h.at >= KEEP_MS; }),
+                heard.end());
+    ours.erase(std::remove_if(ours.begin(), ours.end(), [now](const Knock& k) { return now - k.at >= KEEP_MS; }),
+               ours.end());
+  }
+
+  /** A knock of ours and one heard, close in time, loud, one side hard: the air of the band it was. Else empty. */
+  std::string pair() {
+    for (Heard& h : heard) {
+      if (h.used || h.rssi < CLINK_RSSI) continue;
+      for (size_t o = 0; o < ours.size(); ++o) {
+        if (h.peak < HARD_G && ours[o].peak < HARD_G) continue;
+        const int32_t dt = static_cast<int32_t>(h.at - ours[o].at);
+        if (dt > static_cast<int32_t>(CLINK_WINDOW_MS) || dt < -static_cast<int32_t>(CLINK_WINDOW_MS)) continue;
+        h.used = true;
+        ours.erase(ours.begin() + static_cast<std::ptrdiff_t>(o));
+        return h.air;
+      }
+    }
+    return "";
+  }
+
+  /** Our own knock. */
+  std::string felt(const Knock& k, uint32_t now) {
+    forget(now);
+    if (ours.size() >= 8) ours.erase(ours.begin());
+    ours.push_back(k);
+    return pair();
+  }
+
+  /** Another band's knock, `age` ms before `now`. Each is sent three times: the same one counts once. */
+  std::string heardFrom(const std::string& air, uint8_t seq, int rssi, float peak, uint32_t age, uint32_t now) {
+    forget(now);
+    for (Heard& h : heard)
+      if (h.seq == seq && h.air == air) {
+        h.rssi = std::max(h.rssi, rssi);
+        return pair();
+      }
+    if (heard.size() >= 8) heard.erase(heard.begin());
+    Heard h;
+    h.air = air;
+    h.seq = seq;
+    h.rssi = rssi;
+    h.peak = peak;
+    h.at = now - age;
+    heard.push_back(h);
+    return pair();
+  }
+
+  /**
+   * A raised wave: SWINGS alternating swings past SWING_G on one axis within SWINGS_MS, the first of them
+   * within LEAD_MS of the wrist having been still for STILL_MS. Dancing is never still that long.
+   */
+  bool waved(uint32_t now, const float hp[3]) {
+    if (norm3(hp) < STILL_G) {
+      if (!still) {
+        still = true;
+        stillFrom = now;
+      }
+      if (now - stillFrom >= STILL_MS) stillSeen = now ? now : 1;
+    } else {
+      still = false;
+    }
+    for (int a = 0; a < 3; ++a) {
+      const int s = hp[a] > SWING_G ? 1 : hp[a] < -SWING_G ? -1 : 0;
+      if (s == 0 || s == sign[a]) continue;
+      sign[a] = s;
+      std::vector<uint32_t>& at = swingAt[a];
+      at.erase(std::remove_if(at.begin(), at.end(), [now](uint32_t t) { return now - t >= SWINGS_MS; }), at.end());
+      if (at.empty()) led[a] = stillSeen && now - stillSeen <= LEAD_MS;  // a new run of swings
+      at.push_back(now);
+      if (static_cast<int>(at.size()) >= SWINGS) {
+        const bool ok = led[a];
+        for (int i = 0; i < 3; ++i) {
+          swingAt[i].clear();
+          sign[i] = 0;
+        }
+        if (ok) return true;
+      }
+    }
+    return false;
+  }
+};
+
+}  // namespace motion
+
+/** A knock of this band's, for main.cpp to put on the air: its sequence, when it began, how hard. */
+struct AirKnock {
+  uint8_t seq = 0;
+  uint32_t at = 0;
+  float peak = 0;
+};
+
 class Wrist {
  public:
   explicit Wrist(const std::string& key) : key_(key), id_(idFor(key)) {}
@@ -1621,6 +1866,53 @@ class Wrist {
   void setAir(const std::string& air) { air_ = air; }
   /** Whether to beacon and listen: on the relay, paired, and not in NOT NOW. */
   bool nearOn() const { return link_.up() && !secret_.empty() && current() != "notnow"; }
+  /** Whether to read the accelerometer: on the meeting face for a clink, on SOMEONE WAVED for a raised wave. */
+  bool motionOn(uint32_t now) const { return knocksOn(now) || (mode_ == WAVES && link_.up()); }
+
+  /** One accelerometer sample, in g. A knock goes on the air and may pair into a clink; a wave becomes WAVING. */
+  void sample(const float a[3], uint32_t now) {
+    advance(now);
+    if (motionOn(now)) {
+      if (!reading_ || now - reading_->lastAt > motion::GAP_MS) reading_.reset(new motion::Reading());
+      reading_->lastAt = now;
+      float hp[3];
+      reading_->movement(a, hp);
+      if (mode_ == WAVES) {
+        if (reading_->waved(now, hp)) {
+          mode_ = WAVING;
+          stepAt_ = now;
+          react("waving");
+        }
+      } else {
+        const motion::Knock k = reading_->knock(now, motion::norm3(hp));
+        if (k.at) {
+          AirKnock out;
+          out.seq = ++knockSeq_;
+          out.at = k.at;
+          out.peak = k.peak;
+          if (airKnocks_.size() >= 4) airKnocks_.erase(airKnocks_.begin());
+          airKnocks_.push_back(out);
+          clink(reading_->felt(k, now));
+        }
+      }
+    }
+    settle(now);
+  }
+
+  /** This band's knocks since last asked, for main.cpp to broadcast. */
+  std::vector<AirKnock> airKnocks() {
+    std::vector<AirKnock> out;
+    out.swap(airKnocks_);
+    return out;
+  }
+
+  /** Another band's knock heard over the air: `air` sent it, `age` ms before `now`, `peak` g hard. */
+  void heardKnock(const std::string& air, uint8_t seq, int rssi, float peak, uint32_t age, uint32_t now) {
+    advance(now);
+    if (reading_ && knocksOn(now) && air != air_) clink(reading_->heardFrom(air, seq, rssi, peak, age, now));
+    settle(now);
+  }
+
   /** Somebody's: paired, or a phone asking about its number right now. A band nobody's turns itself off (IDLE_OFF_MS). */
   bool owned() const { return !secret_.empty() || show_.kind == "check"; }
 
@@ -1670,6 +1962,13 @@ class Wrist {
     s.down = true;
     s.since = now;
     s.fired = false;
+    // A raised wave not yet gone: any key stops it. Nothing is sent, and the hold this starts is not NOT NOW.
+    if (mode_ == WAVING) {
+      rest();
+      s.fired = true;
+      settle(now);
+      return;
+    }
     // Any KEY1 press-down freezes a choice at once: no commit can fire.
     if (k == 1 && (mode_ == LOOK || mode_ == CHOOSING)) frozen_ = true;
     if (k == 1) awayKey_ = false;
@@ -1754,8 +2053,37 @@ class Wrist {
   void tick(uint32_t now) {
     advance(now);
     ticked(now);
+    listen(now);
     settle(now);
   }
+
+  /** Whether to have the microphone open: a lit card could pulse, the switch is on, and it is not NOT NOW (beat §2). */
+  bool listening(uint32_t now) const {
+    return beatOn_ && haveShow_ && lit(show_) && show_.kind != "meet" && !link_.stale(now) && current() != "notnow";
+  }
+
+  /** One block of the microphone's five levels, and the time it ends. Not listening, it is not heard (beat §2). */
+  void hear(const BandLevels& levels, uint32_t now) {
+    listen(now);
+    if (!tracker_) return;
+    tracker_->hear(levels, now);
+    for (const BeatPulse& p : tracker_->take()) {
+      if (pulsesN_ == 2) {
+        pulses_[0] = pulses_[1];
+        pulsesN_ = 1;
+      }
+      pulses_[pulsesN_++] = p;
+    }
+  }
+
+  /** The microphone's delay from a sound to the block that hears it, in ms: this model's. */
+  void setMicLatency(double ms) {
+    micLatency_ = ms;
+    if (tracker_) tracker_->setLatency(ms);
+  }
+
+  /** The beat's period in ms once the band has it, and 0 before: for the console. */
+  double beatPeriod() const { return tracker_ && tracker_->locked() ? tracker_->period() : 0; }
 
  private:
   void heardFrame(const std::string& text, uint32_t now) {
@@ -1802,6 +2130,7 @@ class Wrist {
     }
     // A show's own switch counts for what it causes.
     if (f.sound >= 0) soundOn_ = f.sound == 1;
+    if (f.beat >= 0) beatOn_ = f.beat == 1;
     if (show_.kind == "pairing") {
       // Unpaired, or nobody came for it: the band is nobody's, so NOT NOW is over and no meeting is anyone's.
       const bool wasPaired = !secret_.empty();
@@ -1814,6 +2143,7 @@ class Wrist {
       if (wasCheck) react("fall", nullptr, 1);    // the check ended without YES
       if (wasPaired) playWarn();                  // unpaired; the letters end any choice, so at once
       soundOn_ = true;                            // after the letters' own reactions
+      beatOn_ = true;
       // New letters light for PAIR_AWAKE_MS; the same letters again (a reconnect) do not.
       if (show_.code != pairCode_) {
         pairCode_ = show_.code;
@@ -1847,7 +2177,7 @@ class Wrist {
       if (!personal() || show_.rev != basis_) rest();
     } else if (mode_ == SENDING && personal() && show_.rev > basis_ && show_.armed == choice_ && !show_.quiet) {
       result(now, "SET");
-    } else if (mode_ == WAVES && !waiting()) {
+    } else if ((mode_ == WAVES || mode_ == WAVING) && !waiting()) {
       rest();  // the wave face follows the shows: nobody left waiting, off SAY HI, or not about the person
     }
     // Away starts at an away show and ends at one that is not; the same again after a reconnect is no change.
@@ -1892,6 +2222,13 @@ class Wrist {
     } else if (!f.calledIt && personal()) {
       calledItPlayed_ = 0;
     }
+    // A LET'S GUESS answer: once each, right or wrong. Past GUESSED_SHOW_MS a show names none.
+    if (f.guessed.n && f.guessed.n != guessedPlayed_) {
+      guessedPlayed_ = f.guessed.n;
+      react(f.guessed.right ? "right" : "wrong", f.guessed.right ? "right" : "wrong", 1);
+    } else if (!f.guessed.n && personal()) {
+      guessedPlayed_ = 0;
+    }
     // After a meeting's jingle. A wave call already under way takes the new wave in; the open wave face counts it.
     if (newer && !waveCalling() && mode_ != WAVES) callWave();
   }
@@ -1935,6 +2272,8 @@ class Wrist {
     quiet_.tick(now);
     if ((mode_ == LOOK || mode_ == WAVES) && now - stepAt_ >= CHOOSE_MS) {
       rest();
+    } else if (mode_ == WAVING && now - stepAt_ >= motion::TAKE_BACK_MS) {
+      waveBack(now);
     } else if (mode_ == CHOOSING && !frozen_) {
       if (!fromQuiet_ && now - stepAt_ >= COMMIT_MS) commit(now);
       else if (fromQuiet_ && now - stepAt_ >= CHOOSE_MS) rest();
@@ -1977,6 +2316,8 @@ class Wrist {
       const std::string count = waves_.n > 9 ? "9+" : std::to_string(waves_.n);
       f = words("SOMEONE WAVED", waves_.n > 1 ? count + " WAITING - HOLD SIDE" : "HOLD SIDE: WAVE BACK", "black", "hi",
                 LIGHT_AWAKE);
+    } else if (mode_ == WAVING) {
+      f = words("WAVING", "HOLD FACE: STOP", "black", "hi", LIGHT_AWAKE);
     } else if (mode_ == WAVEBACK) {
       f = words("WAVE BACK", "SENDING", "black", "hi", LIGHT_AWAKE);
     } else if (mode_ == FOUND) {
@@ -1985,6 +2326,7 @@ class Wrist {
     } else {
       f = restFace(now, static_cast<int32_t>(wakeUntil_ - now) > 0 || mode_ == RESULT);
       if (mode_ == RESULT) f.small = word_;
+      else if (listening(now)) f = pulsed(f, now);
     }
     if (k1_.down && !k1_.fired && now - k1_.since >= BAR_MS) {
       f.small = "KEEP HOLDING";
@@ -1997,6 +2339,32 @@ class Wrist {
   }
 
  private:
+  /**
+   * Not listening, the band forgets the beat it had: its microphone is closed. The tracker is made only while it
+   * listens, and let go after: its 6 KB are heap a wristband needs for its relay's TLS handshake.
+   */
+  void listen(uint32_t now) {
+    if (listening(now)) {
+      if (!tracker_) {
+        tracker_.reset(new BeatTracker());
+        tracker_->setLatency(micLatency_);
+      }
+    } else if (tracker_) {
+      tracker_.reset();
+      pulsesN_ = 0;
+    }
+  }
+
+  /** A lit card at rest, on the beat: its light falls from full to half over each pulse, for a beat (beat §1). */
+  Screen pulsed(Screen f, uint32_t now) const {
+    const BeatPulse* p = nullptr;
+    for (size_t i = 0; i < pulsesN_; ++i) {
+      if (pulses_[i].at <= now) p = &pulses_[i];
+    }
+    if (p && now - p->at < p->period) f.light = static_cast<uint8_t>(pulseLight(f.light, now - p->at, p->period));
+    return f;
+  }
+
   /** A flash, step by step: on is its colour at full light and nothing else; off is the backlight off. */
   Screen flashOver(Screen f, uint32_t now) const {
     if (!playingOn_ || !playing_.flash) return f;
@@ -2015,7 +2383,7 @@ class Wrist {
   }
 
  private:
-  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT, WAVES, WAVEBACK, FOUND };
+  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT, WAVES, WAVEBACK, FOUND, WAVING };
   struct Key {
     bool down = false;
     bool fired = false;
@@ -2100,6 +2468,7 @@ class Wrist {
 
   /** The end of a moment: its reactions go first, in order, and what was already waiting plays after them. */
   void settle(uint32_t now) {
+    if (reading_ && !motionOn(now)) reading_.reset();  // the reading lives only while a face asks for it
     // A wave's flashes, or a warning, that waited for a choice play once the face rests.
     if (waveOwed_ && !silent_ && mode_ == REST) {
       waveOwed_ = false;
@@ -2210,7 +2579,7 @@ class Wrist {
   void closed(uint32_t now) {
     link_.closed(now);
     quiet_.closed();
-    if (mode_ == WAVES) rest();  // the wave face follows the link
+    if (mode_ == WAVES || mode_ == WAVING) rest();  // the wave face follows the link
   }
 
   /** Someone waits on the person showing SAY HI, as the show says. */
@@ -2277,6 +2646,19 @@ class Wrist {
     mode_ = WAVEBACK;
     sentAt_ = now;
     react("double");
+  }
+
+  /** The meeting face, resting, on a paired band: knocks are read. */
+  bool knocksOn(uint32_t now) const { return (mode_ == REST || mode_ == RESULT) && !secret_.empty() && meetingFace(now); }
+
+  /**
+   * Our knock paired with the band at `air`: the relay finds the meeting only if that band is the other person's
+   * there, and marks it found only when that band says the same of us. Nothing on the face until it does.
+   */
+  void clink(const std::string& air) {
+    if (air.empty() || !link_.up()) return;
+    out_.push_back("{\"t\":\"clink\",\"air\":\"" + air + "\",\"number\":\"" + show_.big + "\"}");
+    react("clink");
   }
 
   /** A SIDE hold on the meeting face: the two of them found each other. Out of reach, NOT SENT at once. */
@@ -2366,6 +2748,16 @@ class Wrist {
   std::vector<std::string> due_;
   bool soundOn_ = true;  // the person's switch, as the last show that said it had it (rule 3)
   bool silent_ = false;  // NOT NOW, for the sake of silence (rule 1)
+  bool beatOn_ = true;   // the person's beat switch, as the last show that said it had it (beat §1)
+  // The beat (beat §2): the tracker while it listens, the microphone's delay, and its last two pulses, the newer
+  // perhaps due.
+  std::unique_ptr<BeatTracker> tracker_;
+  std::unique_ptr<motion::Reading> reading_;
+  std::vector<AirKnock> airKnocks_;
+  uint8_t knockSeq_ = 0;
+  double micLatency_ = 0;
+  BeatPulse pulses_[2] = {};
+  size_t pulsesN_ = 0;
   // The meeting call (rule 4): the number last called for, whether it still calls, and since when.
   std::string called_;
   bool calling_ = false;
@@ -2379,6 +2771,7 @@ class Wrist {
   int64_t foundPlayed_ = 0;
   // The opener its person called (FIRST SONG?): when the naming last played for was, until a show about them names none.
   int64_t calledItPlayed_ = 0;
+  int64_t guessedPlayed_ = 0;  // LET'S GUESS: how many answers had played, until a show about the person names none
   // Rule 5: the letters and the waiting face sleep. Until when they are lit, which letters lit them, when
   // waiting began, and until when a press says where to go.
   uint32_t litUntil_ = 0;

@@ -190,7 +190,26 @@
   USB in, the Plus held 100% for 50 minutes, most of them on the Wi-Fi,
   where the StickS3 in the same state ran down. How each sound lands on a
   wrist, and each colour, and the words whole on a real screen, still need
-  someone there. Flashing on the music's beat is a later spec.
+  someone there. A lit card pulsing on the music's beat is in docs/wristband.md;
+  that it has not been heard on the real bands is below.
+- **The beat has not been heard on the real bands.** The tests hold the
+  tracker and its block clock equal to the bit between the twins, and to
+  made-up music: kicks at 90, 120 and 160 BPM, a hi-hat, a held chord,
+  noise, made-up speech, random kicks, missed kicks and gaps. The stand-in's
+  `LISTEN` pulsed on a made-up 120 BPM kick in a browser, 500 ms apart, and
+  was steady within a beat of being turned off. On the bands it has only
+  been built. Its gate is owed (the spec's §4.1): round 3 of the spike on the
+  StickC Plus bands (the StickS3 was dropped on 6 Oct 2026) beside the laptop
+  at round 2's volume, and each
+  model's microphone delay, 0 until then, measured there from presses of
+  the face button. It reaches `main` only once that passes. What the made-up
+  music already shows: made-up speech and random kicks still pulse, in short
+  bursts, 4 to 24 pulses in each 800 s of them; a held chord flickers by
+  about ±3 dB a block, which can count as a rise; and a hi-hat over a quiet
+  room never locks. On the Plus the backlight has only eleven levels, set through its
+  power chip, so a pulse falls in a few visible steps; and each turn to the
+  microphone ends and begins the speaker, which may be heard as a click.
+  Both are for eyes and ears on the bands.
 - **The scanner has read a code through Chrome's fake camera, not a phone's.**
   Headless Chrome played a picture of a wristband's code as its camera; the
   app's scanner read it through jsQR and paired, and a stranger's code was

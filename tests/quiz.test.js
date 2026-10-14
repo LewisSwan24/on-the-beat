@@ -4,23 +4,41 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { QUIZ_MAX, quizFault, quizHash, quizOf, withoutQuiz } from '../relay/quiz.js';
+import { QUIZ_DEAL, QUIZ_MAX, dealOf, quizFault, quizHash, quizOf, withoutQuiz } from '../relay/quiz.js';
 import { chooseShows, createRelay } from '../relay/server.js';
 
 const QUIZ = JSON.parse(readFileSync(new URL('./fixtures/quiz.json', import.meta.url), 'utf8'));
 const one = (change) => [{ ...QUIZ[0], ...change }];
 
-test('a quiz of one to five questions, each with four different options and an answer among them, stands', () => {
+test('a quiz of one to twenty questions, each with four different options and an answer among them, stands', () => {
   assert.equal(quizFault(QUIZ), '');
-  assert.equal(QUIZ_MAX, 5);
+  assert.deepEqual([QUIZ_MAX, QUIZ_DEAL], [20, 5]);
+  const many = (n) => Array.from({ length: n }, (_, i) => ({ ...QUIZ[0], q: 'Question ' + i + '?' }));
+  assert.equal(quizFault(many(20)), '');
+  assert.match(quizFault(many(21)), /1 to 20/);
   assert.equal(quizFault(QUIZ.slice(0, 1)), '');
   assert.equal(quizFault(one({ fact: undefined })), '', 'a fact is optional');
 });
 
+test('a deal: five of the quiz for one person, the same every time, each with its four options in some order', () => {
+  const ten = quizOf(Array.from({ length: 10 }, (_, i) => ({ q: 'Question ' + i + '?', options: ['a', 'b', 'c', 'd'], answer: 0 })));
+  const d = dealOf(ten, 'ana');
+  assert.equal(d.length, 5);
+  assert.equal(new Set(d.map((x) => x.q)).size, 5);
+  for (const x of d) {
+    assert.ok(Number.isInteger(x.q) && x.q >= 0 && x.q < 10);
+    assert.deepEqual([...x.order].sort(), [0, 1, 2, 3]);
+  }
+  assert.deepEqual(dealOf(quizOf(JSON.parse(JSON.stringify(ten))), 'ana'), d, 'the same quiz and person: the same deal');
+  assert.notDeepEqual(dealOf(ten, 'ben'), d, 'another person: another deal');
+  const three = dealOf(ten.slice(0, 3), 'ana');
+  assert.deepEqual(three.map((x) => x.q).sort(), [0, 1, 2], 'a quiz shorter than a deal: all of it');
+});
+
 test('a quiz that breaks a rule says which rule', () => {
-  assert.match(quizFault([]), /1 to 5 questions/);
-  assert.match(quizFault([...QUIZ, QUIZ[0]]), /1 to 5 questions/);
-  assert.match(quizFault('Sweden'), /1 to 5 questions/);
+  assert.match(quizFault([]), /1 to 20 questions/);
+  assert.match(quizFault(Array.from({ length: 21 }, (_, i) => ({ ...QUIZ[0], q: 'Question ' + i + '?' }))), /1 to 20 questions/);
+  assert.match(quizFault('Sweden'), /1 to 20 questions/);
   assert.match(quizFault([null]), /question 1 is not a question/);
   assert.match(quizFault(one({ q: '' })), /"q"/);
   assert.match(quizFault(one({ q: 'x'.repeat(141) })), /"q"/);

@@ -39,7 +39,7 @@ test('every card has its words, its icon and its screens on the phone', () => {
   }
   assert.equal(Object.keys(INTENT_OF).length, CARDS.reduce((n, c) => n + c.screens.length, 0), 'no screen in two cards');
   assert.deepEqual(INTENT_OF, { beacon: 'hi', near: 'hi', pick: 'song', wall: 'song', camera: 'dance', floor: 'dance', quiz: 'guess', teams: 'guess' }, 'each screen, in its card');
-  assert.deepEqual(home.find((c) => c.id === 'dance').armed[1], 'your fav Bruno’s piece!');
+  assert.deepEqual(home.find((c) => c.id === 'dance').armed[1], 'to your fav Bruno’s piece!');
 });
 
 test('every card has its hue on the phone and in the stylesheet', () => {
@@ -75,7 +75,10 @@ const YES = {
   hi: { ready: () => {}, send: (room, a, h) => room.wave(a, h) },
   song: { ready: (room, a) => room.pick(a, 'Treasure'), send: (room, a, h) => room.like(a, h) },
   dance: { ready: (room, a) => room.postClip(a, 'clip-' + a), send: (room, a, h) => room.danceBack(a, h, 'back-' + a) },
-  guess: { ready: (room, a) => QUIZ.forEach((x, q) => room.answer(a, q, x.answer)), send: (room, a, h) => room.team(a, h) },
+  guess: { ready: (room, a) => room.viewFor(a).quiz.questions.forEach((x, q) => {
+    const src = QUIZ.find((s) => s.q === x.q);
+    room.answer(a, q, x.options.indexOf(src.options[src.answer]));
+  }), send: (room, a, h) => room.team(a, h) },
 };
 
 test('every card has its yes in the room, its own list on the phone, and a yes each way is its match', () => {

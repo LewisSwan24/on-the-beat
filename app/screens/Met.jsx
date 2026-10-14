@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { HUE, MEET, hueVars, matchName, spotShort } from '../copy.js';
+import { FINISH, HUE, MEET, hueVars, matchName, spotShort } from '../copy.js';
 import { reducedMotion } from '../lib/device.js';
 import { scoreText } from '../lib/guess.js';
 import { FOUND_MINE, foundBoth, metCount, metItem } from '../lib/found.js';
@@ -300,6 +300,57 @@ export function Leaving({ offline }) {
         <Icon name="logout" size={40} color="#6E6D77" style={{ marginBottom: 8 }} />
         <span className="h1">Leaving…</span>
         <span className="lede muted">{offline ? 'You’ll be taken out as soon as there’s signal.' : 'Taking you out of the room.'}</span>
+      </div>
+    </div>
+  );
+}
+
+/** LET'S FINISH: the meetings tonight that are not finished yet, newest first, each with its ask and what came of it. */
+export function Finish({ matches, onBack, onAsk }) {
+  const open = [...(matches || [])].sort((a, b) => b.at - a.at);
+  const hue = HUE.finish;
+  return (
+    <div className="scr">
+      <div style={{ display: 'flex', alignItems: 'center' }}><Back onClick={onBack} /></div>
+      <div className="h1" style={{ marginTop: 8, color: hue.c }}>{FINISH.title}</div>
+      <div className="small" style={{ marginTop: 8, marginBottom: 18 }}>{FINISH.sub}</div>
+      {open.length ? open.map((m) => {
+        const name = matchName(m);
+        return (
+          <div key={m.id} className="keep" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10, marginBottom: 12 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span className="dot" aria-hidden="true" style={{ width: 10, height: 10, '--c': (HUE[m.intent] || hue).c, '--g': (HUE[m.intent] || hue).g }} />
+              <span className="h2" style={{ flex: 1 }}>{name}</span>
+              <span className="small tnum">met at {hhmm(m.at)}</span>
+            </span>
+            {m.finishedAt ? <span className="small" style={{ color: 'var(--ok)' }}>{FINISH.done}</span>
+              : m.finishAsked === 'you' ? <span className="small">{FINISH.waiting(name)}</span>
+              : (
+                <>
+                  {m.notYetAt ? <span className="small">{FINISH.notYet(name)}</span> : null}
+                  <Cta hue="finish" onClick={() => onAsk(m)}>{FINISH.ask}</Cta>
+                </>
+              )}
+          </div>
+        );
+      }) : <div className="lede muted">{FINISH.none}</div>}
+    </div>
+  );
+}
+
+/** The other side of LET'S FINISH: the one who was asked says finish, or not yet. */
+export function Thanks({ match, onYes, onNo }) {
+  const hue = HUE.finish;
+  return (
+    <div className="scr tall">
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
+        <span className="micro" style={{ color: hue.c }}>{FINISH.thanksWho(matchName(match))}</span>
+        <span className="h1">{FINISH.thanksTitle}</span>
+        <span className="lede">{FINISH.thanksSub}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 26 }}>
+        <Cta hue="finish" onClick={onYes}>{FINISH.yes}</Cta>
+        <Cta plain onClick={onNo}>{FINISH.no}</Cta>
       </div>
     </div>
   );

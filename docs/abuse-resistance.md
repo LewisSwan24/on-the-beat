@@ -158,7 +158,9 @@ was red-teamed and hardened. A red/blue pass found and closed:
   over is answered `clip too fast` (the phone says so) and is neither read
   nor kept, and the socket stays open. A phone records five seconds a clip,
   so it never meets the limit; a clip under 64 KB, about a second of video,
-  is outside it and costs what a pick does. The budget is per socket, as the
+  is outside it and costs what a pick does. A posed photo is not: it pays
+  one clip whatever its size, since most are under 64 KB and a pose is
+  paced as a clip is. The budget is per socket, as the
   frame budget is. `tests/server.test.js` holds the cap and the budget, with
   `tests/relay-load.test.js` for the figure in the load line.
 - **A socket that changes who it is.** A socket that had joined could join

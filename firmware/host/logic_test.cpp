@@ -424,12 +424,12 @@ void sound() {
     for (size_t k = 0; k < s.count; ++k)
       if (s.segments[k].wave == Wave::SQUARE)
         CHECK(s.segments[k].hz0 >= 2600 && s.segments[k].hz0 <= 4800 && s.segments[k].hz1 <= 4800);
-  // And every segment is one the render can make: under 8 kHz, where a step stays far from 2^32; volumes
+  // And every segment is one the render can make: under 16 kHz, where a step stays under 2^32; volumes
   // within Q15, or the byte wraps; a decay with a half-life, or it divides by zero, a reboot on the band.
   for (const Sound& s : SOUNDS)
     for (size_t k = 0; k < s.count; ++k) {
       const Segment& g = s.segments[k];
-      CHECK(g.hz0 <= 8000 && g.hz1 <= 8000 && g.ms > 0);
+      CHECK(g.hz0 < 16000 && g.hz1 < 16000 && g.ms > 0);
       if (g.wave == Wave::REST) continue;
       CHECK(g.a <= 32767 && (g.env != Env::LINE || g.b <= 32767) && (g.env != Env::DECAY || g.b > 0));
     }
@@ -896,6 +896,104 @@ std::string answer(const Command& c) {
     }
     return h.frame(ch);
   }
+  if (c.verb == "levels") {
+    // levels <s,s,...>: whole blocks of samples through one Levels, and each block's five levels
+    std::vector<int16_t> s;
+    std::istringstream in(c.arg);
+    std::string one;
+    while (std::getline(in, one, ',')) s.push_back(static_cast<int16_t>(std::atoi(one.c_str())));
+    Levels lv;
+    std::string out = "[";
+    for (size_t b = 0; b + BEAT_BLOCK <= s.size(); b += BEAT_BLOCK) {
+      const BandLevels l = lv.block(s.data() + b);
+      out += b ? ",[" : "[";
+      for (size_t k = 0; k < BEAT_BANDS; ++k) {
+        char n[32];
+        std::snprintf(n, sizeof n, "%s%.3f", k ? "," : "", static_cast<double>(l.v[k]));
+        out += n;
+      }
+      out += "]";
+    }
+    return out + "]";
+  }
+  if (c.verb == "pulselight") {
+    // pulselight <full> <since> <period>: a lit card's light that far into a pulse.
+    std::istringstream in(c.arg);
+    int full = 0;
+    double since = 0, period = 0;
+    in >> full >> since >> period;
+    return std::to_string(pulseLight(full, since, period));
+  }
+  if (c.verb == "beatconsts") {
+    // Every named value of the tracker, as app/lib/beat.js BEAT_CONSTS has them.
+    const std::pair<const char*, double> all[] = {
+        {"BEAT_ONSET", BEAT_ONSET}, {"BEAT_ONSET_MIN", BEAT_ONSET_MIN}, {"BEAT_WINDOW_MS", BEAT_WINDOW_MS},
+        {"BEAT_LOOK_MS", BEAT_LOOK_MS}, {"BEAT_SHORTEST_MS", BEAT_SHORTEST_MS}, {"BEAT_LONGEST_MS", BEAT_LONGEST_MS},
+        {"BEAT_PRIOR_MS", BEAT_PRIOR_MS}, {"BEAT_PRIOR_OCT", BEAT_PRIOR_OCT}, {"BEAT_LOCK_CONF", BEAT_LOCK_CONF},
+        {"BEAT_LOCK_CONTRAST", BEAT_LOCK_CONTRAST}, {"BEAT_LOCK_LOOKS", BEAT_LOCK_LOOKS}, {"BEAT_STEADY", BEAT_STEADY},
+        {"BEAT_PHASE_MS", BEAT_PHASE_MS}, {"BEAT_NEAR", BEAT_NEAR}, {"BEAT_RISE", BEAT_RISE},
+        {"BEAT_TIGHT_MS", BEAT_TIGHT_MS}, {"BEAT_PULL_PHASE", BEAT_PULL_PHASE}, {"BEAT_PULL_PERIOD", BEAT_PULL_PERIOD},
+        {"BEAT_CHANGE", BEAT_CHANGE}, {"BEAT_START", BEAT_START}, {"BEAT_START_OF", BEAT_START_OF},
+        {"BEAT_CONFIRM", BEAT_CONFIRM}, {"BEAT_OF", BEAT_OF}, {"BEAT_HOLD", BEAT_HOLD},
+        {"BEAT_OTHER_LOOKS", BEAT_OTHER_LOOKS}, {"BEAT_LOSE_MS", BEAT_LOSE_MS}, {"BEAT_CREEP", BEAT_CREEP},
+        {"BEAT_SETTLE", BEAT_SETTLE}};
+    std::string out = "{";
+    for (const auto& kv : all) {
+      char n[64];
+      std::snprintf(n, sizeof n, "%s\"%s\":%.10g", out.size() > 1 ? "," : "", kv.first, kv.second);
+      out += n;
+    }
+    return out + "}";
+  }
+  if (c.verb == "track") {
+    // track <latency> <t,b0,b1,b2,b3,b4> ...: the blocks through one BeatTracker, every pulse it decided, and
+    // where it was left: {"pulses":[[at,period],...],"locked":..,"period":..}
+    std::istringstream in(c.arg);
+    double latency = 0;
+    in >> latency;
+    BeatTracker tracker;
+    tracker.setLatency(latency);
+    std::string block, out = "{\"pulses\":[";
+    while (in >> block) {
+      std::istringstream fields(block);
+      std::string one;
+      std::getline(fields, one, ',');
+      const uint32_t t = static_cast<uint32_t>(std::strtoul(one.c_str(), nullptr, 10));
+      BandLevels levels;
+      for (size_t k = 0; k < BEAT_BANDS; ++k) {
+        std::getline(fields, one, ',');
+        levels.v[k] = static_cast<float>(std::strtod(one.c_str(), nullptr));
+      }
+      tracker.hear(levels, t);
+      for (const BeatPulse& p : tracker.take()) {
+        char n[64];
+        std::snprintf(n, sizeof n, "%s[%.3f,%.3f]", out.back() == '[' ? "" : ",", p.at, p.period);
+        out += n;
+      }
+    }
+    char end[64];
+    std::snprintf(end, sizeof end, "],\"locked\":%s,\"period\":%.3f}", tracker.locked() ? "true" : "false", tracker.period());
+    return out + end;
+  }
+  if (c.verb == "clock") {
+    // clock <arrival,lost | reset> ...: the blocks through one BlockClock, when each ended or null while it settled.
+    std::istringstream in(c.arg);
+    BlockClock clock;
+    std::string step, out = "[";
+    while (in >> step) {
+      if (step == "reset") {
+        clock.reset();
+        continue;
+      }
+      const size_t comma = step.find(',');
+      const uint32_t arrival = static_cast<uint32_t>(std::strtoul(step.substr(0, comma).c_str(), nullptr, 10));
+      const uint32_t lost = static_cast<uint32_t>(std::strtoul(step.substr(comma + 1).c_str(), nullptr, 10));
+      uint32_t t = 0;
+      if (out.size() > 1) out += ',';
+      out += clock.at(arrival, lost, t) ? std::to_string(t) : "null";
+    }
+    return out + "]";
+  }
   if (c.verb == "battery") return batteryFrame(std::atoi(c.arg.c_str()));
   if (c.verb == "hold") return HOLD_FRAME;
   if (c.verb == "refuse") return refuseFrame(c.arg);
@@ -1034,6 +1132,18 @@ int runWrist() {
       continue;
     }
     w->tick(t);
+    if (verb == "hear") {
+      std::istringstream levels(arg);
+      BandLevels l;
+      for (size_t k = 0; k < BEAT_BANDS; ++k) {
+        std::string one;
+        levels >> one;
+        l.v[k] = static_cast<float>(std::strtod(one.c_str(), nullptr));
+      }
+      w->hear(l, t);
+      std::cout << "{}\n";
+      continue;
+    }
     if (verb == "up") w->linkUp(t);
     else if (verb == "down") w->linkDown(t);
     else if (verb == "key1" || verb == "key2") {
@@ -1044,13 +1154,15 @@ int runWrist() {
     else if (verb == "frame") w->frame(arg, t);
     else if (verb == "battery") w->setBattery(std::atoi(arg.c_str()), t);
     else if (verb == "wifi") w->setWifi(arg == "1");
+    else if (verb == "latency") w->setMicLatency(std::strtod(arg.c_str(), nullptr));
     std::string sent, sounds;
     for (const std::string& f : w->take()) sent += (sent.empty() ? "" : ",") + (f == "DROP" || f == "SETUP" ? quote(f) : f);
     for (const std::string& n : w->sounds()) sounds += (sounds.empty() ? "" : ",") + quote(n);
     const Screen s = w->face(t);
     std::cout << "{\"sent\":[" << sent << "],\"sounds\":[" << sounds << "],\"face\":{\"big\":" << quote(s.big) << ",\"small\":" << quote(s.small)
               << ",\"field\":" << quote(s.field) << ",\"ink\":" << quote(s.ink) << ",\"light\":" << int(s.light)
-              << ",\"bar\":" << s.bar << ",\"code\":" << quote(s.code) << ",\"corner\":" << quote(s.corner) << "}}\n";
+              << ",\"bar\":" << s.bar << ",\"code\":" << quote(s.code) << ",\"corner\":" << quote(s.corner)
+              << "},\"listening\":" << (w->listening(t) ? "true" : "false") << "}\n";
   }
   return 0;
 }
@@ -1263,6 +1375,197 @@ void wifiSetup() {
 
 }  // namespace
 
+// The beat's tracker is heap only while the band listens. Held inside the Wrist it was 6 KB more of the heap
+// the relay's TLS handshake needs, and a band built that way never reached the relay (8 Oct 2026).
+void beatHeap() {
+  CHECK(sizeof(Wrist) < sizeof(BeatTracker));
+}
+
+void beatFold() {
+  // A grid's period starts at most half a block past the longest read, and drums pull it BEAT_CHANGE further:
+  // folding the window at that period needs this many bins, and the fold on the stack must hold them all.
+  const double longestBlocks = BEAT_LONGEST_MS * BEAT_RATE / 1000 / BEAT_BLOCK;
+  const double slowest = (longestBlocks + 0.5) * (1 + BEAT_CHANGE) * BEAT_BLOCK_MS;
+  CHECK(BeatTracker::binsFor(slowest) <= BeatTracker::FOLD);
+  CHECK(static_cast<double>(BeatTracker::FOLD) >= std::round(slowest / BEAT_BLOCK_MS));
+  // Whatever the period, the bins stay within the fold and never reach 0, which a fold divides by.
+  CHECK(BeatTracker::binsFor(1e9) == BeatTracker::FOLD && BeatTracker::binsFor(0) == 1);
+}
+
+// Motion: the accelerometer at 100 Hz, in g. A clink on the meeting face, a raised wave on SOMEONE WAVED.
+const std::string THEIR_AIR = "112233445566";
+const std::string MEET_SHOW =
+    "{\"t\":\"show\",\"show\":{\"kind\":\"meet\",\"intent\":\"hi\",\"big\":\"42\",\"small\":\"MEET\",\"armed\":\"hi\",\"rev\":1}}";
+const std::string WAVED_SHOW =
+    "{\"t\":\"show\",\"show\":{\"kind\":\"hi\",\"intent\":\"hi\",\"armed\":\"hi\",\"rev\":7,"
+    "\"waves\":{\"ref\":\"a1b2c3d4e5\",\"n\":1,\"seq\":1790337603000}}}";
+
+void showing(Wrist& w, const std::string& show) {
+  w.setAir("aabbccddeeff");
+  w.linkUp(0);
+  w.frame("{\"t\":\"paired\",\"secret\":\"" + std::string(32, 'a') + "\"}", 0);
+  w.frame(show, 0);
+  w.take();
+}
+
+/** What the band sent, less its pings. */
+std::vector<std::string> sentBy(Wrist& w) {
+  std::vector<std::string> out;
+  for (const std::string& s : w.take())
+    if (s != PING_FRAME) out.push_back(s);
+  return out;
+}
+
+void sampleAt(Wrist& w, uint32_t t, float x, float z) {
+  const float a[3] = {x, 0, z};
+  w.sample(a, t);
+}
+
+/** The wrist at rest from `from` to before `to`, one sample every 10 ms. */
+void stillFor(Wrist& w, uint32_t from, uint32_t to) {
+  for (uint32_t t = from; t < to; t += 10) sampleAt(w, t, 0, 1);
+}
+
+/** A knock of `peak` g at `at`, rest after it until `to`. */
+void knockAt(Wrist& w, uint32_t at, float peak, uint32_t to) {
+  sampleAt(w, at, 0, 1 + peak);
+  stillFor(w, at + 10, to);
+}
+
+/** Four swings past 0.5 g on one axis, 150 ms apart from `from`, rest between them, until `to`. */
+void swingsFrom(Wrist& w, uint32_t from, uint32_t to) {
+  for (uint32_t t = from; t < to; t += 10) {
+    const uint32_t k = (t - from) / 150;
+    const bool swing = (t - from) % 150 == 0 && k < 4;
+    sampleAt(w, t, swing ? (k % 2 ? -1.0f : 1.0f) : 0, 1);
+  }
+}
+
+const std::string CLINK_42 = "{\"t\":\"clink\",\"air\":\"" + THEIR_AIR + "\",\"number\":\"42\"}";
+
+void clinks() {
+  // Only the meeting face listens: on a card face, no knock goes on the air and nothing heard is a clink.
+  {
+    Wrist w("000102030405060708090a0b0c0d0e0f");
+    showing(w, "{\"t\":\"show\",\"show\":{\"kind\":\"hi\",\"intent\":\"hi\",\"armed\":\"hi\",\"rev\":1}}");
+    CHECK(!w.motionOn(10));
+    stillFor(w, 10, 500);
+    knockAt(w, 500, 2.0f, 700);
+    w.heardKnock(THEIR_AIR, 1, -30, 2.0f, 0, 510);
+    CHECK(w.airKnocks().empty() && sentBy(w).empty());
+  }
+  // On the meeting face a knock goes on the air: its sequence, when, and how hard.
+  {
+    Wrist w("000102030405060708090a0b0c0d0e0f");
+    showing(w, MEET_SHOW);
+    CHECK(w.motionOn(10));
+    stillFor(w, 10, 500);
+    knockAt(w, 500, 0.9f, 700);
+    std::vector<AirKnock> k = w.airKnocks();
+    CHECK(k.size() == 1 && k[0].at == 500 && k[0].peak > 0.85f && k[0].peak < 0.95f);
+    CHECK(w.airKnocks().empty());  // taken once
+    CHECK(sentBy(w).empty());      // a knock alone says nothing to the relay
+    // A hard knock heard 10 ms off our soft one, close by: a clink, naming the other band and this meeting,
+    // and the wrist plays clink as it goes.
+    w.sounds();
+    w.heardKnock(THEIR_AIR, 1, -30, 2.0f, 0, 510);
+    std::vector<std::string> s = sentBy(w);
+    CHECK(s.size() == 1 && s[0] == CLINK_42);
+    CHECK(w.sounds() == std::vector<std::string>{"clink"});
+    // The same knock again (it is sent three times): no second clink, and no second sound.
+    w.heardKnock(THEIR_AIR, 1, -28, 2.0f, 5, 515);
+    CHECK(sentBy(w).empty() && w.sounds().empty());
+  }
+  // Heard first, felt after: the same clink.
+  {
+    Wrist w("000102030405060708090a0b0c0d0e0f");
+    showing(w, MEET_SHOW);
+    stillFor(w, 10, 500);
+    w.heardKnock(THEIR_AIR, 4, -40, 1.6f, 0, 495);
+    knockAt(w, 500, 0.9f, 700);
+    std::vector<std::string> s = sentBy(w);
+    CHECK(s.size() == 1 && s[0] == CLINK_42);
+  }
+  // 50 ms apart, across the room, or both soft: no clink.
+  struct Miss { uint32_t heardAt; int rssi; float theirs; };
+  const Miss misses[] = {{550, -30, 2.0f}, {510, -60, 2.0f}, {510, -30, 1.0f}};
+  for (const Miss& m : misses) {
+    Wrist w("000102030405060708090a0b0c0d0e0f");
+    showing(w, MEET_SHOW);
+    stillFor(w, 10, 500);
+    knockAt(w, 500, 0.9f, 700);
+    w.heardKnock(THEIR_AIR, 1, m.rssi, m.theirs, 0, m.heardAt);
+    CHECK(sentBy(w).empty());
+  }
+}
+
+void raisedWaves() {
+  const uint32_t T = 10000;  // after the new wave's flashes, which a key does not cut short
+  // SOMEONE WAVED, opened by a FACE press: still a second, then four swings: WAVING, and two seconds later the wave.
+  {
+    Wrist w("000102030405060708090a0b0c0d0e0f");
+    showing(w, WAVED_SHOW);
+    w.frame(PING_FRAME, T - 1);  // the relay still there
+    CHECK(!w.motionOn(T + 5));  // the HI face itself does not listen
+    w.keyDown(1, T);
+    w.keyUp(1, T + 100);
+    CHECK(w.face(T + 110).big == "SOMEONE WAVED" && w.motionOn(T + 110));
+    stillFor(w, T + 110, T + 1200);
+    w.sounds();
+    swingsFrom(w, T + 1200, T + 1800);
+    CHECK(w.face(T + 1800).big == "WAVING" && w.face(T + 1800).small == "HOLD FACE: STOP");
+    CHECK(w.sounds() == std::vector<std::string>{"waving"});  // its own sound, not a key's tick
+    CHECK(sentBy(w).empty());
+    w.tick(T + 1650 + 1999);
+    CHECK(sentBy(w).empty());
+    w.tick(T + 1650 + 2000);
+    std::vector<std::string> s = sentBy(w);
+    CHECK(s.size() == 1 && s[0] == "{\"t\":\"wave\",\"ref\":\"a1b2c3d4e5\",\"basis\":7}");
+  }
+  // FACE in WAVING stops it: no wave, and the hold is not NOT NOW.
+  {
+    Wrist w("000102030405060708090a0b0c0d0e0f");
+    showing(w, WAVED_SHOW);
+    w.frame(PING_FRAME, T - 1);  // the relay still there
+    w.keyDown(1, T);
+    w.keyUp(1, T + 100);
+    stillFor(w, T + 110, T + 1200);
+    swingsFrom(w, T + 1200, T + 1800);
+    CHECK(w.face(T + 1800).big == "WAVING");
+    w.keyDown(1, T + 1900);
+    CHECK(w.face(T + 1910).big != "WAVING");
+    w.tick(T + 1900 + HOLD_MS + 100);
+    w.keyUp(1, T + 1900 + HOLD_MS + 200);
+    w.frame(PING_FRAME, T + 3000);
+    w.tick(T + 6000);
+    CHECK(sentBy(w).empty() && w.nearOn());  // nearOn is off in NOT NOW
+  }
+  // The same swings with no stillness before them: nothing.
+  {
+    Wrist w("000102030405060708090a0b0c0d0e0f");
+    showing(w, WAVED_SHOW);
+    w.frame(PING_FRAME, T - 1);  // the relay still there
+    w.keyDown(1, T);
+    w.keyUp(1, T + 100);
+    for (uint32_t t = T + 110; t < T + 1200; t += 10) sampleAt(w, t, ((t - T) / 10) % 2 ? 0.3f : -0.3f, 1);
+    swingsFrom(w, T + 1200, T + 1800);
+    CHECK(w.face(T + 1800).big == "SOMEONE WAVED");
+    w.tick(T + 4000);
+    CHECK(sentBy(w).empty());
+  }
+  // Still, then the swings, on the face that was never opened: nothing.
+  {
+    Wrist w("000102030405060708090a0b0c0d0e0f");
+    showing(w, WAVED_SHOW);
+    w.frame(PING_FRAME, T - 1);  // the relay still there
+    stillFor(w, T + 110, T + 1200);
+    swingsFrom(w, T + 1200, T + 1800);
+    CHECK(w.face(T + 1800).big != "WAVING");
+    w.tick(T + 4000);
+    CHECK(sentBy(w).empty());
+  }
+}
+
 int main(int argc, char** argv) {
   if (argc > 1 && std::string(argv[1]) == "wrist") return runWrist();
   if (argc > 1 && std::string(argv[1]) == "speak") {
@@ -1289,6 +1592,10 @@ int main(int argc, char** argv) {
   turning();
   power();
   wifiSetup();
+  beatHeap();
+  beatFold();
+  clinks();
+  raisedWaves();
   std::printf("ok: %d checks\n", checks);
   return 0;
 }

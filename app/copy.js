@@ -3,6 +3,8 @@
 import { CARDS } from '../relay/cards.js';
 
 export const HUE = Object.fromEntries(CARDS.map((c) => [c.id, { c: c.c, g: c.g, label: c.label }]));
+// LET'S FINISH is the phone's own card: never armed, never on a list or a wristband. It ends a meeting kindly.
+HUE.finish = { c: '#7CF0A8', g: '#22B866', label: "LET'S FINISH" };
 
 export const hueVars = (id) => (HUE[id] ? { '--c': HUE[id].c, '--g': HUE[id].g } : {});
 
@@ -22,13 +24,33 @@ const WORDS = {
   song: () => ({ icon: 'queue_music', title: 'FIRST SONG?', atitle: 'FIRST SONG?',
     idle: ['Ready?', 'Tap to break', 'the ice'], armed: ['Icebreaker: what would', 'be the opening track?'] }),
   dance: (act) => ({ icon: null, title: "LET'S DANCE!", atitle: "LET'S DANCE!",
-    idle: ['Ready?', 'Tap to find', 'the floor'], armed: ['Turn on the camera &', 'your fav ' + actShort(act) + '’s piece!'] }),
+    idle: ['Ready?', 'Tap to find', 'the floor'], armed: ['Dance or strike a pose', 'to your fav ' + actShort(act) + '’s piece!'] }),
   guess: () => ({ icon: 'quiz', title: "LET'S GUESS!", atitle: "LET'S GUESS!",
     idle: ['Ready?', 'Tap to test', 'what you know'], armed: ['Answer, then find', 'a teammate'] }),
 };
 
 /** The home screen's cards, in relay/cards.js's order. */
 export const cards = (act, banded = true) => CARDS.map((c) => ({ id: c.id, to: c.open, ...WORDS[c.id](act, banded) }));
+
+/** LET'S FINISH on the home screen: after the cards, and a tap opens it rather than arming anything. */
+export const FINISH_CARD = { id: 'finish', to: 'finish', icon: 'logout', title: "LET'S FINISH", atitle: "LET'S FINISH",
+  idle: ['Done talking?', 'Tap to end it', 'kindly'], armed: [] };
+
+/** LET'S FINISH's words. */
+export const FINISH = {
+  title: "LET'S FINISH",
+  sub: 'end a meeting kindly. they get a thank-you, and the choice to say not yet.',
+  none: 'nobody to finish with yet. once you meet someone, they show up here.',
+  ask: "LET'S FINISH",
+  waiting: (name) => 'asked. waiting for ' + name + '…',
+  notYet: (name) => name + ' would like to keep talking a little longer. you can ask again in a couple of minutes.',
+  done: 'finished. enjoy the show.',
+  thanksTitle: 'Thanks for connecting!',
+  thanksSub: 'Finish with a high five, a wave or a quick “enjoy the show”.',
+  thanksWho: (name) => name + ' is heading off',
+  yes: 'FINISH',
+  no: 'NOT YET',
+};
 
 export const PROMISES = [
   { dot: '#4ED7F1', icon: 'location_off', main: 'Nobody sees where you are.', sub: 'only that you’re near — and never closer than an area, like "near the bar". Your wristband shows a colour, never your name.' },
@@ -39,7 +61,7 @@ export const PROMISES = [
 
 /** "How this works", after the promises: the cards, and what makes a match. */
 export const HOW = {
-  cards: 'Four cards. SAY HI waves at someone near. FIRST SONG? guesses the opener. LET’S DANCE! puts a clip on the floor. LET’S GUESS! is tonight’s quiz.',
+  cards: 'Four cards. SAY HI waves at someone near. FIRST SONG? guesses the opener. LET’S DANCE! puts a clip or a pose on the floor. LET’S GUESS! is tonight’s quiz.',
   both: 'A match needs you both: a wave waved back, a pick liked both ways, a dance danced back, a team-up both ways. Only then a name, and where to meet.',
 };
 
@@ -116,7 +138,33 @@ export const spotShort = (spot) => String(spot || '').split(' — ')[0];
  * the band's source and fails on one with no row), and what FACE and SIDE do there; '' is nothing.
  */
 export const GUIDE = {
-  parts: [['start', 'START'], ['pair', 'PAIR'], ['buttons', 'BUTTONS'], ['lights', 'LIGHTS & SOUNDS'], ['meeting', 'MEETING'], ['trouble', 'TROUBLE']],
+  // The page opens on these; every part below is folded to one line until it is tapped.
+  essentials: {
+    title: 'All night, this is all you need',
+    // A line is the buttons, the screen it is on when that matters, and what happens.
+    groups: [
+      { title: 'Your card', rows: [
+        { keys: ['SIDE'], on: ['READY', 'SIDE TO CHANGE'], says: 'shows your card. each press after steps HI, SONG, DANCE, GUESS, OFF.' },
+        { keys: ['SIDE held'], on: ['your card', 'SIDE: NEXT'], says: 'sends the one shown. or stop pressing: it sends after three seconds.' },
+        { keys: [], on: ['your card', 'SENDING'], says: 'then the whole screen lights in its colour, and your phone follows.' },
+      ] },
+      { title: 'Going quiet', rows: [
+        { keys: ['FACE held'], says: 'NOT NOW: dark at once, and off everyone’s lists.' },
+        { keys: ['SIDE held'], on: ['NOT NOW', 'SIDE TO CHANGE'], says: 'back, on the card you had.' },
+      ] },
+      { title: 'Meeting someone', rows: [
+        { keys: [], on: ['a number', 'MEET'], says: 'a match: find the wrist that shows the same number.' },
+        { keys: ['FACE', 'SIDE'], on: ['a number', 'MEET'], says: 'stops the blinking, and nothing else.' },
+        { keys: ['SIDE held'], on: ['a number', 'HOLD SIDE: FOUND'], says: 'we found each other. touching the two bands says it too.' },
+        { keys: ['SIDE held'], on: ['SOMEONE WAVED'], says: 'waves back. so does raising your wrist and waving.' },
+      ] },
+      { title: 'Any time', rows: [
+        { keys: ['FACE'], says: 'wakes the screen for six seconds.' },
+        { keys: ['FACE', 'SIDE'], says: 'held together for three seconds: off. POWER turns it on.' },
+      ] },
+    ],
+  },
+  parts: [['start', 'Turning it on, and Wi-Fi'], ['pair', 'Pairing'], ['buttons', 'Every screen, button by button'], ['lights', 'Lights and sounds'], ['meeting', 'When you meet'], ['trouble', 'When something is wrong']],
   practice: {
     sub: 'a minute with the real buttons. nobody can see you while you practise.',
     later: 'later', skip: 'skip this one', gotIt: 'GOT IT', done: 'DONE', away: "we'll check this once your wristband is back.",
@@ -129,7 +177,7 @@ export const GUIDE = {
     },
     end: { title: "That's it", sub: 'how to use it is under your wristband, any time.' },
   },
-  page: { title: 'Your wristband', sub: 'step by step, from turning it on.', again: 'PRACTISE AGAIN', open: 'HOW TO USE IT', how: 'Your wristband, step by step', newTo: 'new to the wristband?' },
+  page: { title: 'Your wristband', sub: 'what you need tonight first; the rest folded below.', again: 'PRACTISE AGAIN', open: 'HOW TO USE IT', how: 'Your wristband, step by step', newTo: 'new to the wristband?' },
   start: [
     ['Turn it on', 'press POWER once. it lights and looks for Wi-Fi. charge it on any USB-C cable; it runs on the cable too.'],
     ['What it needs', 'a Wi-Fi it can reach on its own: 2.4 GHz, with a password or open, and no sign-in page. a phone hotspot works (set it to 2.4 GHz if the phone asks: hotspot → AP band). a school, hotel or café sign-in Wi-Fi does not.'],
@@ -148,32 +196,39 @@ export const GUIDE = {
     ['A number you did not ask for', 'someone typed your letters. hold FACE for a second and a half on it: it is turned away and new letters come up.'],
   ],
   columns: ['FACE', 'FACE held', 'SIDE', 'SIDE held'],
+  // The button table, cut by what is going on, so no group is long and none needs scrolling sideways.
+  groups: [['card', 'Your card', true], ['meet', 'Meeting someone', true], ['setup', 'Setting up and pairing'], ['other', 'Off, and when something is wrong']],
+  noKeys: 'nothing to press: do what it says',
+  onlyUsual: 'nothing else here',
+  usual: 'Almost everywhere: FACE wakes it, and FACE held is NOT NOW. Below is only what else the buttons do.',
+  anyKey: 'any',
   screens: [
-    { face: ['NO WI-FI', 'HOLD SIDE: SET UP'], facePress: 'wakes it', faceHold: '', sidePress: '', sideHold: 'Wi-Fi setup' },
-    { face: ['OTB-', 'its setup code'], facePress: 'leaves setup, nothing changed', faceHold: 'the same', sidePress: 'the same', sideHold: 'the same' },
-    { face: ['SAVED', 'JOINING'], facePress: 'nothing: it starts again by itself', faceHold: '', sidePress: '', sideHold: '' },
-    { face: ['four letters', 'PAIR ON YOUR PHONE'], facePress: 'says PAIR ON YOUR PHONE', faceHold: '', sidePress: 'says PAIR ON YOUR PHONE', sideHold: '' },
-    { face: ['a number', 'ON YOUR PHONE?'], facePress: 'says PAIR ON YOUR PHONE', faceHold: 'turns the check away', sidePress: 'says PAIR ON YOUR PHONE', sideHold: '' },
-    { face: ['READY', 'SIDE TO CHANGE'], facePress: 'wakes it for six seconds', faceHold: 'NOT NOW: dark at once', sidePress: 'shows your card; each press after steps HI, SONG, DANCE, GUESS, OFF; three seconds after the last it sends', sideHold: 'as a press' },
-    { face: ['your card', 'SIDE: NEXT'], facePress: 'wakes it', faceHold: 'NOT NOW', sidePress: 'the next card', sideHold: 'sends this one now' },
-    { face: ['your card', 'SENDING'], facePress: '', faceHold: 'NOT NOW', sidePress: '', sideHold: '' },
-    { face: ['SET', 'CHANGED', 'NOT SENT'], facePress: 'wakes it', faceHold: 'NOT NOW', sidePress: 'starts a new choice', sideHold: '' },
-    { face: ['NOT NOW', 'SIDE TO CHANGE'], facePress: 'shows NOT NOW and its battery', faceHold: '', sidePress: 'shows the card it comes back on, then steps', sideHold: 'comes back, on the card you had' },
-    { face: ['your card', 'HOLD SIDE TO SHOW'], facePress: '', faceHold: '', sidePress: 'the next card', sideHold: 'comes back on this card' },
-    { face: ['a number', 'MEET'], facePress: 'stops the blinking, and nothing else', faceHold: 'NOT NOW', sidePress: 'stops the blinking, and nothing else', sideHold: '' },
-    { face: ['a number', 'HOLD SIDE: FOUND'], facePress: '', faceHold: 'NOT NOW', sidePress: 'opens the chooser', sideHold: 'we found each other' },
-    { face: ['a number', 'FOUND: WAITING'], facePress: '', faceHold: 'NOT NOW', sidePress: '', sideHold: '' },
-    { face: ['SOMEONE WAVED', 'HOLD SIDE: WAVE BACK', 'WAITING - HOLD SIDE'], facePress: '', faceHold: 'NOT NOW', sidePress: '', sideHold: 'waves back to the newest' },
-    { face: ['WAVE BACK', 'SENDING'], facePress: '', faceHold: 'NOT NOW', sidePress: '', sideHold: '' },
-    { face: ['NO SIGNAL', 'NO RELAY'], facePress: 'wakes it', faceHold: '', sidePress: '', sideHold: 'nothing: it is not the Wi-Fi. wait.' },
-    { face: ['OPEN YOUR PHONE', 'OR SWITCH ME OFF'], facePress: '', faceHold: '', sidePress: '', sideHold: '' },
-    { face: ['OPEN YOUR PHONE', 'TO COME BACK'], facePress: '', faceHold: '', sidePress: '', sideHold: '' },
-    { face: ['KEEP HOLDING'], facePress: '', faceHold: 'a hold under way: at the end of the bar FACE alone goes NOT NOW, FACE and SIDE together turn it off. let go early and nothing happens', sidePress: '', sideHold: '' },
-    { face: ['POWER OFF', 'POWER BUTTON: ON'], facePress: 'it is turning off', faceHold: '', sidePress: '', sideHold: '' },
-    { face: ['UNPLUG', 'TO TURN IT OFF'], facePress: '', faceHold: 'on its cable it charges and stays on: unplug it, then hold FACE and SIDE again', sidePress: '', sideHold: '' },
-    { face: ['MARKER', 'its area'], facePress: 'lights it. a marker is left in the room, not worn', faceHold: 'the same', sidePress: 'the same', sideHold: 'the same' },
+    { group: 'setup', face: ['NO WI-FI', 'HOLD SIDE: SET UP'], facePress: 'wakes it', faceHold: '', sidePress: '', sideHold: 'Wi-Fi setup' },
+    { group: 'setup', face: ['OTB-', 'its setup code'], facePress: 'leaves setup, nothing changed', faceHold: 'the same', sidePress: 'the same', sideHold: 'the same' },
+    { group: 'setup', face: ['SAVED', 'JOINING'], facePress: 'nothing: it starts again by itself', faceHold: '', sidePress: '', sideHold: '' },
+    { group: 'setup', face: ['four letters', 'PAIR ON YOUR PHONE'], facePress: 'says PAIR ON YOUR PHONE', faceHold: '', sidePress: 'says PAIR ON YOUR PHONE', sideHold: '' },
+    { group: 'setup', face: ['a number', 'ON YOUR PHONE?'], facePress: 'says PAIR ON YOUR PHONE', faceHold: 'turns the check away', sidePress: 'says PAIR ON YOUR PHONE', sideHold: '' },
+    { group: 'card', face: ['READY', 'SIDE TO CHANGE'], facePress: 'wakes it for six seconds', faceHold: 'NOT NOW: dark at once', sidePress: 'shows your card; each press after steps HI, SONG, DANCE, GUESS, OFF; three seconds after the last it sends', sideHold: 'as a press' },
+    { group: 'card', face: ['your card', 'SIDE: NEXT'], facePress: 'wakes it', faceHold: 'NOT NOW', sidePress: 'the next card', sideHold: 'sends this one now' },
+    { group: 'card', face: ['your card', 'SENDING'], facePress: '', faceHold: 'NOT NOW', sidePress: '', sideHold: '' },
+    { group: 'card', face: ['SET', 'CHANGED', 'NOT SENT'], facePress: 'wakes it', faceHold: 'NOT NOW', sidePress: 'starts a new choice', sideHold: '' },
+    { group: 'card', face: ['NOT NOW', 'SIDE TO CHANGE'], facePress: 'shows NOT NOW and its battery', faceHold: '', sidePress: 'shows the card it comes back on, then steps', sideHold: 'comes back, on the card you had' },
+    { group: 'card', face: ['your score', 'RIGHT'], facePress: 'wakes it', faceHold: 'NOT NOW', sidePress: 'as on READY: shows your card, then steps', sideHold: '' },
+    { group: 'card', face: ['your card', 'HOLD SIDE TO SHOW'], facePress: '', faceHold: '', sidePress: 'the next card', sideHold: 'comes back on this card' },
+    { group: 'meet', face: ['a number', 'MEET'], facePress: 'stops the blinking, and nothing else', faceHold: 'NOT NOW', sidePress: 'stops the blinking, and nothing else', sideHold: '' },
+    { group: 'meet', face: ['a number', 'HOLD SIDE: FOUND'], facePress: '', faceHold: 'NOT NOW', sidePress: 'opens the chooser', sideHold: 'we found each other' },
+    { group: 'meet', face: ['a number', 'FOUND: WAITING'], facePress: '', faceHold: 'NOT NOW', sidePress: '', sideHold: '' },
+    { group: 'meet', face: ['SOMEONE WAVED', 'HOLD SIDE: WAVE BACK', 'WAITING - HOLD SIDE'], facePress: '', faceHold: 'NOT NOW', sidePress: '', sideHold: 'waves back to the newest; so does raising your wrist and waving' },
+    { group: 'meet', face: ['WAVE BACK', 'SENDING'], facePress: '', faceHold: 'NOT NOW', sidePress: '', sideHold: '' },
+    { group: 'other', face: ['NO SIGNAL', 'NO RELAY'], facePress: 'wakes it', faceHold: '', sidePress: '', sideHold: 'nothing: it is not the Wi-Fi. wait.' },
+    { group: 'other', face: ['OPEN YOUR PHONE', 'OR SWITCH ME OFF'], facePress: '', faceHold: '', sidePress: '', sideHold: '' },
+    { group: 'other', face: ['OPEN YOUR PHONE', 'TO COME BACK'], facePress: '', faceHold: '', sidePress: '', sideHold: '' },
+    { group: 'other', face: ['KEEP HOLDING'], facePress: '', faceHold: 'a hold under way: at the end of the bar FACE alone goes NOT NOW, FACE and SIDE together turn it off. let go early and nothing happens', sidePress: '', sideHold: '' },
+    { group: 'other', face: ['POWER OFF', 'POWER BUTTON: ON'], facePress: 'it is turning off', faceHold: '', sidePress: '', sideHold: '' },
+    { group: 'other', face: ['UNPLUG', 'TO TURN IT OFF'], facePress: '', faceHold: 'on its cable it charges and stays on: unplug it, then hold FACE and SIDE again', sidePress: '', sideHold: '' },
+    { group: 'other', face: ['MARKER', 'its area'], facePress: 'lights it. a marker is left in the room, not worn', faceHold: 'the same', sidePress: 'the same', sideHold: 'the same' },
   ],
-  anyScreen: 'on any screen, FACE and SIDE held together for three seconds turns it off. POWER turns it on.',
+  anyScreen: 'On any screen, FACE and SIDE held together for three seconds turns it off. POWER turns it on.',
   sounds: {
     tick: 'any key going down',
     double: 'a hold that sends: coming back, waving back, found',
@@ -187,14 +242,19 @@ export const GUIDE = {
     hello: 'someone waved at you',
     found: 'you both found each other',
     calledit: 'you called the first song',
+    waving: 'your raised wave: waving back from SOMEONE WAVED',
+    clink: 'your two wristbands knocked together on the meeting number',
+    right: "a LET'S GUESS answer you got right",
+    wrong: "a LET'S GUESS answer you got wrong",
   },
   lights: {
     cards: { hi: 'your colour while SAY HI is armed', song: 'your colour while FIRST SONG? is armed', dance: "your colour while LET'S DANCE! is armed", guess: "your colour while LET'S GUESS! is armed" },
     rows: [
       ['half bright', 'battery at 15% or less'],
-      ['white once', 'paired, or TEST THE LIGHT'],
+      ['white once', "paired, TEST THE LIGHT, or a wrong LET'S GUESS answer"],
       ['red three times', 'CHANGED: something moved first'],
       ['orange twice', 'NOT SENT: it could not reach ON THE BEAT'],
+      ["LET'S GUESS's colour twice", "a LET'S GUESS answer you got right"],
     ],
   },
   meeting: [
@@ -202,6 +262,7 @@ export const GUIDE = {
     'any key answers the blink.',
     'find each other at the spot your phone shows.',
     'hold SIDE once you have. it counts when you both have; until then yours says FOUND: WAITING.',
+    'or knock your two wristbands together on the number: that counts as found for both of you.',
     'a meeting number lasts fifteen minutes.',
   ],
   trouble: [

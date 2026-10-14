@@ -36,6 +36,8 @@ export const CARDS_PER_ADDRESS = 3;           // venue cards one network may mak
 export const CARDS_MAX = 200;                 // venue cards the relay holds a night
 const MAX_FRAME = 1_600_000;          // a five-second clip, base64, with room to spare
 const CLIP_MAX = 1_200_000;           // bytes of video per clip
+const PHOTO_MAX = 300_000;            // bytes of one posed photo (dance-or-pose spec §2)
+const JPEG_MARK = Buffer.from([0xff, 0xd8, 0xff]);
 // Every room's clips together, the oldest going first. Fly's machine gives the process 207 MB, and a store of 96 MB was too much
 // of it: in a 207 MB cgroup (scripts/load.mjs --cgroup-mem 207M --clip-kb 375) a hundred phones posting clips reached 178 MB of
 // memory with the old cap and 161 MB with this one, a full store included. A hundred floor clips of five seconds at 600 kbit/s
@@ -47,6 +49,8 @@ const BAND_GRACE_MS = 60_000;         // a wristband that drops keeps its letter
 const SET_GAP_MS = 1000;              // a wristband may change its person at most once a second
 const WAVE_GAP_MS = 1000;             // and wave back at most once a second, on a stamp of its own
 const FOUND_GAP_MS = 1000;            // and say found at most once a second, on a stamp of its own
+const CLINK_GAP_MS = 500;             // and say it clinked at most twice a second, on a stamp of its own
+const CLINK_PAIR_MS = 2000;           // two bands' clinks this close are one: both found
 const TRIES_MS = 60_000;              // the window pairing attempts are counted in
 const SOCKET_TRIES = 5;               // pairing attempts one socket may make in it
 const ADDRESS_TRIES = 20;             // pairing attempts one address may make in it, over every socket
@@ -94,12 +98,12 @@ export const STAFF_POLICY = [
 ].join('; ');
 // The phone app's policy (docs/superpowers/specs/2026-09-30-app-csp-design.md): the staff page's, with `media-src`
 // added for the two places a clip plays — the five seconds just recorded, from a blob URL the phone made itself,
-// and the floor's, from /clip/. Nothing else widens: the built app has no inline script or style, no eval and no
+// and the floor's, from /clip/; and `img-src blob:` for a posed photo's preview before it is sent. Nothing else widens: the built app has no inline script or style, no eval and no
 // worker of its own, and the camera scanner needs no allowance here (a MediaStream on a <video> is not a fetched
 // source, and getUserMedia answers to the browser's permission, not to this header).
 export const APP_POLICY = [
   "default-src 'self'", "script-src 'self'", "style-src 'self'",
-  "font-src 'self'", "img-src 'self' data:", "media-src 'self' blob:",
+  "font-src 'self'", "img-src 'self' data: blob:", "media-src 'self' blob:",
   "connect-src 'self' ws: wss:", "worker-src 'self'", "manifest-src 'self'",
   "base-uri 'none'", "object-src 'none'", "form-action 'self'", "frame-ancestors 'none'",
 ].join('; ');
@@ -374,15 +378,18 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     return shows.find((s) => s.id === key)?.quiz ?? null;
   }
 
+  /** What a kept ref holds, for the room's views: 'photo' or 'clip'. */
+  const clipKindOf = (key, ref) => (rooms.get(key)?.clips.get(ref)?.mime === 'image/jpeg' ? 'photo' : 'clip');
+
   function roomFor(key) {
     if (!rooms.has(key)) {
       if (rooms.size >= maxRooms) {
         for (const r of [...rooms.values()]) gcRoom(r);   // reclaim venues nobody is in
         if (rooms.size >= maxRooms) return null;          // every venue is genuinely in use
       }
-      // sound: each person's sound switch, as their phone last said it. Leaving forgets it; the grace does not.
+      // sound, beat: each person's switches, as their phone last said them. Leaving forgets them; the grace does not.
       // The room reads the relay's clock: a wave's number is the time it was made, so it only goes up.
-      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), quiz: quizFor(key), now, ledger: handles }), sockets: new Set(), clips: new Clips(), left: new Map(), heard: new Map(), sound: new Map(), staff: new Set() });
+      rooms.set(key, { key, room: createRoom({ spots: spotsFor(key), quiz: quizFor(key), clipKind: (ref) => clipKindOf(key, ref), now, ledger: handles }), sockets: new Set(), clips: new Clips(), left: new Map(), heard: new Map(), sound: new Map(), beat: new Map(), staff: new Set() });
     }
     return rooms.get(key);
   }
@@ -491,6 +498,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     setAt: 0,           // when this wristband last changed its person (rule 1)
     waveAt: 0,          // when it last waved back, landed or not
     foundTry: 0,        // when it last said found, landed or not
+    clinkTry: 0,        // when it last said it clinked, kept or not
+    clink: null,        // its last kept clink, { match, at }, until the other band says one back
   });
 
   // How long a record has been dead weight: a live wristband is never that, a
@@ -518,8 +527,9 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const r = b.key ? rooms.get(b.key) : null;
     const view = r?.room.viewFor(b.person) ?? null;
     const sound = r?.sound.get(b.person) ?? null;
+    const beat = r?.beat.get(b.person) ?? null;
     const waves = view ? r.room.wavesAt(b.person) : [];
-    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, waiting: b.waiting, testUntil: b.testUntil, sound, waves, now }) });
+    const text = JSON.stringify({ t: 'show', show: bandShow({ view, battery: b.battery, code: b.code, check: b.pending?.number ?? null, waiting: b.waiting, testUntil: b.testUntil, sound, beat, waves, now }) });
     if (text !== b.lastShow) { b.lastShow = text; b.ws.send(text); }
   }
 
@@ -632,6 +642,39 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   }
 
   /**
+   * We clinked wrists, said on the meeting face (wrist-motion, a test branch):
+   * the band felt a knock as another band said it felt one, and names that
+   * band by its air. Only the band paired to the other person in that meeting
+   * counts, and one band's word finds nobody: both must say it of each other
+   * within CLINK_PAIR_MS, and then both are found. The relay answers ok, or no
+   * and why; a refused one is not kept. Returns whether it was kept.
+   */
+  function clinkFromBand(ws, b, m) {
+    // Dropped whole, unanswered and unstamped, unless it is exactly a clink.
+    if (typeof m.air !== 'string' || !AIR.test(m.air) || typeof m.number !== 'string' || !/^[1-9][0-9]$/.test(m.number)) return false;
+    const answer = (why) => { ws.send(JSON.stringify(why ? { t: 'clink', ok: false, why } : { t: 'clink', ok: true })); return !why; };
+    if (now() - b.clinkTry < CLINK_GAP_MS) return answer('too fast');
+    b.clinkTry = now();
+    if (!b.person) return answer('unpaired');
+    const room = rooms.get(b.key)?.room;
+    if (!room?.has(b.person)) return answer('no room');
+    const meeting = room.viewFor(b.person).matches
+      .filter((x) => String(x.number) === m.number && now() - x.at < MEET_MS && !x.foundAt)
+      .sort((x, y) => y.at - x.at)[0];
+    if (!meeting) return answer('gone');
+    const other = room.partnerIn(b.person, meeting.id);
+    const theirs = other ? bandOf(b.key, other) : null;
+    if (!theirs || theirs.air !== m.air) return answer('not them');
+    b.clink = { match: meeting.id, at: now() };
+    if (theirs.clink?.match === meeting.id && now() - theirs.clink.at <= CLINK_PAIR_MS) {
+      room.found(b.person, meeting.id);
+      room.found(other, meeting.id);
+      b.clink = theirs.clink = null;
+    }
+    return answer(null);
+  }
+
+  /**
    * A check turned away on the wrist: its person held the face button on a
    * number they did not ask for, which someone who read the letters off the
    * wrist may be holding open. It lands only on the check the wrist shows —
@@ -658,6 +701,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (m.t === 'set' && !setFromBand(ws, b, m)) return;
     if (m.t === 'wave' && !waveFromBand(ws, b, m)) return;
     if (m.t === 'found' && !foundFromBand(ws, b, m)) return;
+    if (m.t === 'clink' && !clinkFromBand(ws, b, m)) return;
     const r = b.key ? rooms.get(b.key) : null;
     if (r) push(r); else showBand(b);
   }
@@ -835,11 +879,16 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
    * rather than left to 404.
    */
   function keepClip(r, id, mime, data, slot) {
+    // A string or nothing: the clip budget reads the mime as a string, and ["image/jpeg"] must not pass here unpaid.
+    if (typeof mime !== 'string') return null;
     const buf = Buffer.from(String(data || ''), 'base64');
     // Kept as one of the two types and nothing of what followed: it is served as a header, where a character a header
     // cannot hold would throw out of the request and stop the relay.
-    const type = /^video\/(webm|mp4)(?:;|$)/.exec(String(mime));
-    if (!buf.length || buf.length > CLIP_MAX || !type) return null;
+    // A posed photo is kept only if it is a JPEG: it is served under that type, with nosniff.
+    const photo = /^image\/jpeg(?:;|$)/.test(String(mime));
+    const type = photo ? null : /^video\/(webm|mp4)(?:;|$)/.exec(String(mime));
+    if (!buf.length || !(photo || type)) return null;
+    if (photo ? buf.length > PHOTO_MAX || !buf.subarray(0, 3).equals(JPEG_MARK) : buf.length > CLIP_MAX) return null;
     const drop = (room, ref, c) => {
       room.clips.delete(ref);
       if (c.slot === 'floor' && room.room.has(c.by)) {
@@ -856,7 +905,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       all -= c.buf.length;
     }
     const ref = randomBytes(12).toString('hex');
-    r.clips.set(ref, { mime: 'video/' + type[1], buf, by: id, slot, at: now() });
+    r.clips.set(ref, { mime: photo ? 'image/jpeg' : 'video/' + type[1], buf, by: id, slot, at: now() });
     return ref;
   }
 
@@ -1141,6 +1190,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         if (typeof m.on !== 'boolean') return;
         r.sound.set(me, m.on);
         break;
+      case 'beat':
+        // The same, for whether their band's card pulses on the beat.
+        if (typeof m.on !== 'boolean') return;
+        r.beat.set(me, m.on);
+        break;
       case 'practice':
         // The wristband guide: while it runs its person is on nobody's list (room.setPractice). Only true or false.
         if (typeof m.on !== 'boolean') return;
@@ -1185,6 +1239,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       case 'wrong': room.wrongCard(me, String(m.field || '')); break;
       case 'keep': room.keep(me, m.match, m.on); break;
       case 'found': room.found(me, m.match); break;
+      case 'finish': room.finish(me, String(m.match ?? ''), String(m.say ?? '')); break;
       case 'clip': {
         const to = m.to ? String(m.to) : null;
         const ref = keepClip(r, me, m.mime, m.data, to ? 'to:' + to : 'floor');
@@ -1204,6 +1259,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
         if (b) unpairBand(b);
         stopGrace(r, me);
         r.sound.delete(me);
+        r.beat.delete(me);
         room.leave(me);
         r.sockets.delete(ws);
         ws.r = null;
@@ -1349,15 +1405,23 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       // Far faster than any phone or wristband: closed before its frame is even read.
       if (ws.frames < 1) { ws.close(4003, 'too fast'); return; }
       ws.frames -= 1;
-      if (data.length >= BIG_FRAME) {
+      // One of the socket's clips, or false and a refusal when it has none left.
+      const clipPaid = () => {
         ws.clips = Math.min(CLIPS_AT_ONCE, ws.clips + (t - ws.clipsAt) / clipEveryMs);
         ws.clipsAt = t;
-        if (ws.clips < 1) { ws.send(JSON.stringify({ t: 'error', why: 'clip too fast' })); return; }
+        if (ws.clips < 1) { ws.send(JSON.stringify({ t: 'error', why: 'clip too fast' })); return false; }
         ws.clips -= 1;
-      }
+        return true;
+      };
+      // A big frame pays before it is parsed. A photo pays whatever its size, once it is read:
+      // most are under BIG_FRAME, and a pose is paced as a clip is.
+      const big = data.length >= BIG_FRAME;
+      if (big && !clipPaid()) return;
       let m;
       try { m = JSON.parse(String(data)); } catch { return; }
       if (!m || typeof m.t !== 'string') return;
+      // Outside the try below: typeof, never String(), which throws on {"toString":1} and would stop the relay.
+      if (!big && m.t === 'clip' && typeof m.mime === 'string' && m.mime.startsWith('image/') && !clipPaid()) return;
       // A message that throws closes its own socket, as a socket that drops does, and the relay goes on.
       try {
         handle(ws, m);
@@ -1499,7 +1563,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       if (!forgotten.length) continue;
       for (const me of forgotten) {
         for (const [ref, c] of r.clips) if (c.by === me) r.clips.delete(ref);
-        for (const kept of [r.heard, r.sound]) kept.delete(me);
+        for (const kept of [r.heard, r.sound, r.beat]) kept.delete(me);
         // Worn or away: a wristband away now comes back to its owner's phone or to letters, never to last night's person.
         const theirs = bandOf(r.key, me);
         if (theirs) unpairBand(theirs);
@@ -1559,7 +1623,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     return {
       staffKey: staffKey.toString('hex'),
       rooms: [...rooms.values()].map((r) => ({
-        key: r.key, room: r.room.dump(), heard: [...r.heard], sound: [...r.sound],
+        key: r.key, room: r.room.dump(), heard: [...r.heard], sound: [...r.sound], beat: [...r.beat],
         // The video is in its own file; what the night needs to serve it again is here.
         clips: [...r.clips].map(([ref, c]) => [ref, { mime: c.mime, by: c.by, slot: c.slot, at: c.at }]),
       })),
@@ -1617,11 +1681,14 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const all = saved.flatMap((e, i) => (Array.isArray(e.clips) ? e.clips : []).flatMap((pair) => {
       const [ref, c] = Array.isArray(pair) ? pair : [];
       if (!disk || typeof ref !== 'string' || !/^[a-f0-9]{24}$/.test(ref) || !c || typeof c.by !== 'string') return [];
-      if (!/^video\/(webm|mp4)$/.test(c.mime) || !(c.slot === 'floor' || /^to:./.test(c.slot))) return [];
+      const photo = c.mime === 'image/jpeg';
+      if (!(photo || /^video\/(webm|mp4)$/.test(c.mime)) || !(c.slot === 'floor' || /^to:./.test(c.slot))) return [];
       if (!Number.isFinite(c.at) || now() - c.at >= CLIP_TTL_MS) return [];
       let buf = null;
       try { buf = disk.read(ref); } catch { /* unreadable is as good as gone */ }
-      return buf?.length && buf.length <= CLIP_MAX ? [[i, ref, { mime: c.mime, buf, by: c.by, slot: c.slot, at: c.at }]] : [];
+      // A photo comes back only as one: a JPEG, within its own cap.
+      const fits = photo ? buf?.length <= PHOTO_MAX && buf.subarray(0, 3).equals(JPEG_MARK) : buf?.length <= CLIP_MAX;
+      return buf?.length && fits ? [[i, ref, { mime: c.mime, buf, by: c.by, slot: c.slot, at: c.at }]] : [];
     }));
     const each = saved.map(() => new Clips());
     let bytes = 0;
@@ -1656,8 +1723,8 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       const back = clipsBack(saved.rooms);
       built = {
         rooms: saved.rooms.map((e, i) => ({
-          key: String(e.key), room: createRoom({ spots: spotsFor(e.key), quiz: quizFor(String(e.key)), now, restore: e.room, ledger: handles, clipKept: (ref) => back[i].has(ref) }),
-          sockets: new Set(), clips: back[i], left: new Map(), heard: new Map(e.heard), sound: new Map(e.sound), staff: new Set(),
+          key: String(e.key), room: createRoom({ spots: spotsFor(e.key), quiz: quizFor(String(e.key)), clipKind: (ref) => clipKindOf(String(e.key), ref), now, restore: e.room, ledger: handles, clipKept: (ref) => back[i].has(ref) }),
+          sockets: new Set(), clips: back[i], left: new Map(), heard: new Map(e.heard), sound: new Map(e.sound), beat: new Map(e.beat), staff: new Set(),
         })),
         bands: saved.bands.map((e) => Object.assign(makeBand(String(e.id), null), {
           old: !!e.old, key: e.key, person: e.person, secretHash: e.secretHash, everWs: !!e.everWs,

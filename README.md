@@ -13,7 +13,7 @@ https://github.com/user-attachments/assets/87d6690f-96b9-4829-8848-19cd1f69d0fc
 
 A phone app for one night at one venue. You arm one of four cards — **SAY HI**
 (your screen turns blue: hello), **FIRST SONG?** (pick the opening track and
-like other people's picks), **LET'S DANCE!** (five seconds of you dancing, on a
+like other people's picks), **LET'S DANCE!** (five seconds of you dancing, or one pose, on a
 shared floor), **LET'S GUESS!** (tonight's quiz: answer it, then team up with
 someone else who finished) — and when two people both say yes, and only then, each learns
 the other's first name and where to meet. It is built from the Claude Design

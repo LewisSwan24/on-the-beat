@@ -331,6 +331,20 @@ test('a clip on the floor and a dance back come back after a restart, byte for b
   assert.deepEqual(await video(n, 'restart-clips', toHer.ref), back);
 });
 
+test('a photo on the floor comes back after a restart as a photo, byte for byte', async () => {
+  const n = night();
+  await n.start();
+  const photo = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), randomBytes(2000)]);
+  const ana = await n.on.phone('restart-photo');
+  ana.send({ t: 'clip', mime: 'image/jpeg', data: photo.toString('base64') });
+  await ana.until((v) => v.me.clipKind === 'photo');
+  await n.restart();
+  const ben = await n.on.phone('restart-photo');
+  const [onFloor] = (await ben.until((v) => v.floor.length === 1)).floor;
+  assert.equal(onFloor.kind, 'photo');
+  assert.deepEqual(await video(n, 'restart-photo', onFloor.ref), photo);
+});
+
 test('a clip whose file is gone comes back as none, and every file no clip uses is cleared at start', async () => {
   const n = night();
   await n.start();
@@ -364,13 +378,14 @@ test("after 06:00 the night's file holds nothing of last night's people, those s
   await n.start();
   const ana = await n.on.phone('restart-six');
   const ben = await n.on.phone('restart-six');
-  for (const p of [ana, ben]) p.send({ t: 'sound', on: true });
+  for (const p of [ana, ben]) { p.send({ t: 'sound', on: true }); p.send({ t: 'beat', on: false }); }
   const left = n.on.reply(ben, 'left');
   ben.send({ t: 'leave' });
   await left;
   n.clock.t = Date.UTC(2026, 8, 29, 20, 0, 30);   // 06:00:30 on 30 Sep at the venue
   const cai = await n.on.phone('restart-six');
   cai.send({ t: 'sound', on: true });
+  cai.send({ t: 'beat', on: false });
   await pause(100);
   const over = n.on.reply(ana, 'over');
   n.relay.expire(n.clock.t + 30_000);
@@ -379,6 +394,8 @@ test("after 06:00 the night's file holds nothing of last night's people, those s
   const [room] = n.saved().rooms;
   assert.deepEqual(room.heard.map(([id]) => id), [personOf(cai.me)]);
   assert.deepEqual(room.sound.map(([id]) => id), [personOf(cai.me)]);
+  // The beat switch is carried across a restart beside the sound one, and goes at 06:00 the same way.
+  assert.deepEqual(room.beat, [[personOf(cai.me), false]]);
   assert.deepEqual(room.room.tombs, [], 'ben left before six, and goes with it');
 });
 

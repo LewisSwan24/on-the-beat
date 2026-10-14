@@ -45,3 +45,22 @@ export function restoreTaps(was, me, cards) {
 
 /** One row per sound the band makes, in its own order, with what it means. */
 export const GUIDE_SOUNDS = Object.keys(SOUNDS).map((sound) => ({ sound, says: GUIDE.sounds[sound] }));
+
+/**
+ * A screen's row on the guide page: only the buttons that do something there, and not the two FACE does almost
+ * everywhere (GUIDE.usual says those once). A row where every button does the same is one line; a row with
+ * nothing of its own says so.
+ */
+export function usualKeys(r) {
+  const did = [r.facePress, r.faceHold, r.sidePress, r.sideHold];
+  if (did.slice(1).every((d) => d === 'the same')) return [[GUIDE.anyKey, r.facePress]];
+  const usual = (k, d) => (k === 0 && /^wakes it/.test(d)) || (k === 1 && /^NOT NOW/.test(d));
+  const keys = [];
+  GUIDE.columns.forEach((c, i) => {
+    if (!did[i] || usual(i, did[i])) return;
+    const same = keys.find(([, d]) => d === did[i]);   // two buttons that do the same thing: one line, both named
+    if (same) same[0] += ' / ' + c; else keys.push([c, did[i]]);
+  });
+  if (keys.length) return keys;
+  return [['', did.some(Boolean) ? GUIDE.onlyUsual : GUIDE.noKeys]];
+}

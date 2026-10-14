@@ -16,6 +16,8 @@ export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 export const MEET_MS = 15 * 60_000;   // the number shows while the two of you find each other
 export const FOUND_SHOW_MS = 60_000;  // found by both: a band still plays it this long, if it was out of reach
 export const CALLED_SHOW_MS = 60_000; // the opener named: a band whose person called it still plays it this long
+export const GUESSED_SHOW_MS = 20_000; // LET'S GUESS: an answer, right or wrong, still plays this long after it was given
+export const SCORE_SHOW_MS = 8_000;    // and after the last one, LET'S GUESS on the band shows the score this long
 export const DIM_AT = 15;             // percent; at or below it the light drops to half
 
 /** A track as the words that make it the song, as the phone matches it (app/lib/opener.js trackKey()). */
@@ -36,6 +38,7 @@ const short = (s, n) => {
  * @param {boolean} p.waiting     after a relay restart, until its owner's phone claims it
  * @param {number} p.testUntil    TEST THE LIGHT runs until this time
  * @param {boolean|null} p.sound  the person's sound switch, once their phone has said it; null before
+ * @param {boolean|null} p.beat   the person's beat switch, the same way
  * @param {Array} p.waves         room.wavesAt(): who waved at the person and waits, newest first, as { handle, n }
  * @param {number} p.now
  *
@@ -49,7 +52,9 @@ const short = (s, n) => {
  * carries it: their own, the test light (the white face that ends a pairing,
  * and TEST THE LIGHT) and not in a room. Letters, the check and waiting carry
  * none: those bands are nobody's yet, or not known to be whose. A show made
- * without a known switch is exactly the show made before there was one.
+ * without a known switch is exactly the show made before there was one. The
+ * beat switch rides beside it, on the same shows, the same way
+ * (docs/superpowers/specs/2026-09-26-wrist-beat-design.md §3).
  *
  * A show about a person on SAY HI, a meeting's included, carries the waves
  * waiting for them as one small object: the newest one's handle (as the
@@ -66,12 +71,16 @@ const short = (s, n) => {
  * Once the venue's staff name the opener (FIRST SONG?'s answer), for CALLED_SHOW_MS every show about a person whose
  * pick it was, but NOT NOW, says so (`calledIt`, with when it was named), so their band plays it once. A person who did
  * not call it is shown nothing: the band never says what anyone else picked, nor that they missed.
+ *
+ * LET'S GUESS: for GUESSED_SHOW_MS after an answer, every show about its person but NOT NOW says how many they have
+ * answered and whether the last was right (`guessed`), so their band plays it once. For SCORE_SHOW_MS after the last,
+ * the card's face shows the score ("4 / 5", "RIGHT") instead of its own words.
  */
-export function bandShow({ view = null, battery = null, code = null, check = null, waiting = false, testUntil = 0, sound = null, waves = [], now = Date.now() }) {
+export function bandShow({ view = null, battery = null, code = null, check = null, waiting = false, testUntil = 0, sound = null, beat = null, waves = [], now = Date.now() }) {
   if (check) return { kind: 'check', big: String(check) };
   if (code) return { kind: 'pairing', code };
   if (waiting) return { kind: 'waiting' };
-  const said = sound === null ? {} : { sound };
+  const said = { ...(sound === null ? {} : { sound }), ...(beat === null ? {} : { beat }) };
   if (testUntil > now) return { kind: 'test', ...said };
   const dim = battery !== null && battery <= DIM_AT;
   if (!view) return { kind: 'off', battery, away: true, ...said };
@@ -90,12 +99,19 @@ export function bandShow({ view = null, battery = null, code = null, check = nul
   const op = view.opener;
   const mine = trackKey(view.me.pick);
   if (op?.track && now - op.at < CALLED_SHOW_MS && mine && mine === trackKey(op.track)) plays.calledIt = { n: op.at };
+  const quiz = view.quiz;
+  const answered = quiz?.answered?.length ?? 0;
+  const lately = (ms) => answered > 0 && Number.isFinite(quiz.lastAt) && now - quiz.lastAt < ms;
+  if (lately(GUESSED_SHOW_MS)) plays.guessed = { n: answered, right: !!quiz.answered[answered - 1].right };
   const meet = view.matches
-    .filter((m) => now - m.at < MEET_MS && !m.foundAt)
+    .filter((m) => now - m.at < MEET_MS && !m.foundAt && !m.finishedAt)
     .sort((a, b) => b.at - a.at)[0];
   if (meet) return { kind: 'meet', intent: meet.intent, big: String(meet.number), small: meet.found ? 'FOUND: WAITING' : 'MEET', dim, ...about, ...waved, ...plays };
   const card = cardOf(view.me.armed);
   if (!card) return { kind: 'off', battery, ...about, ...plays };
+  if (card.id === 'guess' && quiz?.done && lately(SCORE_SHOW_MS)) {
+    return { kind: card.id, intent: card.id, big: `${quiz.score.right} / ${quiz.score.of}`, small: 'RIGHT', dim, ...about, ...waved, ...plays };
+  }
   const small = SMALL[card.id]?.(view) ?? '';
   return { kind: card.id, intent: card.id, big: card.band, small, dim, ...about, ...waved, ...plays };
 }

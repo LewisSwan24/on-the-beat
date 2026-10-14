@@ -513,6 +513,86 @@ test('leave forgets the switch; the grace does not, and away carries it', async 
   close(again, ben, band, next);
 });
 
+// ---------- the beat switch (docs/superpowers/specs/2026-09-26-wrist-beat-design.md §3) ----------
+
+test("a phone's beat switch rides on its band's shows as the sound switch does: one show a flip, none when unchanged", async () => {
+  const { band, ana } = await wearing('beat-flip');
+  assert.equal('beat' in band.show, false, 'before the phone says it, the show is as it was');
+  let shows = 0;
+  band.ws.on('message', (d) => { if (JSON.parse(String(d)).t === 'show') shows++; });
+  ana.send({ t: 'beat', on: false });
+  await band.until((s) => s.beat === false);
+  ana.send({ t: 'beat', on: false });
+  ana.send({ t: 'profile', name: 'Ana' });
+  await pause(150);
+  assert.equal(shows, 1, 'the same again sends nothing');
+  ana.send({ t: 'sound', on: false });
+  await band.until((s) => s.sound === false && s.beat === false);
+  ana.send({ t: 'beat', on: true });
+  await band.until((s) => s.beat === true && s.sound === false);
+  close(ana, band);
+});
+
+test('a malformed beat is dropped', async () => {
+  const { band, ana } = await wearing('beat-bad');
+  for (const m of [{ t: 'beat' }, { t: 'beat', on: 'no' }, { t: 'beat', on: 0 }, { t: 'beat', on: 1 }, { t: 'beat', on: null }]) {
+    ana.send(m);
+    await pause(80);
+    assert.equal('beat' in band.show, false, JSON.stringify(m));
+  }
+  ana.send({ t: 'beat', on: false });
+  await band.until((s) => s.beat === false);
+  close(ana, band);
+});
+
+test("one person's beat switch never reaches another's band", async () => {
+  const { band, ana } = await wearing('beat-two');
+  const other = await wristband();
+  const ben = await phone('beat-two');
+  await pairBand(ben, other);
+  await other.until((s) => s.kind === 'off');
+  ana.send({ t: 'beat', on: false });
+  await band.until((s) => s.beat === false);
+  await pause(100);
+  assert.equal('beat' in other.show, false);
+  close(ana, ben, band, other);
+});
+
+test('a band paired with the beat off gets it in its pairing flash; letters and the check carry none', async () => {
+  const band = await wristband();
+  const ana = await phone('beat-pair');
+  ana.send({ t: 'beat', on: false });
+  await pause(50);
+  assert.equal('beat' in band.show, false, 'letters are nobody\'s');
+  ana.send({ t: 'pair', code: band.show.code });
+  await ana.until((v) => v.me.check);
+  assert.equal('beat' in (await band.until((s) => s.kind === 'check')), false);
+  ana.send({ t: 'confirm', yes: true });
+  assert.deepEqual(await band.until((s) => s.kind === 'test'), { kind: 'test', beat: false });
+  close(ana, band);
+});
+
+test('leave forgets the beat switch; the grace does not, and away carries it', async () => {
+  const { band, ana } = await wearing('beat-away');
+  const ben = await phone('beat-away');   // someone stays, so the room itself is never let go
+  ana.send({ t: 'beat', on: false });
+  await band.until((s) => s.beat === false);
+  ana.ws.close();
+  await pause(100);
+  relay.expire(Date.now() + BAND_ALONE_MS + 1_000);
+  assert.equal((await band.until((s) => s.away)).beat, false);
+  const back = await phone('beat-away', { me: ana.me });
+  back.send({ t: 'leave' });
+  await reply(back, 'left');
+  const again = await phone('beat-away', { me: ana.me });
+  const next = await wristband();
+  again.send({ t: 'pair', code: next.show.code });
+  await again.until((v) => v.me.check);
+  again.send({ t: 'confirm', yes: true });
+  assert.deepEqual(await next.until((s) => s.kind === 'test'), { kind: 'test' });
+  close(again, ben, band, next);
+});
+
 // ---------- waves (docs/superpowers/specs/2026-09-25-wrist-waves-design.md §3) ----------
 
 /**
@@ -793,8 +873,8 @@ test("two people already matched tonight: a band's wave back is answered ok, and
 // ---------- found each other (docs/superpowers/specs/2026-09-26-wrist-found-design.md §2) ----------
 
 /** Ana and ben each wear a band, and have just matched on SAY HI: both bands show the meeting. */
-async function meeting(venue, on = { phone, wristband, pairBand }, clock = null) {
-  const [aBand, bBand] = [await on.wristband(), await on.wristband()];
+async function meeting(venue, on = { phone, wristband, pairBand }, clock = null, airs = [null, null]) {
+  const [aBand, bBand] = [await on.wristband(62, { air: airs[0] }), await on.wristband(62, { air: airs[1] })];
   const ana = await on.phone(venue);
   const ben = await on.phone(venue);
   await on.pairBand(ana, aBand);
@@ -896,6 +976,88 @@ test('a block reads exactly as a meeting that is over, and tells the one blocked
   ben.ws.off('message', count);
   assert.equal(heard, 0, "nothing reached ben's phone");
   close(ana, ben, aBand, bBand);
+});
+
+// ---------- a clink says found (wrist-motion, a test branch) ----------
+
+const airPair = () => [randomBytes(6).toString('hex'), randomBytes(6).toString('hex')];
+
+/** A band's clink, naming the band it bumped by its air, and the relay's answer. */
+async function clink(band, air, number) {
+  const before = band.replies.length;
+  band.send({ t: 'clink', air, number });
+  await band.until((s, b) => b.replies.length > before);
+  return band.replies.at(-1);
+}
+const noClink = (why) => ({ t: 'clink', ok: false, why });
+const foundBy = (p) => [p.view.matches[0].found, p.view.matches[0].foundAt];
+
+test('two bands that clink on their meeting face, each naming the other within two seconds, are both found; one alone finds nobody', async () => {
+  await heldRelay(async (on, clock) => {
+    const airs = airPair();
+    const { aBand, bBand, ana, ben, number } = await meeting('clink-both', on, clock, airs);
+    await Promise.all([ana.until((v) => v.matches.length === 1), ben.until((v) => v.matches.length === 1)]);
+    assert.deepEqual(await clink(aBand, airs[1], number), { t: 'clink', ok: true });
+    await pause(500);   // a view takes a beat to arrive; a found would have by now
+    assert.deepEqual([foundBy(ana), foundBy(ben)], [[false, null], [false, null]], 'one band alone finds nobody');
+    clock.t += 1_500;
+    assert.deepEqual(await clink(bBand, airs[0], number), { t: 'clink', ok: true });
+    const [va, vb] = await Promise.all([ana.until((v) => v.matches[0].foundAt), ben.until((v) => v.matches[0].foundAt)]);
+    assert.equal(va.matches[0].foundAt, vb.matches[0].foundAt, 'one time on both phones');
+    await Promise.all([aBand.until((s) => s.found?.n === Number(number)), bBand.until((s) => s.found?.n === Number(number))]);
+    close(ana, ben, aBand, bBand);
+  });
+});
+
+test('clinks more than two seconds apart find nobody', async () => {
+  await heldRelay(async (on, clock) => {
+    const airs = airPair();
+    const { aBand, bBand, ana, ben, number } = await meeting('clink-apart', on, clock, airs);
+    await Promise.all([ana.until((v) => v.matches.length === 1), ben.until((v) => v.matches.length === 1)]);
+    assert.deepEqual(await clink(aBand, airs[1], number), { t: 'clink', ok: true });
+    clock.t += 2_500;
+    assert.deepEqual(await clink(bBand, airs[0], number), { t: 'clink', ok: true });
+    await pause(500);
+    assert.deepEqual([foundBy(ana), foundBy(ben)], [[false, null], [false, null]]);
+    close(ana, ben, aBand, bBand);
+  });
+});
+
+test("a clink naming a band that is not the meeting partner's is refused not them, one for another number gone; neither counts", async () => {
+  await heldRelay(async (on, clock) => {
+    const airs = airPair();
+    const { aBand, bBand, ana, ben, number } = await meeting('clink-them', on, clock, airs);
+    await Promise.all([ana.until((v) => v.matches.length === 1), ben.until((v) => v.matches.length === 1)]);
+    assert.deepEqual(await clink(aBand, randomBytes(6).toString('hex'), number), noClink('not them'), 'a stranger');
+    clock.t += 1_000;
+    assert.deepEqual(await clink(aBand, airs[0], number), noClink('not them'), 'its own air');
+    clock.t += 1_000;
+    const wrong = number === '99' ? '98' : String(Number(number) + 1);
+    assert.deepEqual(await clink(aBand, airs[1], wrong), noClink('gone'), 'not its meeting');
+    clock.t += 500;
+    assert.deepEqual(await clink(bBand, airs[0], number), { t: 'clink', ok: true });
+    await pause(500);
+    assert.deepEqual([foundBy(ana), foundBy(ben)], [[false, null], [false, null]], "ana's refused clinks were not kept");
+    close(ana, ben, aBand, bBand);
+  });
+});
+
+test('a malformed clink is dropped unanswered; the rest are refused unpaired and too fast before anything is looked up', async () => {
+  await heldRelay(async (on, clock) => {
+    const loose = await on.wristband();
+    const air = randomBytes(6).toString('hex');
+    for (const m of [{ t: 'clink' }, { t: 'clink', air, number: 27 }, { t: 'clink', air, number: '07' },
+      { t: 'clink', air: air.toUpperCase().replace(/^./, 'A'), number: '27' }, { t: 'clink', air: 'abc', number: '27' },
+      { t: 'clink', number: '27' }]) {
+      loose.send(m);
+      await pause(40);
+      assert.deepEqual(loose.replies, [], JSON.stringify(m));
+    }
+    assert.deepEqual(await clink(loose, air, '27'), noClink('unpaired'));
+    assert.deepEqual(await clink(loose, air, '28'), noClink('too fast'), 'the last was refused, and still stamped');
+    clock.t += 1_000;
+    assert.deepEqual(await clink(loose, air, '28'), noClink('unpaired'), 'a second on');
+  });
 });
 
 // ---------- near: what the bands heard (docs/superpowers/specs/2026-09-26-wrist-near-design.md §2) ----------

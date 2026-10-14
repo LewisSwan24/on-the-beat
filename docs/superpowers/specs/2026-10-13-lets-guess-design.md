@@ -29,7 +29,7 @@ v3 flow, so the new-card gate is passed for this card only.
 
 ## 1. Data and rules
 
-**The shows file.** An entry may carry `quiz`, a list of 1 to 5 questions:
+**The shows file.** An entry may carry `quiz`, a list of 1 to 20 questions (1 to 5 until 14 Oct 2026):
 
 ```json
 "quiz": [
@@ -43,6 +43,19 @@ v3 flow, so the new-card gate is passed for this card only.
 - `q`: 1 to 140 characters. `options`: exactly 4 distinct strings, each 1 to
   60 characters. `answer`: the index (0 to 3) of the right option. `fact`: 0 to
   140 characters, shown after the person locks an answer.
+- **A deal for each person** (14 Oct 2026, his ask): each person is asked 5 of
+  the quiz (`QUIZ_DEAL`; all of it when it has 5 or fewer), each with its four
+  options in that person's own order (`relay/quiz.js` `dealOf`). The draw is a
+  hash of the quiz's print and the person, so a reload or a restart deals them
+  the same; nothing new is stored. An answer is sent as the place tapped on the
+  person's own screen and kept as the option's place in the quiz; a night file
+  saved before deals (no `quizDeal`) drops its answers, as a corrected quiz does.
+- **The band answers back** (14 Oct 2026, his ask): for 20 s after an answer
+  (`GUESSED_SHOW_MS`) every show about its person but NOT NOW carries
+  `guessed: { n, right }`, and the band plays it once per `n`: `right` (two
+  flashes in LET'S GUESS's colour) or `wrong` (one white flash). For 8 s after
+  the last answer (`SCORE_SHOW_MS`) the lit LET'S GUESS face reads the score,
+  `4 / 5` over `RIGHT`. The answer time is not saved: a restart plays nothing old.
 - A quiz that breaks any rule is dropped with a log line naming the show and
   the rule. The show itself stays. This is the same loud check the shows file
   already gets (`relay/server.js` `showFault`).

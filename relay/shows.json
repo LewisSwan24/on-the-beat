@@ -43,7 +43,7 @@
     "id": "test-night-zara-larsson",
     "act": "ZARA LARSSON",
     "venue": "ON THE BEAT test night",
-    "lat": -27.4975, "lon": 153.0137,
+    "lat": -27.4769, "lon": 153.0281,
     "doors": "19:00", "support": "19:45", "break": "20:30", "headline": "20:45", "end": "22:30",
     "spots": ["by the door", "at the end of the bar", "by the cloakroom"],
     "setlist": ["Lush Life", "Never Forget You", "Symphony", "Ain't My Fault", "This One's for You", "Ruin My Life"],
@@ -52,7 +52,12 @@
       {"q": "At 10, Zara won a TV talent show. Which one?", "options": ["Idol", "The Voice", "Talang (Sweden's Got Talent)", "The X Factor"], "answer": 2, "fact": "She won Talang in 2008."},
       {"q": "Which song was the official song of UEFA Euro 2016?", "options": ["This One's for You", "Lush Life", "Symphony", "Ain't My Fault"], "answer": 0, "fact": "David Guetta featuring Zara Larsson."},
       {"q": "Who did Zara team up with on \"Symphony\"?", "options": ["Calvin Harris", "Kygo", "Marshmello", "Clean Bandit"], "answer": 3, "fact": "Clean Bandit featuring Zara Larsson, a UK number one in 2017."},
-      {"q": "Her 2024 album shares its name with a planet. Which one?", "options": ["Mars", "Venus", "Saturn", "Jupiter"], "answer": 1, "fact": "Venus came out in February 2024."}
+      {"q": "Her 2024 album shares its name with a planet. Which one?", "options": ["Mars", "Venus", "Saturn", "Jupiter"], "answer": 1, "fact": "Venus came out in February 2024."},
+      {"q": "Who sings with Zara on \"Never Forget You\"?", "options": ["MNEK", "Ty Dolla $ign", "Sam Smith", "Craig David"], "answer": 0, "fact": "MNEK and Zara Larsson, 2015: her first UK top 10, at number 5."},
+      {"q": "Her first number one in Sweden, in 2013, was which song?", "options": ["Lush Life", "Uncover", "Rooftop", "Wow"], "answer": 1, "fact": "\"Uncover\" topped the Swedish chart in February 2013."},
+      {"q": "What was Zara's first album released around the world, in 2017?", "options": ["Poster Girl", "So Good", "Venus", "Introducing"], "answer": 1, "fact": "So Good came out on 17 March 2017."},
+      {"q": "How high did \"Lush Life\" climb in the UK singles chart?", "options": ["Number 1", "Number 3", "Number 10", "Number 20"], "answer": 1, "fact": "It peaked at number 3 in spring 2016."},
+      {"q": "Her 2025 album is named after a Swedish summer where the sun never sets. What is it called?", "options": ["Midnight Sun", "Northern Lights", "Summer Nights", "Golden Hour"], "answer": 0, "fact": "Midnight Sun came out in September 2025."}
     ]
   }
 ]

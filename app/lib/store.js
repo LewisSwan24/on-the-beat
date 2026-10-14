@@ -21,6 +21,7 @@ export function load() {
     contact: typeof s.contact === 'string' ? s.contact : '',
     promisesSeen: !!s.promisesSeen,
     bandSound: s.bandSound !== false,   // the wristband's sound switch: the person's own, on unless kept off
+    bandBeat: s.bandBeat !== false,     // its beat switch, the same way
     guideSeen: s.guideSeen === true,   // the wristband guide's practice, once run or put off: kept for good
     nights: s.nights && typeof s.nights === 'object' ? s.nights : {},
     kept: Array.isArray(s.kept) ? s.kept : [],
