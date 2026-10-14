@@ -119,13 +119,14 @@ test("the wristband logic compiles as the band's compiler takes it: C++11, after
 
 test('the colours on the wrist are the colours on the phone', { skip }, () => {
   const [hues] = speak(['hues']);
-  const phone = Object.fromEntries(Object.entries(HUE).map(([id, h]) => [id, { c: h.c.toUpperCase(), g: h.g.toUpperCase() }]));
+  // The cards' colours: LET'S FINISH has a colour on the phone only, since it never reaches a wrist.
+  const phone = Object.fromEntries(INTENTS.map((id) => [id, { c: HUE[id].c.toUpperCase(), g: HUE[id].g.toUpperCase() }]));
   assert.deepEqual(JSON.parse(hues), phone);
 });
 
-test('the wrist steps through the cards in their order, then off, then the first again', { skip }, () => {
+test('the wrist steps through the cards in their order, then off, then unpair, then the first again', { skip }, () => {
   const [cards] = speak(['cards']);
-  const after = Object.fromEntries([...INTENTS.map((id, i) => [id, INTENTS[i + 1] ?? 'off']), ['off', INTENTS[0]]]);
+  const after = Object.fromEntries([...INTENTS.map((id, i) => [id, INTENTS[i + 1] ?? 'off']), ['off', 'unpair']]);
   assert.deepEqual(JSON.parse(cards), { order: INTENTS, after });
 });
 
@@ -136,7 +137,8 @@ test('with cards closed, the wrist steps over them, as the stand-in does', { ski
     const closed = c.split(',');
     const after = Object.fromEntries([...INTENTS, 'off'].map((id) => [id, cardAfter(id, closed)]));
     assert.deepEqual(lines[i], { order: INTENTS, after }, c);
-    assert.ok(!closed.includes(after.off), c + ': off steps to an open card');
+    assert.equal(after.off, 'unpair', c + ': off steps to unpair');
+    assert.ok(!closed.includes(cardAfter('unpair', closed)), c + ': unpair steps to an open card');
   });
 });
 

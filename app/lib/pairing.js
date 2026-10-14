@@ -22,6 +22,7 @@ export const PAIR_SAY = {
   'no such wristband': 'That’s not a wristband here. Check the letters.',
   'too many tries': 'Too many tries. Wait a moment, then scan it instead.',
   gone: 'Your wristband restarted or went away. Pair it again.',
+  unpaired: 'Unpaired on the wristband. Your phone is your light again.',
 };
 
 /** The address a pairing code opens: the app, with the four letters on it. */

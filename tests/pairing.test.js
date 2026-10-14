@@ -31,6 +31,8 @@ test('every answer the relay gives a pairing phone has words, and the check asks
   // Its owner, finding someone else holding the check, learns how to end it.
   assert.equal(PAIR_SAY.busy, 'Someone else is pairing that wristband. If it’s yours, hold its face button to turn them away, then pair it again.');
   assert.equal(PAIR_SAY.gone, 'Your wristband restarted or went away. Pair it again.');
+  // Unpaired on the wrist itself (UNPAIR, then a SIDE hold): every phone of its person is told.
+  assert.equal(PAIR_SAY.unpaired, 'Unpaired on the wristband. Your phone is your light again.');
   assert.equal(PAIR_SAY['old firmware'], 'Update this wristband’s firmware.');
   assert.equal(PAIR_SAY.no, 'That’s not this wristband.');
 });

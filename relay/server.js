@@ -332,6 +332,18 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (!moved && !cards.length) return showsJson;
     return JSON.stringify([...list, ...cards]);
   };
+  /**
+   * What the poster shows of one venue: its name, its act and tonight's times, and how many people play there
+   * tonight. Nothing a person said, and never the quiz. Null for a venue nobody lists.
+   */
+  const posterOf = (id) => {
+    const s = JSON.parse(showsNow()).find((x) => x.id === id);
+    if (!s) return null;
+    const out = { id: s.id };
+    for (const k of ['act', 'venue', 'doors', 'support', 'break', 'headline', 'end']) if (typeof s[k] === 'string') out[k] = s[k];
+    out.here = rooms.get(id)?.room.size() ?? 0;
+    return out;
+  };
   // Venue cards made from each address tonight (spec §1). In memory: a restart starts the count again; the cap of
   // cardsMax is counted from the rooms, so it holds across one.
   const cardsFrom = new Map();
@@ -698,6 +710,15 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (m.t === 'hold') holdOn(b);
     // Turned off on the wrist: its socket closes next, and the phone says OFF rather than out of reach.
     if (m.t === 'off') b.off = true;
+    // Unpaired on the wrist (UNPAIR, then a SIDE hold to say yes): its person's phones are told, and it shows
+    // new letters. A band that is nobody's has nothing to unpair.
+    if (m.t === 'unpair') {
+      if (!b.person) return;
+      const r = rooms.get(b.key);
+      if (r) toPerson(r, b.person, { t: 'unpaired', by: 'band' });
+      unpairBand(b);
+      return;
+    }
     if (m.t === 'set' && !setFromBand(ws, b, m)) return;
     if (m.t === 'wave' && !waveFromBand(ws, b, m)) return;
     if (m.t === 'found' && !foundFromBand(ws, b, m)) return;
@@ -1309,9 +1330,10 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     res.writeHead(200, { ...head, 'content-length': size }).end(c.buf);
   }
 
-  /** A file from dist/, the staff page at /staff, or the app itself for any route it owns. Never anything outside dist/. */
+  /** A file from dist/, the staff page at /staff, the poster at /poster, or the app itself for any route it owns. Never anything outside dist/. */
   function serveStatic(res, url) {
-    let file = join(dist, /^\/staff\/?$/.test(url.split('?')[0]) ? 'staff.html' : 'index.html');
+    const path = url.split('?')[0];
+    let file = join(dist, /^\/staff\/?$/.test(path) ? 'staff.html' : /^\/poster(\/[^/]*)?$/.test(path) ? 'poster.html' : 'index.html');
     try {
       const want = join(dist, normalize(decodeURIComponent(url.split('?')[0])).replace(/^([/\\])+/, ''));
       const inside = relative(dist, want);
@@ -1341,6 +1363,11 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     const url = req.url || '/';
     if (url === '/api/shows') {
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' }).end(showsNow());
+    } else if (url.startsWith('/api/poster')) {
+      const v = new URL(url, 'http://relay').searchParams.get('v');
+      const poster = v ? posterOf(v.slice(0, 120)) : null;
+      if (!poster) { res.writeHead(404).end(); return; }
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' }).end(JSON.stringify(poster));
     } else if (url.startsWith('/clip/')) serveClip(req, res, url);
     else serveStatic(res, url);
   }

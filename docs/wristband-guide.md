@@ -33,7 +33,7 @@ Almost everywhere: FACE wakes it, and FACE held is NOT NOW. The tables are group
 
 | the wristband shows | FACE | FACE held | SIDE | SIDE held |
 |---|---|---|---|---|
-| `READY` / `SIDE TO CHANGE` | wakes it for six seconds | NOT NOW: dark at once | shows your card; each press after steps HI, SONG, DANCE, GUESS, OFF; three seconds after the last it sends | as a press |
+| `READY` / `SIDE TO CHANGE` | wakes it for six seconds | NOT NOW: dark at once | shows your card; each press after steps HI, SONG, DANCE, GUESS, OFF, UNPAIR; three seconds after the last it sends | as a press |
 | `your card` / `SIDE: NEXT` | wakes it | NOT NOW | the next card | sends this one now |
 | `your card` / `SENDING` | — | NOT NOW | — | — |
 | `SET` / `CHANGED` / `NOT SENT` | wakes it | NOT NOW | starts a new choice | — |
@@ -60,6 +60,8 @@ Almost everywhere: FACE wakes it, and FACE held is NOT NOW. The tables are group
 | `SAVED` / `JOINING` | nothing: it starts again by itself | — | — | — |
 | `four letters` / `PAIR ON YOUR PHONE` | says PAIR ON YOUR PHONE | — | says PAIR ON YOUR PHONE | — |
 | `a number` / `ON YOUR PHONE?` | says PAIR ON YOUR PHONE | turns the check away | says PAIR ON YOUR PHONE | — |
+| `UNPAIR` / `SIDE: NEXT` | wakes it | NOT NOW | the first card again | asks UNPAIR? |
+| `UNPAIR?` / `HOLD SIDE: YES` | calls it off | NOT NOW | calls it off | unpairs: new letters on the band, and your phone is told |
 
 ### Off, and when something is wrong
 

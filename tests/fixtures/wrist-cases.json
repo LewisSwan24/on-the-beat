@@ -15,6 +15,84 @@
   },
   "cases": [
     {
+      "name": "UNPAIR comes after OFF in the chooser; COMMIT_MS later it asks, and a SIDE hold says yes with a double; letters end it",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2, "face": { "small": "SIDE TO CHANGE" } },
+        { "at": "2000", "press": 2, "face": { "big": "FIRST SONG?" } },
+        { "at": "3000", "press": 2, "face": { "big": "LET'S DANCE!" } },
+        { "at": "4000", "press": 2, "face": { "big": "LET'S GUESS!" } },
+        { "at": "5000", "press": 2, "face": { "big": "OFF" } },
+        { "at": "6000", "press": 2, "face": { "big": "UNPAIR", "small": "SIDE: NEXT", "field": "black", "ink": "text2", "light": "LIGHT_AWAKE" } },
+        { "at": "6100+COMMIT_MS-1", "face": { "big": "UNPAIR", "small": "SIDE: NEXT" } },
+        { "at": "6100+COMMIT_MS", "face": { "big": "UNPAIR?", "small": "HOLD SIDE: YES", "field": "black", "ink": "text2", "light": "LIGHT_AWAKE" } },
+        { "at": "10000", "key2": "down", "sounds": ["tick"] },
+        { "at": "10000+HOLD_MS", "sent": [{ "t": "unpair" }], "sounds": ["double"], "face": { "big": "UNPAIR", "small": "SENDING" } },
+        { "at": "11600", "key2": "up", "face": { "big": "UNPAIR", "small": "SENDING" } },
+        { "at": "12000", "show": "PAIRING", "face": { "big": "KXRT" } }
+      ]
+    },
+    {
+      "name": "UNPAIR? left alone for CHOOSE_MS goes back to rest and sends nothing; a SIDE hold on the UNPAIR preview only asks",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "GUESS", "rev": 2 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2, "face": { "big": "OFF" } },
+        { "at": "3000", "press": 2, "face": { "big": "UNPAIR" } },
+        { "at": "4000", "key2": "down", "sounds": ["tick"] },
+        { "at": "4000+HOLD_MS", "face": { "big": "UNPAIR?", "small": "HOLD SIDE: YES" } },
+        { "at": "5600", "key2": "up", "face": { "big": "UNPAIR?" } },
+        { "at": "5500+CHOOSE_MS-1", "face": { "big": "UNPAIR?" } },
+        { "at": "5500+CHOOSE_MS", "face": { "big": "LET'S GUESS!" } }
+      ]
+    },
+    {
+      "name": "a SIDE press on UNPAIR? and a FACE press both call it off; from READY the first SIDE step is the first card, never UNPAIR",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "OFF", "rev": 4 },
+        { "at": "1000", "press": 2, "face": { "big": "READY" } },
+        { "at": "2000", "press": 2, "face": { "big": "HI :)" } },
+        { "at": "3000", "press": 2 },
+        { "at": "4000", "press": 2 },
+        { "at": "5000", "press": 2, "face": { "big": "LET'S GUESS!" } },
+        { "at": "6000", "press": 2, "face": { "big": "OFF" } },
+        { "at": "7000", "press": 2, "face": { "big": "UNPAIR" } },
+        { "at": "7100+COMMIT_MS", "face": { "big": "UNPAIR?" } },
+        { "at": "12000", "press": 2, "face": { "big": "READY", "small": "" } },
+        { "at": "13000", "press": 2, "face": { "big": "READY", "small": "SIDE TO CHANGE" } },
+        { "at": "14000", "press": 2 },
+        { "at": "15000", "press": 2 },
+        { "at": "16000", "press": 2 },
+        { "at": "17000", "press": 2 },
+        { "at": "18000", "press": 2, "face": { "big": "OFF" } },
+        { "at": "19000", "press": 2, "face": { "big": "UNPAIR" } },
+        { "at": "19100+COMMIT_MS", "face": { "big": "UNPAIR?" } },
+        { "at": "24000", "press": 1, "face": { "big": "READY", "small": "" } }
+      ]
+    },
+    {
+      "name": "UNPAIR? said yes out of reach is NOT SENT at once; an unpair the relay never answers is NOT SENT after CONFIRM_MS and the socket is dropped",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2 },
+        { "at": "3000", "press": 2 },
+        { "at": "4000", "press": 2 },
+        { "at": "5000", "press": 2 },
+        { "at": "6000", "press": 2, "face": { "big": "UNPAIR" } },
+        { "at": "6100+COMMIT_MS", "face": { "big": "UNPAIR?" } },
+        { "at": "10000", "key2": "down", "sounds": ["tick"] },
+        { "at": "10000+HOLD_MS", "sent": [{ "t": "unpair" }], "sounds": ["double"] },
+        { "at": "11600", "key2": "up" },
+        { "at": "11500+CONFIRM_MS", "sent": ["DROP"], "sounds": ["low"] },
+        { "at": "11500+CONFIRM_MS+1500", "face": { "small": "NOT SENT" } }
+      ]
+    },
+    {
       "name": "the hello says v2 and carries the key, and the id is the key's hash",
       "steps": [
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }], "face": { "light": "LIGHT_OFF" } }
@@ -377,6 +455,7 @@
         { "at": "3000", "press": 2 },
         { "at": "4000", "press": 2, "face": { "big": "LET'S GUESS!" } },
         { "at": "5000", "press": 2, "face": { "big": "OFF" } },
+        { "at": "5500", "press": 2, "face": { "big": "UNPAIR" } },
         { "at": "6000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT" } },
         { "at": "7000", "key2": "down", "sounds": ["tick"] },
         { "at": "7000+HOLD_MS", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO", "light": "LIGHT_FULL" } },
@@ -1505,7 +1584,7 @@
       ]
     },
     {
-      "name": "a card the venue closed tonight is stepped over: from OFF, SAY HI, then LET'S DANCE!, then LET'S GUESS!, then OFF; one chosen is sent",
+      "name": "a card the venue closed tonight is stepped over: from OFF, SAY HI, then LET'S DANCE!, then LET'S GUESS!, then OFF and UNPAIR; one chosen is sent",
       "steps": [
         { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
         { "at": "0", "show": "OFF", "rev": 3, "with": { "closed": "song" } },
@@ -1514,6 +1593,7 @@
         { "at": "3000", "press": 2, "face": { "big": "LET'S DANCE!", "small": "SIDE: NEXT", "ink": "dance" } },
         { "at": "4000", "press": 2, "face": { "big": "LET'S GUESS!", "small": "SIDE: NEXT", "ink": "guess" } },
         { "at": "5000", "press": 2, "face": { "big": "OFF", "small": "SIDE: NEXT" } },
+        { "at": "5500", "press": 2, "face": { "big": "UNPAIR", "small": "SIDE: NEXT" } },
         { "at": "6000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT", "ink": "hi" } },
         { "at": "7000", "press": 2, "face": { "big": "LET'S DANCE!", "small": "SIDE: NEXT", "ink": "dance" } },
         { "at": "7100+COMMIT_MS", "sent": [{ "t": "set", "intent": "dance", "basis": 3 }], "face": { "big": "LET'S DANCE!", "small": "SENDING" } }

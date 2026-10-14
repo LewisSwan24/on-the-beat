@@ -1615,14 +1615,15 @@ inline bool closedIn(const std::string& closed, const std::string& id) {
 }
 
 /**
- * The card SIDE steps to from `card`: the next open one in CARDS, off after the last, and the first open one after
- * off. `closed` is the show's closed cards; the relay never closes them all.
+ * The card SIDE steps to from `card`: the next open one in CARDS, off after the last, unpair after off, and the first
+ * open one after unpair. `closed` is the show's closed cards; the relay never closes them all.
  */
 inline std::string cardAfter(const std::string& card, const std::string& closed = "") {
   std::vector<std::string> order;
   for (size_t i = 0; i < CARD_COUNT; ++i)
     if (!closedIn(closed, CARDS[i].id)) order.push_back(CARDS[i].id);
   order.push_back("off");
+  order.push_back("unpair");
   for (size_t i = 0; i < order.size(); ++i)
     if (order[i] == card) return order[(i + 1) % order.size()];
   return order[0];
@@ -1635,7 +1636,7 @@ inline std::string cardAfter(const std::string& card, const std::string& closed 
 inline std::string backTo(const std::string& was, const std::string& closed = "") {
   for (size_t i = 0; i < CARD_COUNT; ++i)
     if (was == CARDS[i].id && !closedIn(closed, was)) return was;
-  return cardAfter("off", closed);
+  return cardAfter("unpair", closed);
 }
 
 /** What the screen shows: two lines on one field, the backlight, the KEEP HOLDING bar, and letters to draw with their QR. */
@@ -1971,6 +1972,8 @@ class Wrist {
     }
     // Any KEY1 press-down freezes a choice at once: no commit can fire.
     if (k == 1 && (mode_ == LOOK || mode_ == CHOOSING)) frozen_ = true;
+    // FACE going down on UNPAIR? calls it off.
+    if (k == 1 && mode_ == ASKING) rest();
     if (k == 1) awayKey_ = false;
     // During a wave's flashes a key only ticks: a meeting calling underneath is answered after them.
     const bool whole = waveFlashing(now);
@@ -2172,9 +2175,11 @@ class Wrist {
         calling_ = false;
       }
     }
-    if (mode_ == LOOK || mode_ == CHOOSING) {
+    if (mode_ == LOOK || mode_ == CHOOSING || mode_ == ASKING) {
       // A show not about the person, or one whose rev moved, cancels the choice.
       if (!personal() || show_.rev != basis_) rest();
+    } else if (mode_ == UNPAIRING && !personal()) {
+      rest();  // unpaired: the letters are the answer
     } else if (mode_ == SENDING && personal() && show_.rev > basis_ && show_.armed == choice_ && !show_.quiet) {
       result(now, "SET");
     } else if ((mode_ == WAVES || mode_ == WAVING) && !waiting()) {
@@ -2270,7 +2275,7 @@ class Wrist {
       quiet_.sent(now);
     }
     quiet_.tick(now);
-    if ((mode_ == LOOK || mode_ == WAVES) && now - stepAt_ >= CHOOSE_MS) {
+    if ((mode_ == LOOK || mode_ == WAVES || mode_ == ASKING) && now - stepAt_ >= CHOOSE_MS) {
       rest();
     } else if (mode_ == WAVING && now - stepAt_ >= motion::TAKE_BACK_MS) {
       waveBack(now);
@@ -2286,8 +2291,8 @@ class Wrist {
       }
       // Hiding may arrive late; showing may not. Leaving NOT NOW failed, so hold it again.
       if (fromQuiet_) quiet_.held();
-    } else if ((mode_ == WAVEBACK || mode_ == FOUND) && now - sentAt_ >= CONFIRM_MS) {
-      // As for a choice: NOT SENT, and the socket dropped, so a wave or a found stuck in it can no longer land.
+    } else if ((mode_ == WAVEBACK || mode_ == FOUND || mode_ == UNPAIRING) && now - sentAt_ >= CONFIRM_MS) {
+      // As for a choice: NOT SENT, and the socket dropped, so a wave, a found or an unpair stuck in it can no longer land.
       result(now, "NOT SENT");
       if (link_.up()) {
         out_.push_back("DROP");
@@ -2309,8 +2314,13 @@ class Wrist {
       else f = words(cardWords(cur), "SIDE TO CHANGE", cur, "ink", LIGHT_FULL);
     } else if (mode_ == CHOOSING || mode_ == SENDING) {
       const char* small = mode_ == SENDING ? "SENDING" : fromQuiet_ ? "HOLD SIDE TO SHOW" : "SIDE: NEXT";
-      f = preview_ == "off" ? words("OFF", small, "black", "text2", LIGHT_AWAKE)
-                            : words(cardWords(preview_), small, "black", preview_, LIGHT_AWAKE);
+      f = preview_ == "off"      ? words("OFF", small, "black", "text2", LIGHT_AWAKE)
+          : preview_ == "unpair" ? words("UNPAIR", small, "black", "text2", LIGHT_AWAKE)
+                                 : words(cardWords(preview_), small, "black", preview_, LIGHT_AWAKE);
+    } else if (mode_ == ASKING) {
+      f = words("UNPAIR?", "HOLD SIDE: YES", "black", "text2", LIGHT_AWAKE);
+    } else if (mode_ == UNPAIRING) {
+      f = words("UNPAIR", "SENDING", "black", "text2", LIGHT_AWAKE);
     } else if (mode_ == WAVES) {
       // As the chooser shows HI, in its own words: that someone waved, and how many wait. Never who.
       const std::string count = waves_.n > 9 ? "9+" : std::to_string(waves_.n);
@@ -2383,7 +2393,7 @@ class Wrist {
   }
 
  private:
-  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT, WAVES, WAVEBACK, FOUND, WAVING };
+  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT, WAVES, WAVEBACK, FOUND, WAVING, ASKING, UNPAIRING };
   struct Key {
     bool down = false;
     bool fired = false;
@@ -2632,6 +2642,12 @@ class Wrist {
       rest();
       return;
     }
+    // UNPAIR is not sent on its own: it asks first, and only a SIDE hold there says yes.
+    if (preview_ == "unpair") {
+      mode_ = ASKING;
+      stepAt_ = now;
+      return;
+    }
     choice_ = preview_ == "off" ? "" : preview_;
     out_.push_back("{\"t\":\"set\",\"intent\":" + (choice_.empty() ? std::string("null") : "\"" + choice_ + "\"") +
                    ",\"basis\":" + std::to_string(basis_) + "}");
@@ -2673,9 +2689,27 @@ class Wrist {
     react("double");
   }
 
+  /** A SIDE hold on UNPAIR?: yes. The relay answers with letters; out of reach, NOT SENT at once. */
+  void unpairNow(uint32_t now) {
+    if (!link_.up()) {
+      result(now, "NOT SENT");
+      return;
+    }
+    out_.push_back("{\"t\":\"unpair\"}");
+    mode_ = UNPAIRING;
+    sentAt_ = now;
+    react("double");
+  }
+
   /** A KEY2 press let go before HOLD_MS. */
   void step(uint32_t now) {
-    if (k1_.down || frozen_ || mode_ == SENDING || mode_ == WAVEBACK) return;
+    if (k1_.down || frozen_ || mode_ == SENDING || mode_ == WAVEBACK || mode_ == UNPAIRING) return;
+    // A SIDE press on UNPAIR? calls it off.
+    if (mode_ == ASKING) {
+      rest();
+      wake(now);
+      return;
+    }
     if (mode_ == RESULT) rest();
     if (mode_ == REST) {
       wake(now);
@@ -2690,6 +2724,7 @@ class Wrist {
       const std::string cur = current();
       fromQuiet_ = cur == "notnow";
       preview_ = fromQuiet_ ? backTo(show_.was, show_.closed) : cardAfter(cur, show_.closed);   // out of NOT NOW: the card they had
+      if (preview_ == "unpair") preview_ = cardAfter(preview_, show_.closed);   // from READY, the first card, not UNPAIR
       mode_ = CHOOSING;
       stepAt_ = now;
       return;
@@ -2708,7 +2743,8 @@ class Wrist {
       out_.push_back("SETUP");
       return;
     }
-    if (mode_ == CHOOSING) commit(now, true);
+    if (mode_ == ASKING) unpairNow(now);
+    else if (mode_ == CHOOSING) commit(now, true);
     else if (mode_ == WAVES) waveBack(now);
     else if (mode_ == LOOK) { if (!comeBack(now)) stepAt_ = now; }
     else if ((mode_ == REST || mode_ == RESULT) && meetingFace(now)) sayFound(now);
@@ -2993,6 +3029,7 @@ inline std::string saidLine(const std::string& frame) {
   if (frame == offFrame()) return "turning off, told the relay";
   if (frame.rfind("{\"t\":\"wave\"", 0) == 0) return "a wave back from the wrist";
   if (frame.rfind("{\"t\":\"found\"", 0) == 0) return "found, from the wrist";
+  if (frame.rfind("{\"t\":\"unpair\"", 0) == 0) return "unpaired, from the wrist";
   if (frame.rfind("{\"t\":\"refuse\"", 0) == 0) return "the check turned away, from the wrist";
   if (frame.rfind("{\"t\":\"wristband\"", 0) == 0)
     return frame.find("\"secret\":") == std::string::npos ? "hello to the relay, as a new wristband"

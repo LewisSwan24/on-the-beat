@@ -27,6 +27,7 @@ before(async () => {
   mkdirSync(root);
   mkdirSync(join(base, 'dist-evil'));
   writeFileSync(join(root, 'index.html'), '<!doctype html><title>On The Beat</title>');
+  writeFileSync(join(root, 'poster.html'), '<!doctype html><title>Poster · On The Beat</title>');
   writeFileSync(join(root, 'app.js'), 'export {};');
   writeFileSync(join(base, 'secret.txt'), 'SECRET');
   writeFileSync(join(base, 'dist-evil', 'x.js'), 'SECRET');
@@ -650,6 +651,28 @@ test('a wristband turned off on the wrist says so: the phone shows OFF, not away
   close(ana);
 });
 
+test('a wristband unpairs itself: new letters on the wrist, and its person\'s phones are told', async () => {
+  const ana = await phone('band-room-unpair');
+  const band = await wristband(60);
+  await pairBand(ana, band);
+  await ana.until((v) => v.me.wristband?.live === true);
+  const told = reply(ana, 'unpaired');
+  band.send({ t: 'unpair' });
+  assert.deepEqual(await told, { t: 'unpaired', by: 'band' });
+  const letters = await band.until((s) => s.kind === 'pairing' && s.code);
+  await ana.until((v) => v.me.wristband === null);
+  // The old secret no longer claims it: the wristband is nobody's.
+  const claim = reply(ana, 'claim');
+  ana.send({ t: 'pair', band: bandIdOf(band.key), secret: band.secret, again: true });
+  assert.deepEqual(await claim, { t: 'claim', ok: false, why: 'gone' });
+  // Unpaired, a second unpair changes nothing: the same letters stay.
+  band.send({ t: 'unpair' });
+  await pause(150);
+  assert.equal(band.show.code, letters.code, 'a band that is nobody\'s keeps its letters');
+  close(ana);
+  band.ws.close();
+});
+
 test('a dropped wristband keeps its letters through a blip', async () => {
   // Wifi blips. If a reconnect handed out new letters, it would change the code
   // under the finger of someone half-way through typing it, so it does not.
@@ -1172,6 +1195,32 @@ test('the pages: the app for every route, no way out of dist, and tonight\'s sho
   assert.equal(shows[0].id, 'roundhouse-bruno-mars');
   assert.equal(shows[0].setlist.length, 6);
   assert.equal((await fetch(url('/clip/roundhouse-bruno-mars/nothing'))).status, 404);
+});
+
+test('the poster: its page at /poster and /poster/<venue>, under the app policy; its venue and how many play there tonight', async () => {
+  for (const path of ['/poster', '/poster/', '/poster/moth-club-kayo-lane']) {
+    const res = await fetch(url(path));
+    assert.equal(res.status, 200, path);
+    assert.match(await res.text(), /Poster · On The Beat/, path + ' is the poster page');
+    assert.ok(res.headers.get('content-security-policy'), path + ' has a policy');
+    assert.equal(res.headers.get('x-frame-options'), 'DENY', path);
+  }
+  const at = async (v) => fetch(url('/api/poster?v=' + encodeURIComponent(v)));
+  const before = await (await at('moth-club-kayo-lane')).json();
+  assert.deepEqual({ ...before, here: undefined }, {
+    id: 'moth-club-kayo-lane', act: 'KAYO LANE', venue: 'Moth Club, Hackney',
+    doors: '19:30', support: '20:15', break: '20:50', headline: '21:00', end: '22:45', here: undefined,
+  }, 'the venue and its times, and nothing else: no setlist, no spots, no quiz');
+  const ana = await phone('moth-club-kayo-lane');
+  const ben = await phone('moth-club-kayo-lane');
+  assert.equal((await (await at('moth-club-kayo-lane')).json()).here, before.here + 2, 'two more playing there tonight');
+  // The test night's quiz never leaves the relay this way.
+  assert.equal(JSON.stringify(await (await at('test-night-zara-larsson')).json()).includes('quiz'), false);
+  assert.equal((await at('no-such-venue')).status, 404);
+  assert.equal((await fetch(url('/api/poster'))).status, 404);
+  assert.equal((await at('moth-club-kayo-lane')).headers.get('cache-control'), 'no-cache');
+  close(ana);
+  close(ben);
 });
 
 /** The status a handshake with this Origin (none when undefined) is answered: 101 when it opens. */

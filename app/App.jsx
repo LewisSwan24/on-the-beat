@@ -350,11 +350,17 @@ export default function App() {
     // Every refusal while pairing has its own words — the relay's throttle
     // included, which a real person only meets after a run of mistypes.
     if (m.t === 'error' && PAIR_SAY[m.why] && m.why !== 'gone') pairFailed(PAIR_SAY[m.why]);
-    // The only way this phone decides its wristband is gone: the relay says so to its claim.
+    // This phone decides its wristband is gone only when the relay says so: in answer to its claim, or below.
     if (m.t === 'claim' && m.ok === false && m.why === 'gone' && bandId) {
       net.current?.forget('pair');
       setNightState({ wristband: null, bandSecret: null });
       say(PAIR_SAY.gone);
+    }
+    // Unpaired on the wrist itself: the same, said as what it was.
+    if (m.t === 'unpaired' && bandId) {
+      net.current?.forget('pair');
+      setNightState({ wristband: null, bandSecret: null });
+      say(PAIR_SAY.unpaired);
     }
   };
 

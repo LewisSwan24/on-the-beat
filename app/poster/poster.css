@@ -1,0 +1,76 @@
+/* The poster: the app's tokens (styles.css), laid out for a screen on a wall as well as a phone in a hand. The page
+   scrolls as a page, unlike the app, and its sizes grow with the screen. */
+
+html, body { height: auto; min-height: 100%; background: var(--ink-0); overflow-x: hidden; }
+#root { height: auto; }
+
+.poster {
+  position: relative;
+  display: flex; flex-direction: column; gap: clamp(22px, 4vw, 44px);
+  max-width: 1180px; margin: 0 auto;
+  padding: max(28px, env(safe-area-inset-top, 0px)) 20px max(36px, env(safe-area-inset-bottom, 0px));
+}
+.poster > section { position: relative; }
+.poster .glow { position: absolute; width: min(46vw, 420px); height: min(46vw, 420px); border-radius: 50%; filter: blur(28px); opacity: .5; pointer-events: none; animation: ob-splash 900ms var(--ease) both; }
+
+.phead { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.ptitle { font: 400 clamp(46px, 9vw, 104px)/1.02 var(--disp); letter-spacing: .01em; }
+.ptag { font: var(--body-l); font-size: clamp(17px, 2vw, 22px); color: var(--text-2); max-width: 30ch; text-wrap: pretty; }
+
+.pbody { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: clamp(22px, 4vw, 56px); align-items: start; }
+
+.psteps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 22px; }
+.pstep { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: start; }
+.pn { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font: var(--display-m); border: 1px solid var(--line); color: #fff; }
+.pstep-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pstep-text .small { font-size: clamp(13px, 1.3vw, 16px); max-width: 52ch; }
+
+.pcards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.pcard {
+  display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 14px; min-width: 0;
+  background: linear-gradient(140deg, var(--c), var(--g)); color: #000;
+  box-shadow: 0 0 24px -8px var(--g);
+}
+.pcard-name { font: var(--display-m); font-size: clamp(19px, 2vw, 24px); }
+.pcard-sub { font: var(--body-s); color: rgba(0,0,0,.72); }
+
+.pscan { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px; border-radius: 22px; background: var(--ink-2); border: 1px solid var(--line); }
+.pqr { width: clamp(180px, 24vw, 300px); height: auto; border-radius: 10px; display: block; }
+.pscan-word { font: var(--display-m); font-size: clamp(22px, 2.4vw, 30px); }
+
+.pnotes { display: flex; flex-wrap: wrap; gap: 6px 22px; padding-top: 4px; border-top: 1px solid var(--line-2); padding-top: 18px; }
+
+.ptonight { display: flex; flex-direction: column; gap: 8px; padding: clamp(18px, 3vw, 30px); border-radius: 22px; background: var(--ink-1); border: 1px solid var(--line); }
+.pact { font: 400 clamp(30px, 5vw, 58px)/1.05 var(--disp); }
+.pphase { font: var(--label); letter-spacing: .08em; text-transform: uppercase; color: var(--hi); font-size: clamp(12px, 1.2vw, 15px); }
+.phere { display: inline-flex; align-items: center; gap: 10px; font: var(--count); font-size: clamp(20px, 2.4vw, 30px); }
+.pdot-live { width: 11px; height: 11px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 12px var(--ok); animation: ob-breathe var(--breathe) var(--ease-io) infinite; }
+.ptimes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.ptime { display: flex; flex-direction: column; gap: 3px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--line); min-width: 84px; }
+.ptime .tnum { font: var(--num); }
+
+.ppick { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.ppick-row { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); color: #fff; }
+.ppick-row:hover, .ppick-row:focus-visible { border-color: var(--hi); }
+
+/* A wall: the whole poster, tonight included, on one 16:9 screen with nothing to scroll. */
+@media (min-width: 1000px) {
+  .poster { gap: 20px; padding-top: 22px; padding-bottom: 24px; }
+  .phead { flex-direction: row; align-items: flex-end; justify-content: space-between; gap: 24px; }
+  .ptitle { font-size: clamp(64px, 6.4vw, 92px); }
+  .ptag { text-align: right; }
+  .psteps { gap: 14px; }
+  .ptonight { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 32px; row-gap: 6px; align-items: end; }
+  .ptonight > :not(.ptimes) { grid-column: 1; }
+  .ptonight .ptimes { grid-column: 2; grid-row: 1 / span 5; align-self: end; margin-top: 0; }
+}
+@media (max-width: 720px) {
+  .pbody { grid-template-columns: minmax(0, 1fr); }
+  .pscan { order: -1; }
+}
+@media (max-width: 380px) {
+  .pcards { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .poster .glow, .pdot-live { animation: none; }
+}

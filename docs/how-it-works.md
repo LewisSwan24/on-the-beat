@@ -129,9 +129,17 @@ never becomes a match.
     `public/staff-sw.js`, its own service worker, only shows its
     notifications and opens the page from one; `public/staff.webmanifest`
     lets an iPhone add it to the Home Screen.
+  - `poster.html` and `poster/`: the poster, a third page of the same build,
+    served at `/poster/<venue>` (`/poster` alone lists tonight's venues). It
+    asks `/api/poster?v=<venue>` every 20 s for the venue, its times and how
+    many people play there tonight, a count and nothing a person said, and
+    never the quiz. Its code is this site's own address. It is on the relay's
+    origin on purpose: on another host the relay would have to accept it and
+    the app's policy allow it. Fitted to one 1440×900 screen with nothing to
+    scroll, and to a phone.
   - `public/sw.js`: keeps the shell so the app opens in a venue with no
-    signal. It never keeps the socket, the shows, the clips or the staff
-    page.
+    signal. It never keeps the socket, the shows, the clips, the staff page
+    or the poster.
   - `fonts/`: Chewy and the icon font, files of the page's own (licences in
     `fonts/LICENSE.md`). Nothing is asked of Google, on a first visit or ever:
     a venue's network is the one thing nobody controls, and an icon is a word

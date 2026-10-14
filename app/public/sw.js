@@ -21,8 +21,9 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   if (url.origin === location.origin && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/clip/'))) return;
-  // The staff page is live or nothing, and never the app's shell.
+  // The staff page and the poster are live or nothing, and never the app's shell.
   if (url.origin === location.origin && ['/staff', '/staff/', '/staff.html'].includes(url.pathname)) return;
+  if (url.origin === location.origin && (url.pathname === '/poster.html' || /^\/poster(\/|$)/.test(url.pathname))) return;
 
   // Nothing from another host passes through here: the page asks none, and its policy would refuse one.
   if (url.origin !== location.origin) return;

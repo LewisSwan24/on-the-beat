@@ -93,6 +93,10 @@ test('the offline shell never keeps the staff page, nor answers for it', () => {
   assert.equal(answered('/staff'), false);
   assert.equal(answered('/staff/'), false);
   assert.equal(answered('/staff.html'), false);
+  // The poster is live or nothing too: kept as the shell, a phone that has the app would open the poster offline.
+  assert.equal(answered('/poster'), false);
+  assert.equal(answered('/poster/moth-club-kayo-lane'), false);
+  assert.equal(answered('/poster.html'), false);
   assert.equal(answered('/'), true, 'the app itself is still kept');
   assert.equal(answered('/tonight'), true);
 });

@@ -62,8 +62,13 @@ that was taken.
   follows to the invisible screen, except on a check number, where the same
   hold turns the check away. The side button (KEY2): a press shows
   the card that is armed; each press after moves a preview — HI, SONG,
-  DANCE, OFF — and 3 s after the last one the choice goes to the relay,
-  which decides; the face says `SET`, `CHANGED` or `NOT SENT`.
+  DANCE, GUESS, OFF, UNPAIR — and 3 s after the last one the choice goes to
+  the relay, which decides; the face says `SET`, `CHANGED` or `NOT SENT`.
+  UNPAIR is never sent on its own: the face asks `UNPAIR?` over
+  `HOLD SIDE: YES`, a SIDE hold there sends it, and a press of either button
+  or six seconds of nothing calls it off. The relay unpairs the band, which
+  shows new letters, and tells its person's phones, which forget it and say
+  so. From `READY` the first press is still the first card, never UNPAIR.
   Coming back from NOT NOW takes holding the side button, and comes back on
   the card its person had before, while the venue still has it open; from
   the phone's TURN BACK ON too. With none, it is the first open card. The pair screen

@@ -65,6 +65,25 @@ export const HOW = {
   both: 'A match needs you both: a wave waved back, a pick liked both ways, a dance danced back, a team-up both ways. Only then a name, and where to meet.',
 };
 
+/** The poster a venue puts up (/poster/<venue>): what this is, how to play, and the code into the app. */
+export const POSTER = {
+  title: 'ON THE BEAT!',
+  tag: 'Your companion to discover music friends',
+  steps: [
+    { n: '1', head: 'Scan the code', sub: 'it opens in your browser. nothing to install, no account.' },
+    { n: '2', head: 'Pick a card', sub: 'one at a time, and change it whenever you like.' },
+    { n: '3', head: 'Match both ways', sub: HOW.both },
+  ],
+  cards: { hi: 'wave at someone near', song: 'guess the opening song', dance: 'a clip or a pose on the floor', guess: "tonight's quiz, then team up" },
+  band: 'Got a wristband? Pair it, and it lights in your card’s colour.',
+  quiet: 'NOT NOW hides you from everyone, any time.',
+  scan: 'scan to play',
+  tonight: 'TONIGHT',
+  pick: 'Which venue is this poster for?',
+  unknown: 'That venue is not on tonight’s list.',
+  offline: 'reconnecting…',
+};
+
 /** "Someone near the bar" */
 export const someone = (band) => 'Someone ' + (band || 'in this room');
 
@@ -144,7 +163,7 @@ export const GUIDE = {
     // A line is the buttons, the screen it is on when that matters, and what happens.
     groups: [
       { title: 'Your card', rows: [
-        { keys: ['SIDE'], on: ['READY', 'SIDE TO CHANGE'], says: 'shows your card. each press after steps HI, SONG, DANCE, GUESS, OFF.' },
+        { keys: ['SIDE'], on: ['READY', 'SIDE TO CHANGE'], says: 'shows your card. each press after steps HI, SONG, DANCE, GUESS, OFF, UNPAIR.' },
         { keys: ['SIDE held'], on: ['your card', 'SIDE: NEXT'], says: 'sends the one shown. or stop pressing: it sends after three seconds.' },
         { keys: [], on: ['your card', 'SENDING'], says: 'then the whole screen lights in its colour, and your phone follows.' },
       ] },
@@ -208,7 +227,9 @@ export const GUIDE = {
     { group: 'setup', face: ['SAVED', 'JOINING'], facePress: 'nothing: it starts again by itself', faceHold: '', sidePress: '', sideHold: '' },
     { group: 'setup', face: ['four letters', 'PAIR ON YOUR PHONE'], facePress: 'says PAIR ON YOUR PHONE', faceHold: '', sidePress: 'says PAIR ON YOUR PHONE', sideHold: '' },
     { group: 'setup', face: ['a number', 'ON YOUR PHONE?'], facePress: 'says PAIR ON YOUR PHONE', faceHold: 'turns the check away', sidePress: 'says PAIR ON YOUR PHONE', sideHold: '' },
-    { group: 'card', face: ['READY', 'SIDE TO CHANGE'], facePress: 'wakes it for six seconds', faceHold: 'NOT NOW: dark at once', sidePress: 'shows your card; each press after steps HI, SONG, DANCE, GUESS, OFF; three seconds after the last it sends', sideHold: 'as a press' },
+    { group: 'setup', face: ['UNPAIR', 'SIDE: NEXT'], facePress: 'wakes it', faceHold: 'NOT NOW', sidePress: 'the first card again', sideHold: 'asks UNPAIR?' },
+    { group: 'setup', face: ['UNPAIR?', 'HOLD SIDE: YES'], facePress: 'calls it off', faceHold: 'NOT NOW', sidePress: 'calls it off', sideHold: 'unpairs: new letters on the band, and your phone is told' },
+    { group: 'card', face: ['READY', 'SIDE TO CHANGE'], facePress: 'wakes it for six seconds', faceHold: 'NOT NOW: dark at once', sidePress: 'shows your card; each press after steps HI, SONG, DANCE, GUESS, OFF, UNPAIR; three seconds after the last it sends', sideHold: 'as a press' },
     { group: 'card', face: ['your card', 'SIDE: NEXT'], facePress: 'wakes it', faceHold: 'NOT NOW', sidePress: 'the next card', sideHold: 'sends this one now' },
     { group: 'card', face: ['your card', 'SENDING'], facePress: '', faceHold: 'NOT NOW', sidePress: '', sideHold: '' },
     { group: 'card', face: ['SET', 'CHANGED', 'NOT SENT'], facePress: 'wakes it', faceHold: 'NOT NOW', sidePress: 'starts a new choice', sideHold: '' },

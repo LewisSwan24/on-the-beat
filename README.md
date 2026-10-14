@@ -63,6 +63,10 @@ turn it off; its power button turns it on. A phone alone gets the same night.
 **The staff page** (`/staff`) is for a venue's own team: reports from the
 floor, a notice to every phone, moved set times, and naming the opening song.
 
+**The poster** (`/poster/<venue>`) is for a venue's wall or a screen by the
+door: what this is, how to play, a code into the app, and tonight live from
+the relay — the act, the times and how many people are playing.
+
 ## Documentation
 
 | Read | For |

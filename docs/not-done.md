@@ -321,3 +321,17 @@
   minutes had gone. Still owed: an iPhone and an Android phone joining from the
   code on the face and seeing the page pop up by themselves, and the SIDE hold
   on NO WI-FI by hand.
+- **UNPAIR on the wrist has run in the tests, not on a real band.** Found at
+  the 14 Oct 2026 user test: only the phone's UNPAIR ended a pairing, and
+  without the phone the way out was a power cycle. Since 15 Oct SIDE steps
+  past OFF to UNPAIR, the face asks `UNPAIR?` / `HOLD SIDE: YES`, and a SIDE
+  hold unpairs: new letters on the band, and its person's phones forget it
+  and say so (`docs/wristband.md`). The firmware and the stand-in share four
+  cases for it and the relay has its test; flashing the four bands, and a
+  wearer finding UNPAIR past OFF by themselves, are still owed.
+- **The poster has run in headless Chrome, not on a venue's screen.** Also
+  from the 14 Oct test, built 15 Oct: `/poster/<venue>`, in the app's own
+  look, with tonight live from the relay (`docs/how-it-works.md`). Checked at
+  390 and 1440 wide, the count moving within 20 s of a phone joining. Not
+  yet seen on a real wall screen or scanned from across a room, and no
+  printable version: a paper copy would need tonight's part left off.
