@@ -654,6 +654,22 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
   }
 
   /**
+   * LET'S FINISH from the wrist: ask by the meeting's number (SIDE's FINISH), or answer an ask with yes or no (the
+   * FINISH? face). The meeting is the newest of theirs with that number not yet finished; the room decides the rest,
+   * rations included, and the band is told whether it took.
+   */
+  function finishFromBand(ws, b, m) {
+    const answer = (ok) => { ws.send(JSON.stringify({ t: 'finish', ok })); return ok; };
+    if (typeof m.number !== 'string' || !/^[1-9][0-9]$/.test(m.number) || !['ask', 'yes', 'no'].includes(m.say)) return answer(false);
+    const room = b.person ? rooms.get(b.key)?.room : null;
+    if (!room?.has(b.person)) return answer(false);
+    const meeting = room.viewFor(b.person).matches
+      .filter((x) => String(x.number) === m.number && !x.finishedAt)
+      .sort((x, y) => y.at - x.at)[0];
+    return answer(!!meeting && room.finish(b.person, meeting.id, m.say));
+  }
+
+  /**
    * We clinked wrists, said on the meeting face (wrist-motion, a test branch):
    * the band felt a knock as another band said it felt one, and names that
    * band by its air. Only the band paired to the other person in that meeting
@@ -723,6 +739,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (m.t === 'wave' && !waveFromBand(ws, b, m)) return;
     if (m.t === 'found' && !foundFromBand(ws, b, m)) return;
     if (m.t === 'clink' && !clinkFromBand(ws, b, m)) return;
+    if (m.t === 'finish' && !finishFromBand(ws, b, m)) return;
     const r = b.key ? rooms.get(b.key) : null;
     if (r) push(r); else showBand(b);
   }

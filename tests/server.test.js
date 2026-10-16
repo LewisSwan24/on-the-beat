@@ -673,6 +673,46 @@ test('a wristband unpairs itself: new letters on the wrist, and its person\'s ph
   band.ws.close();
 });
 
+test("LET'S FINISH from the wrist: the band asks by the meeting's number, and the other's band answers", async () => {
+  const ana = await phone('roundhouse-bruno-mars');
+  const ben = await phone('roundhouse-bruno-mars');
+  const anaBand = await wristband(70);
+  const benBand = await wristband(70);
+  await pairBand(ana, anaBand);
+  await pairBand(ben, benBand);
+  ana.send({ t: 'arm', intent: 'hi' });
+  ben.send({ t: 'arm', intent: 'hi' });
+  const seen = await ana.until((v) => v.near.length === 1);
+  ana.send({ t: 'wave', handle: seen.near[0].handle });
+  const toBen = await ben.until((v) => v.near[0]?.wavedAtYou);
+  ben.send({ t: 'wave', handle: toBen.near[0].handle });
+  const [match] = (await ana.until((v) => v.matches.length === 1)).matches;
+  const number = String(match.number);
+  await anaBand.until((s) => s.finish === number);
+  const reply = () => new Promise((resolve, reject) => {
+    const n = anaBand.replies.length;
+    const give = setTimeout(() => { clearInterval(t); reject(new Error('no finish reply')); }, 3000);
+    const t = setInterval(() => { if (anaBand.replies.length > n) { clearInterval(t); clearTimeout(give); resolve(anaBand.replies.at(-1)); } }, 20);
+  });
+  // A number that is not theirs, or a word that does not fit, is refused.
+  let r = reply();
+  anaBand.send({ t: 'finish', number: '99', say: 'ask' });
+  assert.deepEqual(await r, { t: 'finish', ok: false });
+  r = reply();
+  anaBand.send({ t: 'finish', number, say: 'ask' });
+  assert.deepEqual(await r, { t: 'finish', ok: true });
+  await ben.until((v) => v.matches[0].finishAsked === 'them');
+  const asked = await benBand.until((s) => s.kind === 'finish');
+  assert.equal(asked.number, number);
+  // Ben's band says not yet; Ana's band is told.
+  benBand.send({ t: 'finish', number, say: 'no' });
+  await ana.until((v) => v.matches[0].notYetAt);
+  await anaBand.until((s) => s.notYet);
+  await benBand.until((s) => s.kind !== 'finish');
+  close(ana); close(ben);
+  anaBand.ws.close(); benBand.ws.close();
+});
+
 test('a dropped wristband keeps its letters through a blip', async () => {
   // Wifi blips. If a reconnect handed out new letters, it would change the code
   // under the finger of someone half-way through typing it, so it does not.
