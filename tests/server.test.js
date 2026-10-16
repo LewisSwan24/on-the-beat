@@ -674,8 +674,8 @@ test('a wristband unpairs itself: new letters on the wrist, and its person\'s ph
 });
 
 test("LET'S FINISH from the wrist: the band asks by the meeting's number, and the other's band answers", async () => {
-  const ana = await phone('roundhouse-bruno-mars');
-  const ben = await phone('roundhouse-bruno-mars');
+  const ana = await phone('band-room-finish');
+  const ben = await phone('band-room-finish');
   const anaBand = await wristband(70);
   const benBand = await wristband(70);
   await pairBand(ana, anaBand);

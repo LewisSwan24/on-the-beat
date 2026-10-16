@@ -934,6 +934,7 @@ uint16_t inkOf(const std::string& ink) {
   if (ink == "ink") return rgb565(INK);
   if (ink == "white") return WHITE;
   if (const Hue* h = hueFor(ink)) return rgb565(h->c);  // a preview: the card's words in its colour, on black
+  if (const Rgb* c = plainField(ink)) return rgb565(*c);  // FINISH's preview: its green words, on black
   return rgb565(TEXT_2);
 }
 

@@ -62,13 +62,23 @@ that was taken.
   follows to the invisible screen, except on a check number, where the same
   hold turns the check away. The side button (KEY2): a press shows
   the card that is armed; each press after moves a preview — HI, SONG,
-  DANCE, GUESS, OFF, UNPAIR — and 3 s after the last one the choice goes to
+  DANCE, GUESS, OFF, FINISH, UNPAIR — and 3 s after the last one the choice goes to
   the relay, which decides; the face says `SET`, `CHANGED` or `NOT SENT`.
   UNPAIR is never sent on its own: the face asks `UNPAIR?` over
   `HOLD SIDE: YES`, a SIDE hold there sends it, and a press of either button
   or six seconds of nothing calls it off. The relay unpairs the band, which
   shows new letters, and tells its person's phones, which forget it and say
-  so. From `READY` the first press is still the first card, never UNPAIR.
+  so. FINISH is there only while the relay offers a meeting to finish (the
+  show's `finish`, its newest meeting not yet finished), and asks the same
+  way: `FINISH?` over `HOLD SIDE: YES`, a SIDE hold sends the ask about that
+  number, and the face says `ASKED` once the relay has passed it on, or
+  `NOT SENT`. The other person's band then shows `FINISH?` over
+  `SIDE: YES FACE: NO` on a flat green field, with the check's two notes and
+  two green flashes: SIDE held says yes, FACE held says not yet — instead of
+  NOT NOW — and a press of either only wakes it; the phone can answer too,
+  and the relay's next show replaces the face. A finished meeting chirps up
+  and flashes green on both bands; a not yet falls on the asker's. From
+  `READY` the first press is still the first card, never FINISH or UNPAIR.
   Coming back from NOT NOW takes holding the side button, and comes back on
   the card its person had before, while the venue still has it open; from
   the phone's TURN BACK ON too. With none, it is the first open card. The pair screen

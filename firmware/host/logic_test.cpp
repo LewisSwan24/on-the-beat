@@ -439,6 +439,8 @@ void sound() {
   // The flash colours: plain fills. Black, white and the cards are drawn another way.
   CHECK(plainField("red") && *plainField("red") == (Rgb{0xFF, 0x6B, 0x6B}));
   CHECK(plainField("orange") && *plainField("orange") == (Rgb{0xFF, 0x8A, 0x00}));
+  CHECK(plainField("finish") && *plainField("finish") == (Rgb{0x7C, 0xF0, 0xA8}));  // LET'S FINISH, never a card
+  CHECK(!hueFor("finish"));
   CHECK(!plainField("black") && !plainField("white") && !plainField("hi"));
 }
 
@@ -1060,7 +1062,8 @@ std::string answer(const Command& c) {
   }
   if (c.verb == "flashcolours") {
     // The flash fields, as app/lib/wrist.js FLASH_COLOURS has them.
-    return "{\"red\":" + quote(hex(*plainField("red"))) + ",\"orange\":" + quote(hex(*plainField("orange"))) + "}";
+    return "{\"red\":" + quote(hex(*plainField("red"))) + ",\"orange\":" + quote(hex(*plainField("orange"))) +
+           ",\"finish\":" + quote(hex(*plainField("finish"))) + "}";
   }
   if (c.verb == "hues") {
     std::string out = "{";
