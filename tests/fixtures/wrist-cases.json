@@ -11,7 +11,8 @@
     "CHECK": { "kind": "check", "big": "27" },
     "WAITING": { "kind": "waiting" },
     "AWAY": { "kind": "off", "battery": 62, "away": true },
-    "TEST": { "kind": "test" }
+    "TEST": { "kind": "test" },
+    "FINISH": { "kind": "finish", "big": "FINISH?", "small": "SIDE: YES FACE: NO", "number": "27", "armed": "hi" }
   },
   "cases": [
     {
@@ -90,6 +91,169 @@
         { "at": "11600", "key2": "up" },
         { "at": "11500+CONFIRM_MS", "sent": ["DROP"], "sounds": ["low"] },
         { "at": "11500+CONFIRM_MS+1500", "face": { "small": "NOT SENT" } }
+      ]
+    },
+    {
+      "name": "FINISH comes between OFF and UNPAIR while the show offers a meeting, drawn in its green; without one, OFF steps to UNPAIR",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "finish": "27" } },
+        { "at": "1000", "press": 2, "face": { "small": "SIDE TO CHANGE" } },
+        { "at": "2000", "press": 2, "face": { "big": "FIRST SONG?" } },
+        { "at": "3000", "press": 2, "face": { "big": "LET'S DANCE!" } },
+        { "at": "4000", "press": 2, "face": { "big": "LET'S GUESS!" } },
+        { "at": "5000", "press": 2, "face": { "big": "OFF" } },
+        { "at": "6000", "press": 2, "face": { "big": "FINISH", "small": "SIDE: NEXT", "field": "black", "ink": "finish", "light": "LIGHT_AWAKE" } },
+        { "at": "7000", "press": 2, "face": { "big": "UNPAIR", "small": "SIDE: NEXT" } },
+        { "at": "8000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT" } },
+        { "at": "8100+COMMIT_MS", "face": { "big": "HI :)" } },
+        { "at": "20000", "show": "HI", "rev": 4 },
+        { "at": "21000", "press": 2, "face": { "small": "SIDE TO CHANGE" } },
+        { "at": "22000", "press": 2 },
+        { "at": "23000", "press": 2 },
+        { "at": "24000", "press": 2 },
+        { "at": "25000", "press": 2, "face": { "big": "OFF" } },
+        { "at": "26000", "press": 2, "face": { "big": "UNPAIR" } },
+        { "at": "27000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT" } }
+      ]
+    },
+    {
+      "name": "from READY with a meeting to finish, the first SIDE step is the first card, never FINISH",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "OFF", "rev": 4, "with": { "finish": "27" } },
+        { "at": "1000", "press": 2, "face": { "big": "READY", "small": "SIDE TO CHANGE" } },
+        { "at": "2000", "press": 2, "face": { "big": "HI :)", "small": "SIDE: NEXT" } }
+      ]
+    },
+    {
+      "name": "FINISH: COMMIT_MS later it asks FINISH?, a SIDE hold sends the ask with a double, and the relay's ok says ASKED with up",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "finish": "27" } },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2 },
+        { "at": "3000", "press": 2 },
+        { "at": "4000", "press": 2 },
+        { "at": "5000", "press": 2 },
+        { "at": "6000", "press": 2, "face": { "big": "FINISH" } },
+        { "at": "6100+COMMIT_MS-1", "face": { "big": "FINISH", "small": "SIDE: NEXT" } },
+        { "at": "6100+COMMIT_MS", "face": { "big": "FINISH?", "small": "HOLD SIDE: YES", "field": "black", "ink": "text2", "light": "LIGHT_AWAKE" } },
+        { "at": "10000", "key2": "down", "sounds": ["tick"] },
+        { "at": "10000+HOLD_MS", "sent": [{ "t": "finish", "number": "27", "say": "ask" }], "sounds": ["double"], "face": { "big": "FINISH", "small": "SENDING", "field": "black", "ink": "text2", "light": "LIGHT_AWAKE" } },
+        { "at": "11600", "key2": "up", "face": { "big": "FINISH", "small": "SENDING" } },
+        { "at": "12000", "frame": { "t": "finish", "ok": true }, "sounds": ["up"], "face": { "big": "HI :)", "small": "ASKED", "field": "hi" } },
+        { "at": "12000+RESULT_MS", "face": { "big": "HI :)", "small": "BLUE MEANS HELLO" } },
+        { "at": "16000", "frame": { "t": "finish", "ok": true } }
+      ]
+    },
+    {
+      "name": "a finish ask the relay refuses is NOT SENT; one it never answers is NOT SENT after CONFIRM_MS and the socket is dropped",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "finish": "27" } },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2 },
+        { "at": "3000", "press": 2 },
+        { "at": "4000", "press": 2 },
+        { "at": "5000", "press": 2 },
+        { "at": "6000", "press": 2, "face": { "big": "FINISH" } },
+        { "at": "6100+COMMIT_MS", "face": { "big": "FINISH?" } },
+        { "at": "10000", "key2": "down", "sounds": ["tick"] },
+        { "at": "10000+HOLD_MS", "sent": [{ "t": "finish", "number": "27", "say": "ask" }], "sounds": ["double"] },
+        { "at": "11600", "key2": "up" },
+        { "at": "12000", "frame": { "t": "finish", "ok": false }, "sounds": ["low"], "face": { "field": "orange" } },
+        { "at": "13200", "face": { "big": "HI :)", "small": "NOT SENT" } },
+        { "at": "20000", "press": 2 },
+        { "at": "21000", "press": 2 },
+        { "at": "22000", "press": 2 },
+        { "at": "23000", "press": 2 },
+        { "at": "24000", "press": 2 },
+        { "at": "25000", "press": 2, "face": { "big": "FINISH" } },
+        { "at": "25100+COMMIT_MS", "face": { "big": "FINISH?" } },
+        { "at": "30000", "key2": "down", "sounds": ["tick"] },
+        { "at": "30000+HOLD_MS", "sent": [{ "t": "finish", "number": "27", "say": "ask" }], "sounds": ["double"] },
+        { "at": "31600", "key2": "up" },
+        { "at": "31500+CONFIRM_MS-1", "face": { "big": "FINISH", "small": "SENDING" } },
+        { "at": "31500+CONFIRM_MS", "sent": ["DROP"], "sounds": ["low"] },
+        { "at": "31500+CONFIRM_MS+1500", "face": { "small": "NOT SENT" } }
+      ]
+    },
+    {
+      "name": "FINISH? is called off by a SIDE press, and by CHOOSE_MS of nothing; neither sends",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3, "with": { "finish": "27" } },
+        { "at": "1000", "press": 2 },
+        { "at": "2000", "press": 2 },
+        { "at": "3000", "press": 2 },
+        { "at": "4000", "press": 2 },
+        { "at": "5000", "press": 2 },
+        { "at": "6000", "press": 2, "face": { "big": "FINISH" } },
+        { "at": "6100+COMMIT_MS", "face": { "big": "FINISH?" } },
+        { "at": "10000", "press": 2, "face": { "big": "HI :)", "small": "BLUE MEANS HELLO" } },
+        { "at": "20000", "press": 2 },
+        { "at": "21000", "press": 2 },
+        { "at": "22000", "press": 2 },
+        { "at": "23000", "press": 2 },
+        { "at": "24000", "press": 2 },
+        { "at": "25000", "press": 2, "face": { "big": "FINISH" } },
+        { "at": "25100+COMMIT_MS", "face": { "big": "FINISH?" } },
+        { "at": "25100+COMMIT_MS+CHOOSE_MS-1", "face": { "big": "FINISH?" } },
+        { "at": "25100+COMMIT_MS+CHOOSE_MS", "face": { "big": "HI :)" } }
+      ]
+    },
+    {
+      "name": "asked to finish: FINISH? on a flat green field plays ask and flashes green twice; a SIDE press only wakes; a SIDE hold says yes with a double",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "show": "FINISH", "rev": 3, "sounds": ["ask"], "face": { "big": "", "field": "finish", "light": "LIGHT_FULL" } },
+        { "at": "1149", "face": { "big": "", "field": "finish", "light": "LIGHT_FULL" } },
+        { "at": "1150", "face": { "big": "FINISH?", "light": "LIGHT_OFF" } },
+        { "at": "3000", "face": { "big": "FINISH?", "small": "SIDE: YES FACE: NO", "field": "finish", "ink": "ink", "light": "LIGHT_FULL", "corner": "" } },
+        { "at": "4000", "press": 2, "face": { "big": "FINISH?", "small": "SIDE: YES FACE: NO", "field": "finish" } },
+        { "at": "5000", "press": 2, "face": { "big": "FINISH?", "small": "SIDE: YES FACE: NO" } },
+        { "at": "6000", "key2": "down", "sounds": ["tick"] },
+        { "at": "6000+HOLD_MS", "sent": [{ "t": "finish", "number": "27", "say": "yes" }], "sounds": ["double"], "face": { "big": "FINISH?", "field": "finish" } },
+        { "at": "7600", "key2": "up", "face": { "big": "FINISH?", "small": "SIDE: YES FACE: NO" } },
+        { "at": "9000", "show": "HI", "rev": 4, "with": { "finished": { "n": 1791000000000 } }, "sounds": ["up"], "face": { "big": "", "field": "finish", "light": "LIGHT_FULL" } }
+      ]
+    },
+    {
+      "name": "asked to finish: a FACE hold says not yet with a double instead of NOT NOW; a FACE press only wakes; out of reach a hold is NOT SENT",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "FINISH", "rev": 3, "sounds": ["ask"] },
+        { "at": "3000", "press": 1, "face": { "big": "FINISH?", "small": "SIDE: YES FACE: NO", "field": "finish" } },
+        { "at": "5000", "key1": "down", "sounds": ["tick"] },
+        { "at": "5000+BAR_MS", "face": { "big": "FINISH?", "small": "KEEP HOLDING" } },
+        { "at": "5000+HOLD_MS", "sent": [{ "t": "finish", "number": "27", "say": "no" }], "sounds": ["double"], "face": { "big": "FINISH?", "small": "SIDE: YES FACE: NO", "bar": -1 } },
+        { "at": "6600", "key1": "up", "face": { "big": "FINISH?", "field": "finish" } },
+        { "at": "8000", "show": "HI", "rev": 4, "face": { "big": "HI :)" } },
+        { "at": "8000+QUIET_CONFIRM_MS+100", "face": { "big": "HI :)" } },
+        { "at": "15000", "show": "FINISH", "rev": 5, "sounds": ["ask"] },
+        { "at": "16000", "link": "down" },
+        { "at": "17000", "key2": "down", "sounds": ["tick"] },
+        { "at": "17000+HOLD_MS", "sounds": ["low"], "face": { "field": "orange" } },
+        { "at": "18600", "key2": "up" },
+        { "at": "17000+HOLD_MS+1200", "face": { "big": "FINISH?", "small": "NOT SENT", "field": "finish" } }
+      ]
+    },
+    {
+      "name": "a finished meeting plays up and flashes green once a naming; the other's not yet plays fall once; a show naming neither lets them play again",
+      "steps": [
+        { "at": "0", "link": "up", "sent": [{ "t": "wristband", "id": "$ID", "key": "$KEY", "v": 2 }] },
+        { "at": "0", "show": "HI", "rev": 3 },
+        { "at": "1000", "show": "HI", "rev": 3, "with": { "finished": { "n": 1791000000000 } }, "sounds": ["up"], "face": { "big": "", "field": "finish", "light": "LIGHT_FULL" } },
+        { "at": "1149", "face": { "big": "", "field": "finish" } },
+        { "at": "1150", "face": { "big": "HI :)", "light": "LIGHT_OFF" } },
+        { "at": "2000", "show": "HI", "rev": 3, "with": { "finished": { "n": 1791000000000 } } },
+        { "at": "3000", "show": "HI", "rev": 3, "with": { "notYet": { "n": 1791000050000 } }, "sounds": ["fall"], "face": { "big": "HI :)" } },
+        { "at": "4000", "show": "HI", "rev": 3, "with": { "notYet": { "n": 1791000050000 } } },
+        { "at": "5000", "show": "HI", "rev": 3 },
+        { "at": "6000", "show": "HI", "rev": 3, "with": { "notYet": { "n": 1791000050000 } }, "sounds": ["fall"] },
+        { "at": "7000", "show": "QUIET", "rev": 4, "with": { "finished": { "n": 1791000090000 }, "notYet": { "n": 1791000095000 } } }
       ]
     },
     {

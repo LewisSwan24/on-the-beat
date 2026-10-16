@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoom, closedOf, BANDS, MARKS, HEARD_MS, PRACTICE_MS } from '../relay/room.js';
+import { createRoom, closedOf, BANDS, MARKS, HEARD_MS, PRACTICE_MS, FINISH_AGAIN_MS, FINISH_ASKS } from '../relay/room.js';
 
 let channel = 1;
 /**
@@ -1013,4 +1013,50 @@ test('a room carried across a restart without its videos drops every clip, and a
   const [ben] = again.viewFor('ana').wall;                   // Ben, by his answer
   const match = again.danceBack('ana', ben.handle, 'clip-of-ana-again');
   assert.equal(match?.intent, 'dance', "Ben's yes from before the restart still counts");
+});
+
+// ---------- LET'S FINISH: one asks, the other says finish or not yet ----------
+
+test("finish: one asks, the other sees it as 'them' and says finish; it is finished for both and stays so", () => {
+  const { room, handleOf, tick } = night();
+  const { id } = meet(room, handleOf, 'ana', 'ben');
+  assert.deepEqual(['finishAsked', 'finishedAt', 'notYetAt'].map((k) => room.viewFor('ana').matches[0][k]), [null, null, null]);
+  assert.equal(room.finish('ana', id, 'ask'), true);
+  assert.equal(room.viewFor('ana').matches[0].finishAsked, 'you');
+  assert.equal(room.viewFor('ben').matches[0].finishAsked, 'them');
+  assert.equal(room.finish('ana', id, 'yes'), false, 'the one who asked cannot answer');
+  tick(5000);
+  assert.equal(room.finish('ben', id, 'yes'), true);
+  const t = Date.UTC(2026, 8, 23, 11, 4) + 5000;
+  for (const who of ['ana', 'ben']) {
+    const m = room.viewFor(who).matches[0];
+    assert.deepEqual([m.finishedAt, m.finishAsked], [t, null], who);
+  }
+  assert.equal(room.finish('ana', id, 'ask'), false, 'a finished meeting stays finished');
+  assert.equal(room.finish('cai', id, 'ask'), false, 'not his meeting');
+  assert.equal(room.finish('ana', 'm999', 'ask'), false, 'no such meeting');
+  assert.equal(room.finish('ana', id, 'maybe'), false);
+});
+
+test('finish: not yet tells only the one who asked, who may ask again after FINISH_AGAIN_MS, FINISH_ASKS times at most', () => {
+  const { room, handleOf, tick } = night();
+  const { id } = meet(room, handleOf, 'ana', 'ben');
+  room.finish('ana', id, 'ask');
+  tick(1000);
+  assert.equal(room.finish('ben', id, 'no'), true);
+  const said = Date.UTC(2026, 8, 23, 11, 4) + 1000;
+  assert.equal(room.viewFor('ana').matches[0].notYetAt, said, 'the asker is told');
+  assert.equal(room.viewFor('ben').matches[0].notYetAt, null, 'the one who said it is not told it back');
+  assert.equal(room.viewFor('ben').matches[0].finishAsked, null, 'the ask is gone');
+  assert.equal(room.finish('ana', id, 'ask'), false, 'not again at once');
+  tick(FINISH_AGAIN_MS);
+  assert.equal(room.finish('ana', id, 'ask'), true);
+  room.finish('ben', id, 'no');
+  tick(FINISH_AGAIN_MS);
+  assert.equal(room.finish('ana', id, 'ask'), true);
+  room.finish('ben', id, 'no');
+  tick(FINISH_AGAIN_MS);
+  assert.equal(FINISH_ASKS, 3);
+  assert.equal(room.finish('ana', id, 'ask'), false, 'three asks a meeting from one side');
+  assert.equal(room.finish('ben', id, 'ask'), true, 'the other side has its own');
 });

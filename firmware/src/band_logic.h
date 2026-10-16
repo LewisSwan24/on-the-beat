@@ -234,7 +234,7 @@ constexpr Flash FLASHES[] = {
     {"set", "card", 2, 150, 100},       {"changed", "red", 3, 120, 90}, {"notsent", "orange", 2, 350, 250},
     {"warn", "orange", 2, 350, 250},    {"check", "white", 2, 150, 100},   {"wave", "hi", 3, 500, 500},
     {"found", "card", 3, 200, 150},     {"calledit", "song", 3, 200, 150},  {"right", "guess", 2, 150, 100},
-    {"wrong", "white", 1, 250, 100},
+    {"wrong", "white", 1, 250, 100},    {"finish", "finish", 2, 150, 100},
 };
 
 inline const Flash* flashFor(const std::string& name) {
@@ -280,11 +280,14 @@ constexpr Rgb TEXT_2 = {0x9A, 0x99, 0xA4};  // words on a dark one
 // --stop. Orange is not its --warn, which on this screen reads as FIRST SONG's yellow.
 constexpr Rgb RED = {0xFF, 0x6B, 0x6B};
 constexpr Rgb ORANGE = {0xFF, 0x8A, 0x00};
+// LET'S FINISH's light colour (app/copy.js HUE.finish): not a card, so never in CARDS or the chooser's order.
+constexpr Rgb GREEN = {0x7C, 0xF0, 0xA8};
 
 /** A field that is one flat colour, or nullptr: black, white and the cards' glow are drawn another way. */
 inline const Rgb* plainField(const std::string& field) {
   if (field == "red") return &RED;
   if (field == "orange") return &ORANGE;
+  if (field == "finish") return &GREEN;
   return nullptr;
 }
 
@@ -320,7 +323,7 @@ inline Rgb glow(const Hue& hue, int x, int y, int w, int h) {
 
 /** One `show` from the relay: relay/band.js bandShow(), as it was sent. */
 struct Show {
-  std::string kind = "off";  // pairing | check | waiting | test | hi | song | dance | meet | off
+  std::string kind = "off";  // pairing | check | waiting | test | hi | song | dance | meet | finish | off
   std::string intent, big, small, code;
   bool dim = false;
   bool quiet = false;
@@ -330,10 +333,12 @@ struct Show {
   int64_t rev = 0;        // the state it was made from: a choice names it back as its basis
   std::string closed;     // the cards the venue closed tonight, as the relay lists them ("song,dance"); empty for none
   std::string was;        // in NOT NOW, the card one SIDE hold comes back to (N3); empty for none
+  std::string finish;     // the meeting LET'S FINISH may ask about, two digits; empty for none
+  std::string number;     // on the asked face (kind finish): the meeting the other person asked to finish
   bool operator==(const Show& o) const {
     return kind == o.kind && intent == o.intent && big == o.big && small == o.small && code == o.code &&
            dim == o.dim && quiet == o.quiet && away == o.away && hasArmed == o.hasArmed && armed == o.armed &&
-           rev == o.rev && closed == o.closed && was == o.was;
+           rev == o.rev && closed == o.closed && was == o.was && finish == o.finish && number == o.number;
   }
   bool operator!=(const Show& o) const { return !(*this == o); }
 };
@@ -597,6 +602,8 @@ struct Frame {
   Found found;             // the show's found, none unless said (nor this)
   int64_t calledIt = 0;    // the show's calledIt: when the opener its person called was named, 0 unless said
   Guessed guessed;         // the show's guessed: n 0 unless said with a whole number and a true or false
+  int64_t finished = 0;    // the show's finished: when a meeting of its person's finished, 0 unless said
+  int64_t notYet = 0;      // the show's notYet: when the other said not yet to its person's ask, 0 unless said
   std::string why;
   bool hasOk = false;      // {t:'set', ok:false, why}: the relay refused a choice
   bool ok = true;
@@ -643,6 +650,8 @@ inline bool readFrame(const std::string& text, Frame& f) {
       if (k == "code") return text_(s.code, 8);
       if (k == "closed") return text_(s.closed, 64);
       if (k == "was") return text_(s.was, 16);
+      if (k == "finish") return text_(s.finish, 8);
+      if (k == "number") return text_(s.number, 8);
       if (k == "dim") return flag(s.dim);
       if (k == "quiet") return flag(s.quiet);
       if (k == "away") return flag(s.away);
@@ -697,14 +706,15 @@ inline bool readFrame(const std::string& text, Frame& f) {
           return true;
         });
       }
-      if (k == "calledIt") {
+      if (k == "calledIt" || k == "finished" || k == "notYet") {
         if (!r.peek('{')) return r.skip();
+        int64_t& out = k == "calledIt" ? f.calledIt : k == "finished" ? f.finished : f.notYet;
         return r.object([&](const std::string& w) {
           if (w != "n") return r.skip();
           int64_t v = 0;
           bool whole = false;
           if (!r.integer(v, whole)) return r.skip();
-          f.calledIt = whole ? v : 0;
+          out = whole ? v : 0;
           return true;
         });
       }
@@ -903,6 +913,7 @@ inline Words wordsFor(const Face& f, bool awake, int battery, Signal signal) {
   const std::string pct = battery >= 0 ? std::to_string(battery) + "%" : "";
   if (s.kind == "pairing") return {s.code, ""};
   if (s.kind == "check") return {s.big, "ON YOUR PHONE?"};
+  if (s.kind == "finish") return {s.big, s.small};  // the other person asked to finish: the relay's own words
   if (s.kind == "waiting") return {"OPEN YOUR PHONE", "OR SWITCH ME OFF"};
   // Woken, the meeting face says what a SIDE hold does there.
   if (lit(s))
@@ -921,7 +932,7 @@ inline Words wordsFor(const Face& f, bool awake, int battery, Signal signal) {
 /** How bright the backlight is: black is off, not a black picture lit from behind. */
 inline uint8_t lightFor(const Face& f, bool awake) {
   const Show& s = f.show;
-  if (s.kind == "test") return LIGHT_FULL;
+  if (s.kind == "test" || s.kind == "finish") return LIGHT_FULL;
   if (lit(s)) return s.dim ? LIGHT_DIM : LIGHT_FULL;
   if (s.kind == "pairing" || s.kind == "check") return LIGHT_PAIR;
   return s.kind == "waiting" || awake ? LIGHT_AWAKE : LIGHT_OFF;
@@ -1587,6 +1598,11 @@ inline std::string batteryFrame(int level) { return "{\"t\":\"battery\",\"level\
 /** The check on the face turned away: the two digits as the face shows them. */
 inline std::string refuseFrame(const std::string& number) { return "{\"t\":\"refuse\",\"number\":\"" + number + "\"}"; }
 
+/** LET'S FINISH from the wrist: `say` is ask, yes or no, about the meeting with this number. */
+inline std::string finishFrame(const std::string& number, const std::string& say) {
+  return "{\"t\":\"finish\",\"number\":\"" + number + "\",\"say\":\"" + say + "\"}";
+}
+
 constexpr const char* HOLD_FRAME = "{\"t\":\"hold\"}";
 constexpr const char* PING_FRAME = "{\"t\":\"ping\"}";
 
@@ -1642,8 +1658,8 @@ inline std::string backTo(const std::string& was, const std::string& closed = ""
 /** What the screen shows: two lines on one field, the backlight, the KEEP HOLDING bar, and letters to draw with their QR. */
 struct Screen {
   std::string big, small;
-  std::string field = "black";  // black | white | hi | song | dance | red | orange
-  std::string ink = "text2";    // ink | text2 | white | hi | song | dance
+  std::string field = "black";  // black | white | hi | song | dance | guess | red | orange | finish
+  std::string ink = "text2";    // ink | text2 | white | hi | song | dance | guess | finish
   uint8_t light = LIGHT_OFF;
   int bar = -1;                 // 0..99 while KEY1 is held past BAR_MS; -1 otherwise
   std::string code;             // the pairing letters
@@ -1972,7 +1988,7 @@ class Wrist {
     }
     // Any KEY1 press-down freezes a choice at once: no commit can fire.
     if (k == 1 && (mode_ == LOOK || mode_ == CHOOSING)) frozen_ = true;
-    // FACE going down on UNPAIR? calls it off.
+    // FACE going down on UNPAIR? or FINISH? calls it off.
     if (k == 1 && mode_ == ASKING) rest();
     if (k == 1) awayKey_ = false;
     // During a wave's flashes a key only ticks: a meeting calling underneath is answered after them.
@@ -1988,6 +2004,8 @@ class Wrist {
       if (!s.fired) awayKey_ = true;  // SIDE going down meanwhile leaves a FACE hold as it is
       hintUntil_ = now + HINT_MS;
       if (show_.kind == "pairing") litUntil_ = now + PAIR_AWAKE_MS;
+    } else if (k == 1 && (mode_ == REST || mode_ == RESULT) && finishFace(now)) {
+      awayKey_ = true;  // FACE on FINISH?: held, it says not yet; let go sooner, it only wakes
     }
     // Every press is heard as it goes down; NOT NOW is silent. A tick does not end a wave's flashes.
     if (!silent_) {
@@ -2013,6 +2031,7 @@ class Wrist {
     // FACE let go on the check before HOLD_MS: it said where to go as it went down, and does nothing more.
     if (k == 1 && awayKey_) {
       awayKey_ = false;
+      if (finishFace(now)) wake(now);
     } else if (!s.fired && !waveFlashing(now)) {
       if (mode_ == WAVES) {
         rest();  // in the wave face a press of either key closes it; SIDE never starts the chooser there
@@ -2117,17 +2136,24 @@ class Wrist {
       }
       return;
     }
+    // The relay's answer to a LET'S FINISH ask: it reached the other person, or it did not.
+    if (f.t == "finish" && f.hasOk) {
+      if (mode_ == FINISHING) result(now, f.ok ? "ASKED" : "NOT SENT");
+      return;
+    }
     if (f.t != "show" || !f.hasShow) return;
     // Reactions come from changes; a show that differs only in its sound switch is no change.
     const bool same = haveShow_ && show_ == f.show;
     const bool wasCheck = haveShow_ && show_.kind == "check";
+    const std::string wasKind = haveShow_ ? show_.kind : std::string();
     const std::string wasBig = haveShow_ ? show_.big : std::string();
+    const std::string wasNumber = haveShow_ ? show_.number : std::string();
     const bool wasSilent = silent_;
     show_ = f.show;
     haveShow_ = true;
     waves_ = f.waves;
-    // A FACE hold on the check ends with that check: letting go, or holding on, does nothing more.
-    if (awayKey_ && (show_.kind != "check" || show_.big != wasBig)) {
+    // A FACE hold on the check, or on FINISH?, ends with that face: letting go, or holding on, does nothing more.
+    if (awayKey_ && (show_.kind != wasKind || show_.big != wasBig || show_.number != wasNumber)) {
       awayKey_ = false;
       k1_.fired = true;
     }
@@ -2202,6 +2228,8 @@ class Wrist {
     if (!same) {
       if (show_.kind == "check") {
         react("ask", "check", 1);
+      } else if (show_.kind == "finish") {
+        react("ask", "finish", 1);  // the other person asked to finish: answered here or on the phone
       } else if (show_.kind == "test") {
         react("up", nullptr, 1);  // paired, or TEST THE LIGHT: the white face is its flash
       } else if (show_.kind == "meet" && show_.big != called_) {
@@ -2234,6 +2262,19 @@ class Wrist {
     } else if (!f.guessed.n && personal()) {
       guessedPlayed_ = 0;
     }
+    // LET'S FINISH: a meeting finished plays once on both bands; the other's not yet once on the asker's.
+    if (f.finished && f.finished != finishedPlayed_) {
+      finishedPlayed_ = f.finished;
+      react("up", "finish", 1);
+    } else if (!f.finished && personal()) {
+      finishedPlayed_ = 0;
+    }
+    if (f.notYet && f.notYet != notYetPlayed_) {
+      notYetPlayed_ = f.notYet;
+      react("fall", nullptr, 1);
+    } else if (!f.notYet && personal()) {
+      notYetPlayed_ = 0;
+    }
     // After a meeting's jingle. A wave call already under way takes the new wave in; the open wave face counts it.
     if (newer && !waveCalling() && mode_ != WAVES) callWave();
   }
@@ -2262,7 +2303,7 @@ class Wrist {
     }
     if (k1_.down && !k1_.fired && now - k1_.since >= HOLD_MS) {
       k1_.fired = true;
-      if (awayKey_) turnAway();
+      if (awayKey_) turnAway(now);
       else hold(now);
     }
     // A SIDE hold that comes due during a wave's flashes does nothing else.
@@ -2291,8 +2332,10 @@ class Wrist {
       }
       // Hiding may arrive late; showing may not. Leaving NOT NOW failed, so hold it again.
       if (fromQuiet_) quiet_.held();
-    } else if ((mode_ == WAVEBACK || mode_ == FOUND || mode_ == UNPAIRING) && now - sentAt_ >= CONFIRM_MS) {
-      // As for a choice: NOT SENT, and the socket dropped, so a wave, a found or an unpair stuck in it can no longer land.
+    } else if ((mode_ == WAVEBACK || mode_ == FOUND || mode_ == UNPAIRING || mode_ == FINISHING) &&
+               now - sentAt_ >= CONFIRM_MS) {
+      // As for a choice: NOT SENT, and the socket dropped, so a wave, a found, an unpair or a finish stuck in it can no
+      // longer land.
       result(now, "NOT SENT");
       if (link_.up()) {
         out_.push_back("DROP");
@@ -2316,11 +2359,14 @@ class Wrist {
       const char* small = mode_ == SENDING ? "SENDING" : fromQuiet_ ? "HOLD SIDE TO SHOW" : "SIDE: NEXT";
       f = preview_ == "off"      ? words("OFF", small, "black", "text2", LIGHT_AWAKE)
           : preview_ == "unpair" ? words("UNPAIR", small, "black", "text2", LIGHT_AWAKE)
+          : preview_ == "finish" ? words("FINISH", small, "black", "finish", LIGHT_AWAKE)
                                  : words(cardWords(preview_), small, "black", preview_, LIGHT_AWAKE);
     } else if (mode_ == ASKING) {
-      f = words("UNPAIR?", "HOLD SIDE: YES", "black", "text2", LIGHT_AWAKE);
+      f = words(asking_ == "finish" ? "FINISH?" : "UNPAIR?", "HOLD SIDE: YES", "black", "text2", LIGHT_AWAKE);
     } else if (mode_ == UNPAIRING) {
       f = words("UNPAIR", "SENDING", "black", "text2", LIGHT_AWAKE);
+    } else if (mode_ == FINISHING) {
+      f = words("FINISH", "SENDING", "black", "text2", LIGHT_AWAKE);
     } else if (mode_ == WAVES) {
       // As the chooser shows HI, in its own words: that someone waved, and how many wait. Never who.
       const std::string count = waves_.n > 9 ? "9+" : std::to_string(waves_.n);
@@ -2393,7 +2439,7 @@ class Wrist {
   }
 
  private:
-  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT, WAVES, WAVEBACK, FOUND, WAVING, ASKING, UNPAIRING };
+  enum Mode { REST, LOOK, CHOOSING, SENDING, RESULT, WAVES, WAVEBACK, FOUND, WAVING, ASKING, UNPAIRING, FINISHING };
   struct Key {
     bool down = false;
     bool fired = false;
@@ -2538,6 +2584,11 @@ class Wrist {
     return haveShow_ && show_.kind == "meet" && number && !link_.stale(now) && !quiet_.dark();
   }
 
+  /** FINISH? on the face, believed and not under NOT NOW: the other person asked, and SIDE or FACE held answers. */
+  bool finishFace(uint32_t now) const {
+    return haveShow_ && show_.kind == "finish" && !link_.stale(now) && !quiet_.dark();
+  }
+
   /** A press shows the face for WAKE_MS; the waiting face, which sleeps, stays lit PAIR_AWAKE_MS from it. */
   void wake(uint32_t now) {
     wakeUntil_ = now + WAKE_MS;
@@ -2567,8 +2618,10 @@ class Wrist {
     out.big = w.big;
     out.small = w.small;
     out.light = lightFor(f, awake);
-    out.field = s.kind == "test" ? "white" : lit(s) ? s.intent : "black";
-    out.ink = s.kind == "test" || lit(s) ? "ink" : s.kind == "pairing" || s.kind == "check" ? "white" : "text2";
+    out.field = s.kind == "test" ? "white" : s.kind == "finish" ? "finish" : lit(s) ? s.intent : "black";
+    out.ink = s.kind == "test" || s.kind == "finish" || lit(s)   ? "ink"
+              : s.kind == "pairing" || s.kind == "check" ? "white"
+                                                         : "text2";
     if (s.kind == "pairing") out.code = s.code;
     // Rule 5, over what the relay says: a press on the letters or the check says where to go, and the
     // letters and the waiting face sleep. Asleep, only the light goes: the picture stays for the next press.
@@ -2604,9 +2657,10 @@ class Wrist {
    * FACE held on the check: its person did not ask for this number — someone who read the letters off the
    * wrist may be holding it open. The relay drops it only if it is still this number, and answers with letters.
    */
-  void turnAway() {
+  void turnAway(uint32_t now) {
     awayKey_ = false;
     if (haveShow_ && show_.kind == "check") out_.push_back(refuseFrame(show_.big));
+    else if (finishFace(now)) answerFinish(now, "no");  // FINISH?: not yet, instead of NOT NOW
   }
 
   void hold(uint32_t now) {
@@ -2631,6 +2685,7 @@ class Wrist {
     const std::string word = w;
     if (word == "SET") react("up", "set", 0, choice_);
     else if (word == "CHANGED") react("fall", "changed");
+    else if (word == "ASKED") react("up");  // LET'S FINISH reached the other person: their answer comes as a show
     else react("low", "notsent");
   }
 
@@ -2642,8 +2697,9 @@ class Wrist {
       rest();
       return;
     }
-    // UNPAIR is not sent on its own: it asks first, and only a SIDE hold there says yes.
-    if (preview_ == "unpair") {
+    // UNPAIR and FINISH are not sent on their own: they ask first, and only a SIDE hold there says yes.
+    if (preview_ == "unpair" || preview_ == "finish") {
+      asking_ = preview_;
       mode_ = ASKING;
       stepAt_ = now;
       return;
@@ -2701,10 +2757,43 @@ class Wrist {
     react("double");
   }
 
+  /** A SIDE hold on FINISH?: ask the other person, about the meeting the show offers. Out of reach, NOT SENT at once. */
+  void finishNow(uint32_t now) {
+    if (!link_.up()) {
+      result(now, "NOT SENT");
+      return;
+    }
+    if (show_.finish.empty()) {  // no longer offered: nothing to ask about
+      rest();
+      return;
+    }
+    out_.push_back(finishFrame(show_.finish, "ask"));
+    mode_ = FINISHING;
+    sentAt_ = now;
+    react("double");
+  }
+
+  /** Held on the asked face: yes (SIDE) or not yet (FACE). No waiting: the relay's next show is the answer. */
+  void answerFinish(uint32_t now, const char* say) {
+    if (!link_.up()) {
+      result(now, "NOT SENT");
+      return;
+    }
+    out_.push_back(finishFrame(show_.number, say));
+    react("double");
+  }
+
+  /** Where SIDE steps in the chooser: cardAfter(), with FINISH between OFF and UNPAIR while the show offers a meeting. */
+  std::string stepAfter(const std::string& from) const {
+    if (from == "off" && !show_.finish.empty()) return "finish";
+    if (from == "finish") return "unpair";
+    return cardAfter(from, show_.closed);
+  }
+
   /** A KEY2 press let go before HOLD_MS. */
   void step(uint32_t now) {
-    if (k1_.down || frozen_ || mode_ == SENDING || mode_ == WAVEBACK || mode_ == UNPAIRING) return;
-    // A SIDE press on UNPAIR? calls it off.
+    if (k1_.down || frozen_ || mode_ == SENDING || mode_ == WAVEBACK || mode_ == UNPAIRING || mode_ == FINISHING) return;
+    // A SIDE press on UNPAIR? or FINISH? calls it off.
     if (mode_ == ASKING) {
       rest();
       wake(now);
@@ -2713,7 +2802,7 @@ class Wrist {
     if (mode_ == RESULT) rest();
     if (mode_ == REST) {
       wake(now);
-      if (!personal()) return;  // not about the person: KEY2 only wakes
+      if (!personal() || finishFace(now)) return;  // not about the person, or FINISH? to answer: KEY2 only wakes
       mode_ = LOOK;
       stepAt_ = now;
       basis_ = show_.rev;
@@ -2723,13 +2812,14 @@ class Wrist {
     if (mode_ == LOOK) {
       const std::string cur = current();
       fromQuiet_ = cur == "notnow";
-      preview_ = fromQuiet_ ? backTo(show_.was, show_.closed) : cardAfter(cur, show_.closed);   // out of NOT NOW: the card they had
-      if (preview_ == "unpair") preview_ = cardAfter(preview_, show_.closed);   // from READY, the first card, not UNPAIR
+      preview_ = fromQuiet_ ? backTo(show_.was, show_.closed) : stepAfter(cur);   // out of NOT NOW: the card they had
+      // From READY, the first card, not FINISH or UNPAIR.
+      if (preview_ == "unpair" || preview_ == "finish") preview_ = cardAfter("unpair", show_.closed);
       mode_ = CHOOSING;
       stepAt_ = now;
       return;
     }
-    preview_ = cardAfter(preview_, show_.closed);
+    preview_ = stepAfter(preview_);
     stepAt_ = now;
   }
 
@@ -2743,10 +2833,11 @@ class Wrist {
       out_.push_back("SETUP");
       return;
     }
-    if (mode_ == ASKING) unpairNow(now);
+    if (mode_ == ASKING) { if (asking_ == "finish") finishNow(now); else unpairNow(now); }
     else if (mode_ == CHOOSING) commit(now, true);
     else if (mode_ == WAVES) waveBack(now);
     else if (mode_ == LOOK) { if (!comeBack(now)) stepAt_ = now; }
+    else if ((mode_ == REST || mode_ == RESULT) && finishFace(now)) answerFinish(now, "yes");
     else if ((mode_ == REST || mode_ == RESULT) && meetingFace(now)) sayFound(now);
     else if (mode_ == REST || mode_ == RESULT) { step(now); if (mode_ == LOOK) comeBack(now); }
   }
@@ -2773,6 +2864,7 @@ class Wrist {
   Key k1_, k2_;
   Mode mode_ = REST;
   std::string preview_, choice_, word_;
+  std::string asking_;  // what ASKING asks about: "unpair" or "finish"
   bool fromQuiet_ = false, frozen_ = false;
   uint32_t wakeUntil_ = 0, stepAt_ = 0, sentAt_ = 0, resultUntil_ = 0;
   int64_t basis_ = 0;
@@ -2808,6 +2900,8 @@ class Wrist {
   // The opener its person called (FIRST SONG?): when the naming last played for was, until a show about them names none.
   int64_t calledItPlayed_ = 0;
   int64_t guessedPlayed_ = 0;  // LET'S GUESS: how many answers had played, until a show about the person names none
+  // LET'S FINISH: when the finish and the not yet last played for were, until a show about the person names none.
+  int64_t finishedPlayed_ = 0, notYetPlayed_ = 0;
   // Rule 5: the letters and the waiting face sleep. Until when they are lit, which letters lit them, when
   // waiting began, and until when a press says where to go.
   uint32_t litUntil_ = 0;
@@ -2815,7 +2909,8 @@ class Wrist {
   bool waiting_ = false;
   uint32_t waitAt_ = 0;
   uint32_t hintUntil_ = 0;
-  // FACE went down on the check: held to HOLD_MS it turns the check away, and it ends with that check.
+  // FACE went down on the check, or on FINISH?: held to HOLD_MS it turns the check away or says not yet, and it ends
+  // with that face.
   bool awayKey_ = false;
   // Rule 7: each warning plays once per change. Which have played (true while their condition holds), which
   // battery thresholds are armed, and which came up in NOT NOW or during a choice and are owed, by bit.
@@ -3030,6 +3125,12 @@ inline std::string saidLine(const std::string& frame) {
   if (frame.rfind("{\"t\":\"wave\"", 0) == 0) return "a wave back from the wrist";
   if (frame.rfind("{\"t\":\"found\"", 0) == 0) return "found, from the wrist";
   if (frame.rfind("{\"t\":\"unpair\"", 0) == 0) return "unpaired, from the wrist";
+  if (frame.rfind("{\"t\":\"finish\"", 0) == 0) {
+    const std::string mark = "\"say\":\"";
+    const size_t a = frame.find(mark);
+    const size_t b = a == std::string::npos ? a : frame.find('"', a + mark.size());
+    return "a finish, from the wrist: " + (b == std::string::npos ? std::string("?") : frame.substr(a + mark.size(), b - a - mark.size()));
+  }
   if (frame.rfind("{\"t\":\"refuse\"", 0) == 0) return "the check turned away, from the wrist";
   if (frame.rfind("{\"t\":\"wristband\"", 0) == 0)
     return frame.find("\"secret\":") == std::string::npos ? "hello to the relay, as a new wristband"
@@ -3056,12 +3157,14 @@ inline std::string heardLine(const Frame& f, std::string& shown) {
   if (f.t == "set" && f.hasOk && !f.ok) return "the relay did not take the choice: " + f.why;
   if (f.t == "wave" && f.hasOk) return f.ok ? "the relay took the wave back" : "the relay did not take the wave back: " + f.why;
   if (f.t == "found" && f.hasOk) return f.ok ? "the relay took the found" : "the relay did not take the found: " + f.why;
+  if (f.t == "finish" && f.hasOk) return f.ok ? "the relay took the finish" : "the relay did not take the finish";
   if (f.t == "paired" && f.hasSecret) return "paired: the relay gave it a secret";
   if (f.t != "show" || !f.hasShow) return "";
   const Show& s = f.show;
   std::string what = s.kind;
   if (s.kind == "pairing") what += " " + s.code;
   else if (s.kind == "check" || s.kind == "meet") what += " " + s.big;
+  else if (s.kind == "finish") what += " " + s.number;
   else if (s.quiet) what += " (NOT NOW)";
   else if (s.away) what += " (away)";
   if (s.kind == "meet" && s.small == "FOUND: WAITING") what += " (found: waiting)";

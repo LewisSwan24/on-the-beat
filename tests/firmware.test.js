@@ -142,9 +142,10 @@ test('with cards closed, the wrist steps over them, as the stand-in does', { ski
   });
 });
 
-test("the flashes' red and orange are the stand-in's, and red is the phone's own --stop", { skip }, () => {
+test("the flashes' red, orange and finish green are the stand-in's, red is the phone's own --stop, and green LET'S FINISH's", { skip }, () => {
   const [colours] = speak(['flashcolours']);
   assert.deepEqual(JSON.parse(colours), FLASH_COLOURS);
+  assert.equal(FLASH_COLOURS.finish, HUE.finish.c.toUpperCase());
   const css = readFileSync(new URL('../app/styles.css', import.meta.url), 'utf8');
   assert.equal(FLASH_COLOURS.red, css.match(/--stop:\s*(#[0-9A-Fa-f]{6})/)[1].toUpperCase());
 });

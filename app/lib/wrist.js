@@ -158,13 +158,14 @@ export const FLASHES = {
   calledit: { colour: 'song', count: 3, on: 200, off: 150 },
   right: { colour: 'guess', count: 2, on: 150, off: 100 },
   wrong: { colour: 'white', count: 1, on: 250, off: 100 },
+  finish: { colour: 'finish', count: 2, on: 150, off: 100 },
 };
 
 /**
  * The flash fields' colours. Red is the phone's own --stop. Orange is not its --warn, which on the band reads
- * as FIRST SONG's yellow. band_logic.h plainField().
+ * as FIRST SONG's yellow. Finish is LET'S FINISH's light green, flat: it is not a card. band_logic.h plainField().
  */
-export const FLASH_COLOURS = { red: '#FF6B6B', orange: '#FF8A00' };
+export const FLASH_COLOURS = { red: '#FF6B6B', orange: '#FF8A00', finish: '#7CF0A8' };
 
 /** A sound's length in ms, its lead-in included; none, 0. band_logic.h soundMs(). */
 export const soundMs = (name) => (name ? LEAD_IN_MS + SOUNDS[name].reduce((ms, s) => ms + s[3], 0) : 0);
@@ -181,6 +182,7 @@ function readShow(s) {
     rev: Number.isInteger(s.rev) ? s.rev : 0,
     closed: typeof s.closed === 'string' ? s.closed.split(',') : [],
     was: str(s.was),
+    finish: str(s.finish), number: str(s.number),
   };
 }
 
@@ -199,9 +201,12 @@ function readFound(s) {
   return { n: Number.isInteger(f.n) ? f.n : 0, intent: card };
 }
 
-/** A show's calledIt, as band_logic.h readFrame() reads it: when the opener its person called was named, or 0. */
-function readCalledIt(s) {
-  const c = s.calledIt && typeof s.calledIt === 'object' ? s.calledIt : {};
+/**
+ * A show's calledIt, finished or notYet, as band_logic.h readFrame() reads them: when the opener its person called
+ * was named, when a meeting of theirs finished, when the other said not yet; or 0.
+ */
+function readWhen(s, field) {
+  const c = s[field] && typeof s[field] === 'object' ? s[field] : {};
   return Number.isInteger(c.n) ? c.n : 0;
 }
 
@@ -229,8 +234,9 @@ export function createWrist({ key }) {
   let wakeUntil = 0;
   const k1 = { down: false, since: 0, fired: false };
   const k2 = { down: false, since: 0, fired: false };
-  let mode = 'rest';          // rest | look | choosing | sending | result | waves | waveback | found | asking | unpairing
-  let preview = '';           // hi | song | dance | off
+  let mode = 'rest';          // rest | look | choosing | sending | result | waves | waveback | found | asking | unpairing | finishing
+  let asking = '';            // what asking asks about: unpair | finish
+  let preview = '';           // a card | off | finish | unpair
   let fromQuiet = false;
   let frozen = false;
   let stepAt = 0, basis = 0, sentAt = 0, resultUntil = 0;
@@ -264,13 +270,17 @@ export function createWrist({ key }) {
   let calledItPlayed = 0;
   // LET'S GUESS: how many answers had played, until a show about the person names none.
   let guessedPlayed = 0;
+  // LET'S FINISH: when the finish and the not yet last played for were, until a show about the person names none.
+  let finishedPlayed = 0;
+  let notYetPlayed = 0;
   // Rule 5: the letters and the waiting face sleep. Until when they are lit, which letters lit them, when
   // waiting began, and until when a press says where to go.
   let litUntil = 0;
   let pairCode = '';
   let waitAt = null;
   let hintUntil = 0;
-  // FACE went down on the check: held to HOLD_MS it turns the check away, and it ends with that check.
+  // FACE went down on the check, or on FINISH?: held to HOLD_MS it turns the check away or says not yet, and it ends
+  // with that face.
   let awayKey = false;
   // Rule 7: each warning plays once per change. Which have played (true while their condition holds), which
   // battery thresholds are armed, and which came up in NOT NOW or during a choice and are owed.
@@ -287,6 +297,8 @@ export function createWrist({ key }) {
   const pairingFace = (now) => !stale(now) && !quiet.pending && (show?.kind === 'pairing' || show?.kind === 'check');
   // A meeting's number on the face, believed and not under NOT NOW: a SIDE hold there says found. A number is two digits.
   const meetingFace = (now) => show?.kind === 'meet' && /^[1-9][0-9]$/.test(show.big) && !stale(now) && !quiet.pending;
+  // FINISH? on the face, believed and not under NOT NOW: the other person asked, and SIDE or FACE held answers.
+  const finishFace = (now) => show?.kind === 'finish' && !stale(now) && !quiet.pending;
   const current = () => (quiet.pending || show?.quiet ? 'notnow' : show?.armed || 'off');
   const pct = () => (battery >= 0 ? battery + '%' : '');
   /** The band listens for the beat: a lit card could pulse, the switch is on, and it is not NOT NOW (beat §2). */
@@ -412,9 +424,10 @@ export function createWrist({ key }) {
    * FACE held on the check: its person did not ask for this number — someone who read the letters off the
    * wrist may be holding it open. The relay drops it only if it is still this number, and answers with letters.
    */
-  function turnAway() {
+  function turnAway(now) {
     awayKey = false;
     if (show?.kind === 'check') send({ t: 'refuse', number: show.big });
+    else if (finishFace(now)) answerFinish(now, 'no');  // FINISH?: not yet, instead of NOT NOW
   }
 
   function hold(now) {
@@ -439,6 +452,7 @@ export function createWrist({ key }) {
     if (silent) return;
     if (w === 'SET') react('up', 'set', 0, choice);
     else if (w === 'CHANGED') react('fall', 'changed');
+    else if (w === 'ASKED') react('up');  // LET'S FINISH reached the other person: their answer comes as a show
     else react('low', 'notsent');
   }
 
@@ -446,8 +460,8 @@ export function createWrist({ key }) {
   function commit(now, held = false) {
     if (frozen) return;
     if (preview === current() || !link.up) { rest(); return; }
-    // UNPAIR is not sent on its own: it asks first, and only a SIDE hold there says yes.
-    if (preview === 'unpair') { mode = 'asking'; stepAt = now; return; }
+    // UNPAIR and FINISH are not sent on their own: they ask first, and only a SIDE hold there says yes.
+    if (preview === 'unpair' || preview === 'finish') { asking = preview; mode = 'asking'; stepAt = now; return; }
     choice = preview === 'off' ? '' : preview;
     send({ t: 'set', intent: choice || null, basis });
     mode = 'sending';
@@ -481,14 +495,38 @@ export function createWrist({ key }) {
     react('double');
   }
 
+  /** A SIDE hold on FINISH?: ask the other person, about the meeting the show offers. Out of reach, NOT SENT at once. */
+  function finishNow(now) {
+    if (!link.up) { result(now, 'NOT SENT'); return; }
+    if (!show.finish) { rest(); return; }  // no longer offered: nothing to ask about
+    send({ t: 'finish', number: show.finish, say: 'ask' });
+    mode = 'finishing';
+    sentAt = now;
+    react('double');
+  }
+
+  /** Held on the asked face: yes (SIDE) or not yet (FACE). No waiting: the relay's next show is the answer. */
+  function answerFinish(now, say) {
+    if (!link.up) { result(now, 'NOT SENT'); return; }
+    send({ t: 'finish', number: show.number, say });
+    react('double');
+  }
+
+  /** Where SIDE steps in the chooser: cardAfter(), with FINISH between OFF and UNPAIR while the show offers a meeting. */
+  function stepAfter(from) {
+    if (from === 'off' && show.finish) return 'finish';
+    if (from === 'finish') return 'unpair';
+    return cardAfter(from, show.closed);
+  }
+
   function step(now) {
-    if (k1.down || frozen || mode === 'sending' || mode === 'waveback' || mode === 'unpairing') return;
-    // A SIDE press on UNPAIR? calls it off.
+    if (k1.down || frozen || mode === 'sending' || mode === 'waveback' || mode === 'unpairing' || mode === 'finishing') return;
+    // A SIDE press on UNPAIR? or FINISH? calls it off.
     if (mode === 'asking') { rest(); wake(now); return; }
     if (mode === 'result') rest();
     if (mode === 'rest') {
       wake(now);
-      if (!personal()) return;
+      if (!personal() || finishFace(now)) return;  // not about the person, or FINISH? to answer: SIDE only wakes
       mode = 'look';
       stepAt = now;
       basis = show.rev;
@@ -498,13 +536,14 @@ export function createWrist({ key }) {
     if (mode === 'look') {
       const cur = current();
       fromQuiet = cur === 'notnow';
-      preview = fromQuiet ? backTo(show.was, show.closed) : cardAfter(cur, show.closed);   // out of NOT NOW: the card they had
-      if (preview === 'unpair') preview = cardAfter(preview, show.closed);   // from READY, the first card, not UNPAIR
+      preview = fromQuiet ? backTo(show.was, show.closed) : stepAfter(cur);   // out of NOT NOW: the card they had
+      // From READY, the first card, not FINISH or UNPAIR.
+      if (preview === 'unpair' || preview === 'finish') preview = cardAfter('unpair', show.closed);
       mode = 'choosing';
       stepAt = now;
       return;
     }
-    preview = cardAfter(preview, show.closed);
+    preview = stepAfter(preview);
     stepAt = now;
   }
 
@@ -513,10 +552,11 @@ export function createWrist({ key }) {
     // With no Wi-Fi, once the face says so, the hold asks for Wi-Fi setup ('SETUP' in what is taken). The
     // stand-in always has its Wi-Fi, so only the band ever asks; a blip under a meeting leaves FOUND alone.
     if (!wifi && !link.up && (stale(now) || mode === 'look')) { out.push('SETUP'); return; }
-    if (mode === 'asking') unpairNow(now);
+    if (mode === 'asking') (asking === 'finish' ? finishNow : unpairNow)(now);
     else if (mode === 'choosing') commit(now, true);
     else if (mode === 'waves') waveBack(now);
     else if (mode === 'look') comeBack(now) || (stepAt = now);
+    else if ((mode === 'rest' || mode === 'result') && finishFace(now)) answerFinish(now, 'yes');
     else if ((mode === 'rest' || mode === 'result') && meetingFace(now)) sayFound(now);
     else if (mode === 'rest' || mode === 'result') { step(now); if (mode === 'look') comeBack(now); }
   }
@@ -546,7 +586,7 @@ export function createWrist({ key }) {
     }
     if (k1.down && !k1.fired && now - k1.since >= HOLD_MS) {
       k1.fired = true;
-      if (awayKey) turnAway();
+      if (awayKey) turnAway(now);
       else hold(now);
     }
     // A SIDE hold that comes due during a wave's flashes does nothing else.
@@ -561,8 +601,9 @@ export function createWrist({ key }) {
       result(now, 'NOT SENT');
       if (link.up) { out.push('DROP'); closed(now); }
       if (fromQuiet) { quiet.pending = true; quiet.sent = false; }
-    } else if ((mode === 'waveback' || mode === 'found' || mode === 'unpairing') && now - sentAt >= CONFIRM_MS) {
-      // As for a choice: NOT SENT, and the socket dropped, so a wave, a found or an unpair stuck in it can no longer land.
+    } else if ((mode === 'waveback' || mode === 'found' || mode === 'unpairing' || mode === 'finishing') && now - sentAt >= CONFIRM_MS) {
+      // As for a choice: NOT SENT, and the socket dropped, so a wave, a found, an unpair or a finish stuck in it can no
+      // longer land.
       result(now, 'NOT SENT');
       if (link.up) { out.push('DROP'); closed(now); }
     } else if (mode === 'result' && now >= resultUntil) rest();
@@ -586,7 +627,7 @@ export function createWrist({ key }) {
     s.since = now;
     s.fired = false;
     if (k === 1 && (mode === 'look' || mode === 'choosing')) frozen = true;
-    if (k === 1 && mode === 'asking') rest();  // FACE going down on UNPAIR? calls it off
+    if (k === 1 && mode === 'asking') rest();  // FACE going down on UNPAIR? or FINISH? calls it off
     if (k === 1) awayKey = false;
     // During a wave's flashes a key only ticks: a meeting calling underneath is answered after them.
     const whole = waveFlashing(now);
@@ -599,6 +640,8 @@ export function createWrist({ key }) {
       if (!s.fired) awayKey = true;   // SIDE going down meanwhile leaves a FACE hold as it is
       hintUntil = now + HINT_MS;
       if (show.kind === 'pairing') litUntil = now + PAIR_AWAKE_MS;
+    } else if (k === 1 && (mode === 'rest' || mode === 'result') && finishFace(now)) {
+      awayKey = true;  // FACE on FINISH?: held, it says not yet; let go sooner, it only wakes
     }
     // Every press is heard as it goes down; NOT NOW is silent. A tick does not end a wave's flashes.
     if (!silent) {
@@ -614,8 +657,10 @@ export function createWrist({ key }) {
     if (!s.down) return;
     s.down = false;
     // FACE let go on the check before HOLD_MS: it said where to go as it went down, and does nothing more.
-    if (k === 1 && awayKey) awayKey = false;
-    else if (!s.fired && !waveFlashing(now)) {
+    if (k === 1 && awayKey) {
+      awayKey = false;
+      if (finishFace(now)) wake(now);
+    } else if (!s.fired && !waveFlashing(now)) {
       // In the wave face a press of either key closes it; SIDE never starts the chooser there.
       if (mode === 'waves') rest();
       else if (k === 2) step(now);
@@ -694,16 +739,23 @@ export function createWrist({ key }) {
       }
       return;
     }
+    // The relay's answer to a LET'S FINISH ask: it reached the other person, or it did not.
+    if (m.t === 'finish' && typeof m.ok === 'boolean') {
+      if (mode === 'finishing') result(now, m.ok ? 'ASKED' : 'NOT SENT');
+      return;
+    }
     if (m.t !== 'show' || !m.show || typeof m.show !== 'object') return;
     const was = show;
     const wasSilent = silent;
     show = readShow(m.show);
     waves = readWaves(m.show);
     const found = readFound(m.show);
-    const calledIt = readCalledIt(m.show);
+    const calledIt = readWhen(m.show, 'calledIt');
+    const finished = readWhen(m.show, 'finished');
+    const notYet = readWhen(m.show, 'notYet');
     const guessed = readGuessed(m.show);
-    // A FACE hold on the check ends with that check: letting go, or holding on, does nothing more.
-    if (awayKey && (show.kind !== 'check' || show.big !== was?.big)) { awayKey = false; k1.fired = true; }
+    // A FACE hold on the check, or on FINISH?, ends with that face: letting go, or holding on, does nothing more.
+    if (awayKey && (show.kind !== was?.kind || show.big !== was?.big || show.number !== was?.number)) { awayKey = false; k1.fired = true; }
     // Reactions come from changes; a show that differs only in `sound` is no change.
     const same = !!was && JSON.stringify(was) === JSON.stringify(show);
     // A show's own switch counts for what it causes. One that is not true or false is not said.
@@ -757,6 +809,7 @@ export function createWrist({ key }) {
     // A show that differs only in its sound or its waves is no change.
     if (!same) {
       if (show.kind === 'check') react('ask', 'check', 1);
+      else if (show.kind === 'finish') react('ask', 'finish', 1);  // the other person asked to finish: answered here or on the phone
       else if (show.kind === 'test') react('up', null, 1);  // paired, or TEST THE LIGHT: the white face is its flash
       else if (show.kind === 'meet' && show.big !== called) {
         // A number not yet called for calls until it is answered (rule 4).
@@ -782,6 +835,15 @@ export function createWrist({ key }) {
       guessedPlayed = guessed.n;
       react(guessed.right ? 'right' : 'wrong', guessed.right ? 'right' : 'wrong', 1);
     } else if (!guessed.n && personal()) guessedPlayed = 0;
+    // LET'S FINISH: a meeting finished plays once on both bands; the other's not yet once on the asker's.
+    if (finished && finished !== finishedPlayed) {
+      finishedPlayed = finished;
+      react('up', 'finish', 1);
+    } else if (!finished && personal()) finishedPlayed = 0;
+    if (notYet && notYet !== notYetPlayed) {
+      notYetPlayed = notYet;
+      react('fall', null, 1);
+    } else if (!notYet && personal()) notYetPlayed = 0;
     // After a meeting's jingle. A wave call already under way takes the new wave in; the open wave face counts it.
     if (newer && !waveCalling() && mode !== 'waves') callWave();
   }
@@ -795,6 +857,7 @@ export function createWrist({ key }) {
     let small = '';
     if (s.kind === 'pairing') big = s.code;
     else if (s.kind === 'check') { big = s.big; small = 'ON YOUR PHONE?'; }
+    else if (s.kind === 'finish') { big = s.big; small = s.small; }  // the other person asked to finish: the relay's own words
     else if (s.kind === 'waiting') { big = 'OPEN YOUR PHONE'; small = 'OR SWITCH ME OFF'; }
     else if (lit(s)) {
       big = s.big;
@@ -807,7 +870,7 @@ export function createWrist({ key }) {
       else if (s.away) { big = 'OPEN YOUR PHONE'; small = 'TO COME BACK'; }
       else { big = 'READY'; small = pct(); }
     }
-    let light = s.kind === 'test' ? LIGHT_FULL
+    let light = s.kind === 'test' || s.kind === 'finish' ? LIGHT_FULL
       : lit(s) ? (s.dim ? LIGHT_DIM : LIGHT_FULL)
       : s.kind === 'pairing' || s.kind === 'check' ? LIGHT_PAIR
       : s.kind === 'waiting' || awake ? LIGHT_AWAKE : LIGHT_OFF;
@@ -817,8 +880,8 @@ export function createWrist({ key }) {
     if ((s.kind === 'pairing' || s.kind === 'waiting') && now >= litUntil) light = LIGHT_OFF;
     return {
       big, small, light, bar: -1,
-      field: s.kind === 'test' ? 'white' : lit(s) ? s.intent : 'black',
-      ink: s.kind === 'test' || lit(s) ? 'ink' : s.kind === 'pairing' || s.kind === 'check' ? 'white' : 'text2',
+      field: s.kind === 'test' ? 'white' : s.kind === 'finish' ? 'finish' : lit(s) ? s.intent : 'black',
+      ink: s.kind === 'test' || s.kind === 'finish' || lit(s) ? 'ink' : s.kind === 'pairing' || s.kind === 'check' ? 'white' : 'text2',
       code: s.kind === 'pairing' ? s.code : '',
     };
   }
@@ -835,11 +898,14 @@ export function createWrist({ key }) {
       const small = mode === 'sending' ? 'SENDING' : fromQuiet ? 'HOLD SIDE TO SHOW' : 'SIDE: NEXT';
       f = preview === 'off' ? words('OFF', small, 'black', 'text2', LIGHT_AWAKE)
         : preview === 'unpair' ? words('UNPAIR', small, 'black', 'text2', LIGHT_AWAKE)
+        : preview === 'finish' ? words('FINISH', small, 'black', 'finish', LIGHT_AWAKE)
         : words(CARD_WORDS[preview], small, 'black', preview, LIGHT_AWAKE);
     } else if (mode === 'asking') {
-      f = words('UNPAIR?', 'HOLD SIDE: YES', 'black', 'text2', LIGHT_AWAKE);
+      f = words(asking === 'finish' ? 'FINISH?' : 'UNPAIR?', 'HOLD SIDE: YES', 'black', 'text2', LIGHT_AWAKE);
     } else if (mode === 'unpairing') {
       f = words('UNPAIR', 'SENDING', 'black', 'text2', LIGHT_AWAKE);
+    } else if (mode === 'finishing') {
+      f = words('FINISH', 'SENDING', 'black', 'text2', LIGHT_AWAKE);
     } else if (mode === 'waves') {
       // As the chooser shows HI, in its own words: that someone waved, and how many wait. Never who.
       const count = waves.n > 9 ? '9+' : String(waves.n);

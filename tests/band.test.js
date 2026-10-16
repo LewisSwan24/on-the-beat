@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CALLED_SHOW_MS, CODE_LETTERS, FOUND_SHOW_MS, GUESSED_SHOW_MS, MEET_MS, SCORE_SHOW_MS, bandShow, cleanCode, newCode, trackKey } from '../relay/band.js';
+import { CALLED_SHOW_MS, CODE_LETTERS, FINISHED_SHOW_MS, FOUND_SHOW_MS, GUESSED_SHOW_MS, MEET_MS, SCORE_SHOW_MS, bandShow, cleanCode, newCode, trackKey } from '../relay/band.js';
 import { trackKey as phoneTrackKey } from '../app/lib/opener.js';
 
 const T = Date.UTC(2026, 8, 23, 11, 0);
@@ -263,4 +263,38 @@ test('the last answer given: for SCORE_SHOW_MS LET\'S GUESS on the band shows th
   assert.equal(at({ armed: 'guess' }, quizOf([true, true], T), T).big, "LET'S GUESS!", 'not before the last answer');
   assert.equal(at({ armed: 'hi' }, done, T).big, 'HI :)', 'another card lit keeps its own words');
   assert.equal(at({ armed: 'guess' }, quizOf([false, false, false, false, false], T), T).big, '0 / 5');
+});
+
+// ---------- LET'S FINISH on the band ----------
+
+test("LET'S FINISH: the newest unfinished meeting's number rides every show about the person, for SIDE's FINISH", () => {
+  const m = (id, number, at, more = {}) => ({ id, intent: 'hi', number, at, foundAt: at + 1, finishAsked: null, finishedAt: null, notYetAt: null, ...more });
+  const at = (matches, now = T + MEET_MS * 2) => bandShow({ view: view({ armed: 'hi' }, matches), now });
+  assert.equal(at([m('m1', 27, T), m('m2', 41, T + 1000)]).finish, '41', 'the newest, found or not, long after');
+  assert.equal(at([m('m1', 27, T), m('m2', 41, T + 1000, { finishedAt: T + 5000 })]).finish, '27', 'a finished one is passed over');
+  assert.equal('finish' in at([m('m1', 27, T, { finishAsked: 'you' })]), false, 'asked already: waiting for them');
+  assert.equal('finish' in at([]), false, 'nobody met');
+  assert.equal('finish' in bandShow({ view: view({ armed: 'hi', invisible: true }, [m('m1', 27, T)]), now: T + 9 }), false, 'NOT NOW is black');
+});
+
+test("LET'S FINISH: asked by the other, the band's face is FINISH? until it is answered, over a meeting's number", () => {
+  const asked = { id: 'm1', intent: 'song', number: 27, at: T, finishAsked: 'them', finishedAt: null, notYetAt: null };
+  const s = bandShow({ view: view({ armed: 'song' }, [asked]), now: T + 1000 });
+  assert.deepEqual([s.kind, s.big, s.small, s.number], ['finish', 'FINISH?', 'SIDE: YES FACE: NO', '27']);
+  assert.equal(s.armed, 'song', 'still a show about the person');
+  assert.equal(bandShow({ view: view({ armed: 'song', invisible: true }, [asked]), now: T + 1000 }).kind, 'off', 'NOT NOW is black');
+  assert.equal(bandShow({ view: view({ armed: 'song' }, [{ ...asked, finishAsked: 'you' }]), now: T + 1000 }).kind, 'meet', 'the asker sees the meeting as before');
+});
+
+test("LET'S FINISH: both bands play the finish once, for FINISHED_SHOW_MS; the asker's band plays a not yet", () => {
+  const done = { id: 'm1', intent: 'hi', number: 27, at: T, foundAt: T + 1, finishAsked: null, finishedAt: T + 9000, notYetAt: null };
+  const at = (match, now) => bandShow({ view: view({ armed: 'hi' }, [match]), now });
+  assert.deepEqual(at(done, T + 9000).finished, { n: T + 9000 });
+  assert.deepEqual(at(done, T + 9000 + FINISHED_SHOW_MS - 1).finished, { n: T + 9000 });
+  assert.equal('finished' in at(done, T + 9000 + FINISHED_SHOW_MS), false);
+  const no = { ...done, finishedAt: null, notYetAt: T + 9000 };
+  assert.deepEqual(at(no, T + 9500).notYet, { n: T + 9000 });
+  assert.equal('notYet' in at(no, T + 9000 + FINISHED_SHOW_MS), false);
+  const live = bandShow({ view: view({ armed: 'hi' }, [{ ...done, foundAt: null, at: T + 8000 }]), now: T + 9000 });
+  assert.equal(live.kind, 'hi', 'a finished meeting leaves the meet face');
 });

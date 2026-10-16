@@ -33,10 +33,10 @@ Almost everywhere: FACE wakes it, and FACE held is NOT NOW. The tables are group
 
 | the wristband shows | FACE | FACE held | SIDE | SIDE held |
 |---|---|---|---|---|
-| `READY` / `SIDE TO CHANGE` | wakes it for six seconds | NOT NOW: dark at once | shows your card; each press after steps HI, SONG, DANCE, GUESS, OFF, UNPAIR; three seconds after the last it sends | as a press |
+| `READY` / `SIDE TO CHANGE` | wakes it for six seconds | NOT NOW: dark at once | shows your card; each press after steps HI, SONG, DANCE, GUESS, OFF, FINISH, UNPAIR (FINISH only while a meeting is yours to finish); three seconds after the last it sends | as a press |
 | `your card` / `SIDE: NEXT` | wakes it | NOT NOW | the next card | sends this one now |
 | `your card` / `SENDING` | — | NOT NOW | — | — |
-| `SET` / `CHANGED` / `NOT SENT` | wakes it | NOT NOW | starts a new choice | — |
+| `SET` / `CHANGED` / `NOT SENT` / `ASKED` | wakes it | NOT NOW | starts a new choice | — |
 | `NOT NOW` / `SIDE TO CHANGE` | shows NOT NOW and its battery | — | shows the card it comes back on, then steps | comes back, on the card you had |
 | `your score` / `RIGHT` | wakes it | NOT NOW | as on READY: shows your card, then steps | — |
 | `your card` / `HOLD SIDE TO SHOW` | — | — | the next card | comes back on this card |
@@ -50,6 +50,8 @@ Almost everywhere: FACE wakes it, and FACE held is NOT NOW. The tables are group
 | `a number` / `FOUND: WAITING` | — | NOT NOW | — | — |
 | `SOMEONE WAVED` / `HOLD SIDE: WAVE BACK` / `WAITING - HOLD SIDE` | — | NOT NOW | — | waves back to the newest; so does raising your wrist and waving |
 | `WAVE BACK` / `SENDING` | — | NOT NOW | — | — |
+| `FINISH` / `FINISH?` / `HOLD SIDE: YES` | calls it off | NOT NOW | FINISH: UNPAIR next. FINISH?: calls it off | FINISH: asks FINISH? at once. FINISH?: asks your match to finish the meeting: SENDING, then ASKED |
+| `FINISH?` / `SIDE: YES FACE: NO` | wakes it | not yet: your match is told, and it does not go NOT NOW | only wakes it | yes: the meeting is finished for you both |
 
 ### Setting up and pairing
 
@@ -90,16 +92,17 @@ On any screen, FACE and SIDE held together for three seconds turns it off. POWER
 | red three times | CHANGED: something moved first |
 | orange twice | NOT SENT: it could not reach ON THE BEAT |
 | LET'S GUESS's colour twice | a LET'S GUESS answer you got right |
+| green twice | your match asks to finish, or a meeting finished |
 
 | sound | means |
 |---|---|
 | `tick` | any key going down |
-| `double` | a hold that sends: coming back, waving back, found |
+| `double` | a hold that sends: coming back, waving back, found, a finish |
 | `down` | NOT NOW |
-| `up` | SET, a YES, TEST THE LIGHT |
-| `fall` | CHANGED, or a check that ended without YES |
+| `up` | SET, a YES, TEST THE LIGHT, ASKED, a meeting finished |
+| `fall` | CHANGED, a check that ended without YES, or not yet to your FINISH |
 | `low` | NOT SENT |
-| `ask` | the pairing check: the number to look for |
+| `ask` | the pairing check: the number to look for; or your match asks to finish |
 | `jingle` | a meeting: the number blinks until a key answers |
 | `warn` | orange: out of reach, battery at 15% and 5%, waiting after a restart, away, unpaired |
 | `hello` | someone waved at you |

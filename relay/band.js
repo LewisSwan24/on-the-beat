@@ -17,6 +17,8 @@ export const MEET_MS = 15 * 60_000;   // the number shows while the two of you f
 export const FOUND_SHOW_MS = 60_000;  // found by both: a band still plays it this long, if it was out of reach
 export const CALLED_SHOW_MS = 60_000; // the opener named: a band whose person called it still plays it this long
 export const GUESSED_SHOW_MS = 20_000; // LET'S GUESS: an answer, right or wrong, still plays this long after it was given
+// LET'S FINISH: a meeting finished, or a not yet said to the one who asked, plays once on the band within this long.
+export const FINISHED_SHOW_MS = 20_000;
 export const SCORE_SHOW_MS = 8_000;    // and after the last one, LET'S GUESS on the band shows the score this long
 export const DIM_AT = 15;             // percent; at or below it the light drops to half
 
@@ -86,10 +88,16 @@ export function bandShow({ view = null, battery = null, code = null, check = nul
   if (!view) return { kind: 'off', battery, away: true, ...said };
   // The cards the venue closed tonight, so SIDE steps over them: said only when there are some.
   const closed = view.cards ? INTENTS.filter((id) => !view.cards.includes(id)) : [];
-  const about = { armed: view.me.armed ?? null, rev: view.me.rev ?? 0, ...(closed.length ? { closed: closed.join(',') } : {}), ...said };
+  // LET'S FINISH from the wrist: the newest meeting not finished, unless its ask is already theirs and waiting.
+  const open = view.matches.filter((m) => !m.finishedAt).sort((a, b) => b.at - a.at)[0];
+  const fin = open && open.finishAsked !== 'you' ? { finish: String(open.number) } : {};
+  const about = { armed: view.me.armed ?? null, rev: view.me.rev ?? 0, ...(closed.length ? { closed: closed.join(',') } : {}), ...fin, ...said };
   // NOT NOW is black, completely. Nothing broadcasting, and nothing to read. It does say which card one SIDE hold
   // comes back to (N3), when there is one.
-  if (view.me.invisible) return { kind: 'off', battery, quiet: true, ...about, ...(view.me.was ? { was: view.me.was } : {}) };
+  if (view.me.invisible) {
+    const { finish: _, ...quiet } = about;
+    return { kind: 'off', battery, quiet: true, ...quiet, ...(view.me.was ? { was: view.me.was } : {}) };
+  }
   const waved = view.me.armed === 'hi' && waves.length ? { waves: { ref: waves[0].handle, n: waves.length, seq: waves[0].n } } : {};
   const done = view.matches
     .filter((m) => m.foundAt && now - m.foundAt < FOUND_SHOW_MS)
@@ -103,6 +111,14 @@ export function bandShow({ view = null, battery = null, code = null, check = nul
   const answered = quiz?.answered?.length ?? 0;
   const lately = (ms) => answered > 0 && Number.isFinite(quiz.lastAt) && now - quiz.lastAt < ms;
   if (lately(GUESSED_SHOW_MS)) plays.guessed = { n: answered, right: !!quiz.answered[answered - 1].right };
+  // LET'S FINISH: finished, on both bands; not yet, on the asker's (only the asker's view carries it).
+  const ended = view.matches.filter((m) => m.finishedAt && now - m.finishedAt < FINISHED_SHOW_MS).sort((a, b) => b.finishedAt - a.finishedAt)[0];
+  if (ended) plays.finished = { n: ended.finishedAt };
+  const notYet = view.matches.filter((m) => m.notYetAt && now - m.notYetAt < FINISHED_SHOW_MS).sort((a, b) => b.notYetAt - a.notYetAt)[0];
+  if (notYet) plays.notYet = { n: notYet.notYetAt };
+  // Asked by the other to finish: FINISH? takes the face until it is answered, here or on the phone.
+  const asked = view.matches.filter((m) => m.finishAsked === 'them' && !m.finishedAt).sort((a, b) => b.at - a.at)[0];
+  if (asked) return { kind: 'finish', big: 'FINISH?', small: 'SIDE: YES FACE: NO', number: String(asked.number), dim, ...about, ...plays };
   const meet = view.matches
     .filter((m) => now - m.at < MEET_MS && !m.foundAt && !m.finishedAt)
     .sort((a, b) => b.at - a.at)[0];
