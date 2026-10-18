@@ -78,6 +78,8 @@ export function follow(phone, view) {
   const toast = (text, unpair = false) => { out.toast = { text, unpair }; };
   if (me.fresh && phone.armed && !armed) {
     toast(FOLLOW_SAY.away);
+  } else if (me.by === 'finish') {
+    // A meeting finished put its card away: the meeting already said so, and no tap of this phone failed.
   } else if (me.by === 'staff' && phone.armed && !armed) {
     toast(FOLLOW_SAY.closed(phone.armed));
     out.events.push({ kind: 'closed', text: 'the venue closed ' + HUE[phone.armed].label + ' for tonight' });

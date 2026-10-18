@@ -77,7 +77,9 @@ that was taken.
   two green flashes: SIDE held says yes, FACE held says not yet — instead of
   NOT NOW — and a press of either only wakes it; the phone can answer too,
   and the relay's next show replaces the face. A finished meeting chirps up
-  and flashes green on both bands; a not yet falls on the asker's. From
+  and flashes green on both bands, and puts away the card it was met on
+  for whoever is still on it, back to `READY` (a card chosen since stays);
+  a not yet falls on the asker's. From
   `READY` the first press is still the first card, never FINISH or UNPAIR.
   Coming back from NOT NOW takes holding the side button, and comes back on
   the card its person had before, while the venue still has it open; from

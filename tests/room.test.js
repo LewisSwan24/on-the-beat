@@ -1038,6 +1038,25 @@ test("finish: one asks, the other sees it as 'them' and says finish; it is finis
   assert.equal(room.finish('ana', id, 'maybe'), false);
 });
 
+test("finish: a finished meeting puts away the card it was met on, for each side still on it; another card stays", () => {
+  const { room, handleOf, tick } = night();
+  const { id } = meet(room, handleOf, 'ana', 'ben');
+  room.arm('ben', 'song');                    // Ben moved on to another card meanwhile
+  const revs = ['ana', 'ben'].map((who) => room.viewFor(who).me.rev);
+  room.finish('ana', id, 'ask');
+  room.finish('ben', id, 'no');
+  assert.equal(room.viewFor('ana').me.armed, 'hi', 'not yet puts nothing away');
+  tick(FINISH_AGAIN_MS);
+  assert.equal(room.finish('ana', id, 'ask'), true);
+  assert.equal(room.viewFor('ana').me.armed, 'hi', 'neither does an ask');
+  assert.equal(room.finish('ben', id, 'yes'), true);
+  assert.equal(room.viewFor('ana').me.armed, null, 'Ana was still on HI: back to READY');
+  assert.equal(room.viewFor('ana').me.rev, revs[0] + 1, 'a change like any other, so her phone and band follow');
+  assert.equal(room.viewFor('ana').me.by, 'finish', 'said as the finish, not as a card lost while away');
+  assert.equal(room.viewFor('ben').me.armed, 'song', "Ben's other card stays");
+  assert.equal(room.viewFor('ben').me.rev, revs[1]);
+});
+
 test('finish: not yet tells only the one who asked, who may ask again after FINISH_AGAIN_MS, FINISH_ASKS times at most', () => {
   const { room, handleOf, tick } = night();
   const { id } = meet(room, handleOf, 'ana', 'ben');

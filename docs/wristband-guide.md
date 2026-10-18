@@ -51,7 +51,7 @@ Almost everywhere: FACE wakes it, and FACE held is NOT NOW. The tables are group
 | `SOMEONE WAVED` / `HOLD SIDE: WAVE BACK` / `WAITING - HOLD SIDE` | — | NOT NOW | — | waves back to the newest; so does raising your wrist and waving |
 | `WAVE BACK` / `SENDING` | — | NOT NOW | — | — |
 | `FINISH` / `FINISH?` / `HOLD SIDE: YES` | calls it off | NOT NOW | FINISH: UNPAIR next. FINISH?: calls it off | FINISH: asks FINISH? at once. FINISH?: asks your match to finish the meeting: SENDING, then ASKED |
-| `FINISH?` / `SIDE: YES FACE: NO` | wakes it | not yet: your match is told, and it does not go NOT NOW | only wakes it | yes: the meeting is finished for you both |
+| `FINISH?` / `SIDE: YES FACE: NO` | wakes it | not yet: your match is told, and it does not go NOT NOW | only wakes it | yes: the meeting is finished for you both, and the card you met on goes off (back to `READY`) |
 
 ### Setting up and pairing
 

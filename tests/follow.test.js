@@ -81,6 +81,12 @@ test('the phone\'s own tap did not land: tap again', () => {
   assert.deepEqual([back.screen, back.toast?.text], ['quiet', FOLLOW_SAY.lost], 'a TURN BACK ON that did not land');
 });
 
+test('a meeting finished put the card it was met on away: home, nothing blamed on a tap', () => {
+  const f = follow(phone({ armed: 'hi', asked: 100, screen: 'beacon' }), view({ armed: null, by: 'finish' }));
+  assert.deepEqual([f.armed, f.screen, f.clearStack], [null, 'home', true]);
+  assert.equal(f.toast, null, 'the meeting itself said it was finished');
+});
+
 test('a showing tap refused as changed: check and tap again', () => {
   const f = follow(phone({ armed: 'song', asked: 100, refused: 100 }), view({ armed: 'hi', by: 'phone' }));
   assert.deepEqual(f.toast, { text: FOLLOW_SAY.changed, unpair: false });

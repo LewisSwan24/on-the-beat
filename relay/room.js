@@ -864,6 +864,9 @@ export function createRoom({
       if (word === 'yes') {
         m.finishedAt = now();
         m.finishAsk = null;
+        // Finished, they are done with the card they met on: whoever is still on it is back to READY. A card chosen
+        // since stays.
+        for (const id of [m.a, m.b]) if (people.get(id)?.armed === m.intent) arm(id, null, 'finish');
         return true;
       }
       if (word === 'no') {
