@@ -2,12 +2,12 @@
 
 Get talking to a stranger at a live gig, then get out of the way.
 
-https://github.com/user-attachments/assets/82580c25-2037-49e7-baf4-133858eb822b
+https://github.com/user-attachments/assets/4881ab35-b553-4f08-b1fe-21d7e0aba578
 
 <details>
 <summary>On a phone? The vertical cut (9:16)</summary>
 
-https://github.com/user-attachments/assets/87d6690f-96b9-4829-8848-19cd1f69d0fc
+https://github.com/user-attachments/assets/285e91b7-d538-46fe-ac64-047810623006
 
 </details>
 
