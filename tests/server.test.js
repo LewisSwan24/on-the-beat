@@ -42,8 +42,8 @@ after(async () => {
 });
 
 test('two phones at one venue meet: waves go both ways and both see one match, one number', async () => {
-  const ana = await phone('roundhouse-bruno-mars');
-  const ben = await phone('roundhouse-bruno-mars');
+  const ana = await phone('suncorp-stadium-bruno-mars');
+  const ben = await phone('suncorp-stadium-bruno-mars');
   const far = await phone('moth-club-kayo-lane');
   ana.send({ t: 'profile', name: 'Ana', contact: '@ana' });
   ben.send({ t: 'profile', name: 'Ben' });
@@ -57,7 +57,7 @@ test('two phones at one venue meet: waves go both ways and both see one match, o
   const [b] = (await ben.until((v) => v.matches.length === 1)).matches;
   assert.deepEqual([a.name, b.name], ['Ben', 'Ana']);
   assert.equal(a.number, b.number);
-  assert.equal(a.spot, "by the merch stand — it's the quietest corner", 'the venue\'s own quiet corner');
+  assert.equal(a.spot, 'by the merch stand on your level', "the venue's own first spot");
   assert.deepEqual(far.view.near, [], 'another venue is another room');
   close(ana, ben, far);
 });
@@ -696,7 +696,7 @@ test("LET'S FINISH from the wrist: the band asks by the meeting's number, and th
   });
   // A number that is not theirs, or a word that does not fit, is refused.
   let r = reply();
-  anaBand.send({ t: 'finish', number: '99', say: 'ask' });
+  anaBand.send({ t: 'finish', number: number === '99' ? '98' : '99', say: 'ask' });   // meeting numbers are random: never theirs
   assert.deepEqual(await r, { t: 'finish', ok: false });
   r = reply();
   anaBand.send({ t: 'finish', number, say: 'ask' });
@@ -1198,8 +1198,8 @@ test('malformed and hostile messages never take the relay down', async () => {
 });
 
 test('one oversized frame ends its own socket and nothing else', async () => {
-  const ana = await phone('roundhouse-bruno-mars');
-  const ben = await phone('roundhouse-bruno-mars');
+  const ana = await phone('suncorp-stadium-bruno-mars');
+  const ben = await phone('suncorp-stadium-bruno-mars');
   const closed = new Promise((resolve) => ana.ws.once('close', resolve));
   ana.ws.send('x'.repeat(2_000_000));
   await closed;
@@ -1232,13 +1232,13 @@ test('the pages: the app for every route, no way out of dist, and tonight\'s sho
   }
   assert.equal((await fetch(url('/app.js'))).headers.get('content-type'), 'text/javascript');
   const shows = await (await fetch(url('/api/shows'))).json();
-  assert.equal(shows[0].id, 'roundhouse-bruno-mars');
+  assert.equal(shows[0].id, 'suncorp-stadium-bruno-mars');
   assert.equal(shows[0].setlist.length, 6);
-  assert.equal((await fetch(url('/clip/roundhouse-bruno-mars/nothing'))).status, 404);
+  assert.equal((await fetch(url('/clip/suncorp-stadium-bruno-mars/nothing'))).status, 404);
 });
 
 test('the poster: its page at /poster and /poster/<venue>, under the app policy; its venue and how many play there tonight', async () => {
-  for (const path of ['/poster', '/poster/', '/poster/moth-club-kayo-lane']) {
+  for (const path of ['/poster', '/poster/', '/poster/suncorp-stadium-bruno-mars']) {
     const res = await fetch(url(path));
     assert.equal(res.status, 200, path);
     assert.match(await res.text(), /Poster · On The Beat/, path + ' is the poster page');
@@ -1246,19 +1246,20 @@ test('the poster: its page at /poster and /poster/<venue>, under the app policy;
     assert.equal(res.headers.get('x-frame-options'), 'DENY', path);
   }
   const at = async (v) => fetch(url('/api/poster?v=' + encodeURIComponent(v)));
-  const before = await (await at('moth-club-kayo-lane')).json();
+  const before = await (await at('test-night-zara-larsson')).json();
   assert.deepEqual({ ...before, here: undefined }, {
-    id: 'moth-club-kayo-lane', act: 'KAYO LANE', venue: 'Moth Club, Hackney',
-    doors: '19:30', support: '20:15', break: '20:50', headline: '21:00', end: '22:45', here: undefined,
+    id: 'test-night-zara-larsson', act: 'ZARA LARSSON', venue: 'ON THE BEAT test night',
+    doors: '19:00', support: '19:45', break: '20:30', headline: '20:45', end: '22:30', here: undefined,
   }, 'the venue and its times, and nothing else: no setlist, no spots, no quiz');
-  const ana = await phone('moth-club-kayo-lane');
-  const ben = await phone('moth-club-kayo-lane');
-  assert.equal((await (await at('moth-club-kayo-lane')).json()).here, before.here + 2, 'two more playing there tonight');
-  // The test night's quiz never leaves the relay this way.
-  assert.equal(JSON.stringify(await (await at('test-night-zara-larsson')).json()).includes('quiz'), false);
+  const ana = await phone('test-night-zara-larsson');
+  const ben = await phone('test-night-zara-larsson');
+  assert.equal((await (await at('test-night-zara-larsson')).json()).here, before.here + 2, 'two more playing there tonight');
+  // A show listed with no times yet: none are made up for it.
+  assert.deepEqual({ ...(await (await at('suncorp-stadium-bruno-mars')).json()), here: undefined },
+    { id: 'suncorp-stadium-bruno-mars', act: 'BRUNO MARS', venue: 'Suncorp Stadium, Brisbane', here: undefined });
   assert.equal((await at('no-such-venue')).status, 404);
   assert.equal((await fetch(url('/api/poster'))).status, 404);
-  assert.equal((await at('moth-club-kayo-lane')).headers.get('cache-control'), 'no-cache');
+  assert.equal((await at('suncorp-stadium-bruno-mars')).headers.get('cache-control'), 'no-cache');
   close(ana);
   close(ben);
 });

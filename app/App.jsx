@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cardOf } from '../relay/cards.js';
-import { BAND_OFF, FINISH, GUIDE, HOW, HUE, LEAVE, PROMISES, REPORT, WHERE, matchName, someone, teamHere } from './copy.js';
+import { BAND_OFF, FINISH, GUIDE, HOW, HUE, JOIN, LEAVE, PROMISES, REPORT, WHERE, matchName, someone, teamHere } from './copy.js';
 import { BEAT_HOW, BEAT_SAY, beatRow } from './lib/bandbeat.js';
 import { SOUND_SAY, soundRow } from './lib/bandsound.js';
 import { battery, buzz, locate, locationGranted, toBase64 } from './lib/device.js';
@@ -10,7 +10,7 @@ import { matchScreen, meetingOn, newlyFound, reportable, shownMatch } from './li
 import { connect } from './lib/net.js';
 import { openerArrived, openerNews } from './lib/opener.js';
 import { noticeArrived, showWith, timesArrived } from './lib/venue.js';
-import { DEFAULT_TIMES, phaseLine, phaseOf } from './lib/phase.js';
+import { DEFAULT_TIMES, nightProgress, phaseLine, phaseOf } from './lib/phase.js';
 import { refusalWords } from './lib/refusals.js';
 import { roomOf } from './lib/typed.js';
 import { saveCard } from './lib/vcard.js';
@@ -193,9 +193,23 @@ export default function App() {
       if (m.finishedAt && !before.done) {
         finishedNow.current = m.id;
         if (before.asked === 'you') say(matchName(m) + ' finished too. enjoy the show.');
+        else if (m.left === 'them') say(JOIN.left(matchName(m)));
       } else if (m.notYetAt && m.notYetAt !== before.no) say(FINISH.notYet(matchName(m)));
     }
   }, [view.matches, say]);
+
+  // Asking to join a meeting of others: say once that it is asked, and once if it did not happen.
+  const joinSeen = useRef(null);
+  useEffect(() => {
+    const was = joinSeen.current;
+    const nowSeen = new Map((view.joining || []).map((j) => [j.id, j.refusedAt]));
+    joinSeen.current = nowSeen;
+    if (!was) return;
+    for (const [id, refused] of nowSeen) {
+      if (!was.has(id)) say(refused ? JOIN.refused : JOIN.waiting);
+      else if (refused && !was.get(id)) say(JOIN.refused);
+    }
+  }, [view.joining, say]);
 
   const setNightState = useCallback((patch) => update((prev) => {
     const key = store.tonightKey();
@@ -919,6 +933,17 @@ export default function App() {
     teams: { label: 'POCKET IT', tap: () => go('home') },
   }[screen];
 
+  // Someone asks to join a meeting this person is in: over any screen, until they answer (or it runs out).
+  const joinAsk = view.joinAsks?.[0] ?? null;
+  const admit = (say) => net.current?.send({ t: 'admit', join: joinAsk.id, say });
+  const joinSheet = joinAsk ? {
+    title: JOIN.title, sub: JOIN.sub(joinAsk.via, joinAsk.intent), close: 'NO',
+    rows: [
+      { icon: 'check_circle', label: JOIN.yes, sub: someone(joinAsk.band) + (joinAsk.pick ? ' · ' + joinAsk.pick : '') + '. ' + JOIN.yesSub, fg: 'var(--ok)', onTap: () => admit('yes') },
+      { icon: 'cancel', label: JOIN.no, sub: JOIN.noSub, fg: 'var(--stop)', onTap: () => admit('no') },
+    ],
+  } : null;
+
   // The check, while there is one, over any screen: it asks about the number on the wrist.
   const checkSheet = check ? {
     title: PAIR_SAY.check(check), sub: PAIR_SAY.checkSub, close: 'NO',
@@ -966,7 +991,7 @@ export default function App() {
       body = <Scan onCode={(code) => { back(); pairWith(code); }} onType={back} onBack={back} />;
       break;
     case 'home':
-      body = <Home show={show} phase={phase} line={line} armed={invisible ? null : armed} open={view.cards} ci={ci} setCi={setCi}
+      body = <Home show={show} phase={phase} progress={show ? nightProgress(show, now) : null} line={line} armed={invisible ? null : armed} open={view.cards} resting={view.resting} onRest={say} ci={ci} setCi={setCi}
         notice={notice} onHideNotice={() => setNightState({ noticeHidden: notice.at })}
         band={bandShown} onBand={() => (paired ? bandSheet() : go('pair'))}
         onArm={(id) => (id === 'finish' ? go('finish') : arm(armed === id ? null : id))} onOpen={(id) => go(cardOf(id).open)} onHow={howSheet} dot={waveDot ? 'hi' : null}
@@ -1044,7 +1069,8 @@ export default function App() {
             onTonight={() => go('tonight')} onNotNow={notNow} />
         ) : <div className="tail" />}
       </div>
-      {checkSheet || sheet ? <Sheet sheet={checkSheet || sheet} onClose={checkSheet ? () => answerCheck(false) : closeSheet} screenRef={stageRef} /> : null}
+      {checkSheet || joinSheet || sheet ? <Sheet sheet={checkSheet || joinSheet || sheet}
+        onClose={checkSheet ? () => answerCheck(false) : joinSheet ? () => admit('no') : closeSheet} screenRef={stageRef} /> : null}
       {toast ? (
         <div className="toast" role="status" aria-live="polite">
           {toast.text}

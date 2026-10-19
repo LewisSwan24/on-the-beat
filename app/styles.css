@@ -170,7 +170,11 @@ h1 { margin: 0; font-weight: 400; }
 /* ---------- S3 home ---------- */
 .phasebar { height: 2px; width: 100%; background: var(--line); position: relative; }
 .phasebar i { position: absolute; left: 0; top: 0; bottom: 0; background: #fff; transition: width var(--slow) var(--ease); }
-.phases { display: flex; justify-content: space-between; padding: 8px 24px 0; }
+.phases { display: grid; grid-template-columns: repeat(5, 1fr); padding: 10px 0 0; text-align: center; }
+.phases span { white-space: nowrap; }
+/* Where the night is, under the phase ruler: the line that matters, then the act and venue, quieter. */
+.nowline { font: 600 15px/1.35 var(--sans); color: #fff; padding: 18px 24px 0; text-wrap: balance; }
+.where-line { padding: 4px 24px 0; color: var(--text-2); }
 .deck { flex: 1; min-height: 0; display: flex; align-items: center; overflow: hidden; touch-action: pan-y; }
 .track { display: flex; gap: 16px; will-change: transform; }
 .slot { position: relative; flex: none; width: 244px; height: 292px; transition: transform var(--base) var(--ease), opacity var(--base) var(--ease); }
@@ -181,6 +185,7 @@ h1 { margin: 0; font-weight: 400; }
   transition: border-color var(--slow) var(--ease), box-shadow var(--slow) var(--ease), color var(--slow) var(--ease);
 }
 .intent:focus-visible { outline: 2px solid var(--line); outline-offset: 4px; }
+.intent.resting { filter: grayscale(1); opacity: .5; }
 .intent.armed { border-color: var(--c); color: var(--c); box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 13%, transparent), 0 0 54px -14px var(--g), inset 0 0 70px -40px var(--g); }
 .intent .glyph { height: 40px; display: flex; align-items: center; justify-content: center; }
 .intent .name { margin-top: 12px; font: var(--display-l); text-align: center; }
@@ -224,7 +229,7 @@ h1 { margin: 0; font-weight: 400; }
 .notice-text { overflow-wrap: anywhere; }
 /* The wrong-room banner's two answers, and a made room's where line, which opens its card (venue cards spec §2). */
 .away-btn { height: 36px; padding: 0 14px; border: 1.5px solid var(--line-2); border-radius: 999px; color: #fff; font: var(--label); letter-spacing: .08em; }
-.where-btn { display: block; padding: 2px 24px 0; text-align: left; color: var(--text-2); }
+.where-btn { display: block; padding: 4px 24px 0; text-align: left; color: var(--text-2); }
 .where-btn .add { color: var(--hi); text-decoration: underline; text-underline-offset: 3px; }
 .yours { border: 1.5px solid var(--song); border-radius: 20px; background: var(--ink-2); padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 11px; box-shadow: 0 0 34px -18px var(--song-g); flex: none; }
 .add-yours { border: 1px dashed var(--line); border-radius: 20px; padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 56px; flex: none; }

@@ -686,13 +686,15 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
     if (!b.person) return answer('unpaired');
     const room = rooms.get(b.key)?.room;
     if (!room?.has(b.person)) return answer('no room');
-    const meeting = room.viewFor(b.person).matches
+    // In a meeting of three or four, every pair shares the number: the one whose other band is the band felt.
+    const meetings = room.viewFor(b.person).matches
       .filter((x) => String(x.number) === m.number && now() - x.at < MEET_MS && !x.foundAt)
-      .sort((x, y) => y.at - x.at)[0];
-    if (!meeting) return answer('gone');
-    const other = room.partnerIn(b.person, meeting.id);
-    const theirs = other ? bandOf(b.key, other) : null;
-    if (!theirs || theirs.air !== m.air) return answer('not them');
+      .sort((x, y) => y.at - x.at);
+    if (!meetings.length) return answer('gone');
+    const bandIn = (x) => { const o = room.partnerIn(b.person, x.id); return o ? { other: o, band: bandOf(b.key, o) } : null; };
+    const meeting = meetings.find((x) => bandIn(x)?.band?.air === m.air);
+    if (!meeting) return answer('not them');
+    const { other, band: theirs } = bandIn(meeting);
     b.clink = { match: meeting.id, at: now() };
     if (theirs.clink?.match === meeting.id && now() - theirs.clink.at <= CLINK_PAIR_MS) {
       room.found(b.person, meeting.id);
@@ -1278,6 +1280,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       case 'keep': room.keep(me, m.match, m.on); break;
       case 'found': room.found(me, m.match); break;
       case 'finish': room.finish(me, String(m.match ?? ''), String(m.say ?? '')); break;
+      case 'admit': room.admit(me, String(m.join ?? ''), String(m.say ?? '')); break;
       case 'clip': {
         const to = m.to ? String(m.to) : null;
         const ref = keepClip(r, me, m.mime, m.data, to ? 'to:' + to : 'floor');

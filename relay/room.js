@@ -59,6 +59,10 @@ const REPORTS_MAX = 1000;      // the newest kept a venue, handled ones dropped 
 const WHY_MAX = 200;           // a reporter's few words for the venue team
 export const NOTICE_MAX = 140; // a notice from the venue's staff to every phone there
 
+// A meeting of more than two: a newcomer joins only when everyone in it says yes, and the group holds GROUP_MAX.
+export const GROUP_MAX = 4;
+export const JOIN_MS = 10 * 60_000;   // an ask to let someone join that nobody answers runs out after this
+
 // The show's times, in the night's order, as a shows file writes them.
 export const TIME_KEYS = ['doors', 'support', 'break', 'headline', 'end'];
 
@@ -186,6 +190,11 @@ export function createRoom({
   };
   const teams = new Map();    // 'a>b' -> true: a asked b to team up (LET'S GUESS)
   const matches = new Map();  // pairKey -> match
+  // Asks to let someone join a meeting: id -> { id, group, who, via, intent, at, yes: [ids], state, doneAt }, state
+  // 'open' until everyone in it said yes ('in') or one said no ('no'). Kept once answered, so the same person is
+  // never asked about again for that group, and the newcomer is told how it went.
+  const joins = new Map();
+  let nextJoin = 1;
   // id -> what the room keeps of someone who left tonight: their last rev, so a
   // person made again never reuses one, and whether they were NOT NOW, so they
   // come back as they left. Outlives leave(), as blocks do.
@@ -238,6 +247,11 @@ export function createRoom({
     for (const k of restore.dances) dances.set(k, null);
     for (const [k, ref] of Array.isArray(restore.danceClips) ? restore.danceClips : []) if (dances.has(k)) dances.set(k, kept(ref));
     for (const m of restore.matches) matches.set(pairKey(m.a, m.b), m);
+    // A file from before groups has no asks to join.
+    for (const j of Array.isArray(restore.joins) ? restore.joins : []) {
+      if (j && typeof j.id === 'string' && typeof j.group === 'string' && Array.isArray(j.yes)) joins.set(j.id, { ...j, yes: [...j.yes] });
+    }
+    if (Number.isInteger(restore.nextJoin)) nextJoin = restore.nextJoin;
     // A file from before F12 has none.
     for (const e of Array.isArray(restore.ended) ? restore.ended : []) if (e && typeof e.id === 'string') ended.set(e.id, { a: e.a, b: e.b });
     for (const [id, tomb] of restore.tombs) tombs.set(id, tomb);
@@ -341,6 +355,8 @@ export function createRoom({
         armed: null, invisible: !!quiet || !!tombs.get(id)?.invisible, pick: null, clip: null, joinedAt: now(),
         rev: tombs.has(id) ? tombs.get(id).rev + 1 : firstRev(), seq: 0, by: 'relay',
       });
+      // Back in a meeting someone asked to join while they were out: if all of them already said yes, it is done.
+      for (const j of joins.values()) if (joinOpen(j) && inGroup(j.group).has(id)) settle(j);
     }
     return people.get(id);
   }
@@ -374,6 +390,7 @@ export function createRoom({
     for (const map of [waves, likes, dances, teams]) for (const k of [...map.keys()]) if (theirs(k)) map.delete(k);
     for (const [k, m] of [...matches]) if (m.a === id || m.b === id) matches.delete(k);
     for (const [k, e] of [...ended]) if (e.a === id || e.b === id) ended.delete(k);
+    for (const [k, j] of [...joins]) if (j.who === id || j.via === id || j.yes.includes(id)) joins.delete(k);
   }
 
   /**
@@ -397,6 +414,8 @@ export function createRoom({
     p.invisible = invisible;
     p.rev += 1;
     p.by = by;
+    // Off the card they asked on, a newcomer is looking no more: their asks on it end.
+    endAsks((j) => j.who === p.id && j.intent !== armed);
   }
 
   function setProfile(id, { name, contact } = {}) {
@@ -443,6 +462,8 @@ export function createRoom({
     if (on) {
       if (!p.invisible) p.was = p.armed;
       changed(p, null, true, by);
+      // Hidden, they are let into no meeting and let nobody into theirs: their open asks end.
+      endAsks((j) => j.who === id || inGroup(j.group).has(id));
       return;
     }
     const back = p.invisible ? comeBackTo(p) : p.armed;
@@ -561,6 +582,7 @@ export function createRoom({
     if (!ids || ids.join() === (closed?.cards ?? []).join()) return false;
     closed = ids.length ? { cards: ids, at: now() } : null;
     for (const p of people.values()) if (isClosed(p.armed)) changed(p, null, p.invisible, 'staff');
+    endAsks((j) => isClosed(j.intent));
     return true;
   }
 
@@ -597,23 +619,66 @@ export function createRoom({
     return true;
   }
 
-  function matchIfMutual(has, a, b, intent) {
-    if (!has(a + '>' + b) || !has(b + '>' + a)) return null;
-    const key = pairKey(a, b);
-    if (matches.has(key)) return matches.get(key);
-    // Two digits, so it reads from across a room on a wristband, and not shared
-    // with another match while there is a free one. Past ninety at once, two
-    // pairs share a number — they are also in different bands of the room.
-    const taken = new Set([...matches.values()].map((m) => m.number));
-    const first = 10 + (parseInt(handle(a < b ? a : b, a < b ? b : a).slice(0, 6), 16) % 90);
-    let number = first;
-    for (let i = 0; i < 90 && taken.has(number); i += 1) number = number === 99 ? 10 : number + 1;
-    if (taken.has(number)) number = first;
-    const used = new Set([...matches.values()].map((m) => m.spot));
-    const spot = spots.find((s) => !used.has(s)) ?? spots[(nextMatch - 1) % spots.length];
+  // ---------- meetings, of two and of more ----------
+  //
+  // A meeting is pairs: a group is the pairs that share its id (a pair's own id, for the first two), one number and
+  // one spot. Keeping, found and the wristband stay between two people; a group is who else is there.
+  const groupOf = (m) => m.group ?? m.id;
+  /**
+   * Everyone still in a group: in one of its pairs not finished, in the room right now or not. Someone who stepped
+   * out is still in the meeting, and is still asked before anyone joins it.
+   */
+  const inGroup = (g) => {
+    const ids = new Set();
+    for (const m of matches.values()) {
+      if (groupOf(m) !== g || m.finishedAt) continue;
+      ids.add(m.a);
+      ids.add(m.b);
+    }
+    return ids;
+  };
+  /** The newest group on this card a person is still in, or null. */
+  const openGroup = (id, intent) => {
+    let best = null;
+    for (const m of matches.values()) {
+      if (m.finishedAt || m.intent !== intent || (m.a !== id && m.b !== id)) continue;
+      if (!best || m.at > best.at) best = m;
+    }
+    return best ? groupOf(best) : null;
+  };
+  const joinOpen = (j) => j.state === 'open' && now() - j.at <= JOIN_MS;
+  /** How an ask ended, for the newcomer: 'in', 'no' (a no, or nobody answered in time), or 'open'. */
+  const joinState = (j) => (j.state === 'open' && !joinOpen(j) ? 'no' : j.state);
+  const joinEnd = (j) => j.doneAt ?? j.at + JOIN_MS;
+  /** Ends every open ask `test` picks out, as a no. */
+  const endAsks = (test) => { for (const j of joins.values()) if (j.state === 'open' && test(j)) { j.state = 'no'; j.doneAt = now(); } };
+  /** The name someone met under in meeting `group`, and in no other. */
+  const metAs = (id, group) => { for (const m of matches.values()) if (groupOf(m) === group && m.names?.[id]) return m.names[id]; return ''; };
+  /** What someone in meeting `group` is called: the name they give now, or, out of the room just now, the one they met under in it. */
+  const nameIn = (id, group) => (people.has(id) ? people.get(id).name : metAs(id, group));
+
+  function makePair(a, b, intent, { group = null, number = null, spot = null } = {}) {
+    let n = number;
+    if (n === null) {
+      // Two digits, so it reads from across a room on a wristband, and not shared
+      // with another match while there is a free one. Past ninety at once, two
+      // pairs share a number — they are also in different bands of the room.
+      const taken = new Set([...matches.values()].map((m) => m.number));
+      const first = 10 + (parseInt(handle(a < b ? a : b, a < b ? b : a).slice(0, 6), 16) % 90);
+      n = first;
+      for (let i = 0; i < 90 && taken.has(n); i += 1) n = n === 99 ? 10 : n + 1;
+      if (taken.has(n)) n = first;
+    }
+    let where = spot;
+    if (where === null) {
+      const used = new Set([...matches.values()].map((m) => m.spot));
+      where = spots.find((s) => !used.has(s)) ?? spots[(nextMatch - 1) % spots.length];
+    }
     const m = {
-      id: 'm' + nextMatch++ + '-' + era, a, b, intent, at: now(), spot, number,
-      names: { [a]: people.get(a).name, [b]: people.get(b).name },
+      id: 'm' + nextMatch++ + '-' + era, a, b, intent, at: now(), spot: where, number: n,
+      ...(group ? { group } : {}),
+      // Back in the room, a phone says its name only after it joins: until then, the name met under in this meeting.
+      names: { [a]: people.get(a).name || metAs(a, group), [b]: people.get(b).name || metAs(b, group) },
       bands: { [a]: people.get(a).band, [b]: people.get(b).band },
       picks: { [a]: people.get(a).pick, [b]: people.get(b).pick },
       // Only a team-up shows scores: a match over another card never tells either one how the other did.
@@ -622,8 +687,78 @@ export function createRoom({
       contacts: { [a]: '', [b]: '' },
       found: { [a]: 0, [b]: 0 },   // when each said they found the other; 0 not yet
     };
-    matches.set(key, m);
+    matches.set(pairKey(a, b), m);
     return m;
+  }
+
+  /**
+   * A yes each way. Between two people in no meeting on this card, a pair, as always. When one of them is already in
+   * one and the other is in none, the newcomer is asked about to everyone else in it instead, and joins once they all
+   * say yes (admit); never twice for the same group, and never past GROUP_MAX. Anything else is a pair of its own.
+   */
+  function matchIfMutual(has, a, b, intent) {
+    if (!has(a + '>' + b) || !has(b + '>' + a)) return null;
+    const key = pairKey(a, b);
+    if (matches.has(key)) return matches.get(key);
+    const ga = openGroup(a, intent);
+    const gb = openGroup(b, intent);
+    if (!ga !== !gb) {
+      const group = ga ?? gb;
+      const who = ga ? b : a;
+      const via = ga ? a : b;
+      const members = inGroup(group);
+      const waiting = [...joins.values()].filter((j) => j.group === group && joinOpen(j)).length;
+      if (members.size + waiting < GROUP_MAX) {
+        if ([...joins.values()].some((j) => j.group === group && j.who === who)) return null;
+        if ([...members].some((id) => blocked(id, who))) return null;
+        const j = { id: 'j' + nextJoin++ + '-' + era, group, who, via, intent, at: now(), yes: [via], state: 'open', doneAt: null };
+        joins.set(j.id, j);
+        return null;
+      }
+    }
+    return makePair(a, b, intent);
+  }
+
+  /**
+   * Someone in a meeting answers an ask to let a newcomer join: 'yes' or 'no'. One no keeps them out; once everyone
+   * still in it said yes, the newcomer meets each of them under the group's number, at its spot. False for an ask
+   * that is not theirs to answer, already answered, or run out.
+   */
+  function admit(viewer, joinId, word) {
+    const j = joins.get(joinId);
+    if (!j || !joinOpen(j) || viewer === j.who || !['yes', 'no'].includes(word)) return false;
+    const members = inGroup(j.group);
+    if (!members.has(viewer) || j.yes.includes(viewer)) return false;
+    if (word === 'no') {
+      j.state = 'no';
+      j.doneAt = now();
+      return true;
+    }
+    j.yes.push(viewer);
+    settle(j);
+    return true;
+  }
+
+  function settle(j) {
+    const members = [...inGroup(j.group)];
+    // Everyone said yes; someone out of the room just now is met when they are back (or the ask runs out).
+    if (!members.every((id) => j.yes.includes(id)) || !members.every((id) => people.has(id))) return;
+    j.doneAt = now();
+    // What made the ask fair must still hold now that everyone answered: the newcomer is here and showing, in no
+    // meeting on this card already, blocked by nobody in this one, and there is room for them.
+    const p = people.get(j.who);
+    const fits = members.length > 0 && members.length < GROUP_MAX && p && !p.invisible && !practises(j.who) && p.armed === j.intent
+      && !openGroup(j.who, j.intent) && members.every((id) => !blocked(id, j.who))
+      && members.includes(j.via) && !isClosed(j.intent)
+      && members.every((id) => !people.get(id).invisible && !practises(id));
+    if (!fits) { j.state = 'no'; return; }
+    j.state = 'in';
+    // In one meeting on a card, never two: the newcomer's other asks end.
+    for (const o of joins.values()) if (o !== j && o.who === j.who && o.state === 'open') { o.state = 'no'; o.doneAt = now(); }
+    const first = [...matches.values()].find((m) => groupOf(m) === j.group);
+    for (const id of members) makePair(j.who, id, j.intent, { group: j.group, number: first.number, spot: first.spot });
+    // A meeting of more than two finishes one person at a time: an ask from before is gone.
+    for (const m of matches.values()) if (groupOf(m) === j.group) { m.finishAsk = null; m.finishNo = null; }
   }
 
   /** The person a viewer means, if they may act on them right now. */
@@ -720,7 +855,15 @@ export function createRoom({
 
   function unlike(viewer, h) {
     const t = resolve(viewer, h);
-    if (t) likes.delete(viewer + '>' + t);
+    if (!t) return;
+    likes.delete(viewer + '>' + t);
+    // A yes taken back ends an ask it made: nobody is let into a meeting on a yes they no longer give.
+    for (const j of joins.values()) {
+      if (j.state === 'open' && j.intent === 'song' && [j.who, j.via].includes(viewer) && [j.who, j.via].includes(t)) {
+        j.state = 'no';
+        j.doneAt = now();
+      }
+    }
   }
 
   const danceBack = (viewer, h, ref) => yes('dance', viewer, h, ref);
@@ -735,6 +878,21 @@ export function createRoom({
     const m = matches.get(pairKey(viewer, t));
     if (m) ended.set(m.id, { a: m.a, b: m.b });
     matches.delete(pairKey(viewer, t));
+    // An ask to let one of them into a meeting the other is in ends.
+    for (const j of joins.values()) {
+      if (j.state !== 'open') continue;
+      if ((j.who === t && inGroup(j.group).has(viewer)) || (j.who === viewer && inGroup(j.group).has(t))) { j.state = 'no'; j.doneAt = now(); }
+    }
+    // In a meeting of more than two, the one who blocked leaves it: never at one spot, under one number, with them.
+    if (m) {
+      for (const x of matches.values()) {
+        if (groupOf(x) !== groupOf(m) || x.finishedAt || (x.a !== viewer && x.b !== viewer)) continue;
+        x.finishedAt = now();
+        x.left = viewer;
+        x.finishAsk = null;
+      }
+      endAsks((j) => j.group === groupOf(m) && j.via === viewer);
+    }
     for (const k of [viewer + '>' + t, t + '>' + viewer]) for (const play of Object.values(plays)) play.yeses.delete(k);
     return true;
   }
@@ -833,6 +991,11 @@ export function createRoom({
   function found(viewer, matchId) {
     for (const m of matches.values()) {
       if (m.id !== matchId || (m.a !== viewer && m.b !== viewer)) continue;
+      // In a meeting of more than two, one FOUND counts for every pair the viewer is in: one number, one spot.
+      for (const x of matches.values()) {
+        if (groupOf(x) !== groupOf(m) || x.finishedAt || (x.a !== viewer && x.b !== viewer)) continue;
+        if (!x.found[viewer]) x.found[viewer] = now();
+      }
       if (!m.found[viewer]) m.found[viewer] = now();
       return true;
     }
@@ -848,6 +1011,19 @@ export function createRoom({
     for (const m of matches.values()) {
       if (m.id !== matchId || (m.a !== viewer && m.b !== viewer)) continue;
       if (m.finishedAt) return false;
+      const group = groupOf(m);
+      if (word === 'ask' && inGroup(group).size > 2) {
+        // In a meeting of three or four, LET'S FINISH takes only you out, at once: the others go on.
+        for (const x of matches.values()) {
+          if (groupOf(x) !== group || x.finishedAt || (x.a !== viewer && x.b !== viewer)) continue;
+          x.finishedAt = now();
+          x.left = viewer;
+          x.finishAsk = null;
+        }
+        endAsks((j) => j.group === group && j.via === viewer);
+        if (people.get(viewer)?.armed === m.intent) arm(viewer, null, 'finish');
+        return true;
+      }
       if (word === 'ask') {
         // The ask takes the other's screen, so it is rationed: not again for FINISH_AGAIN_MS after a not yet, and
         // FINISH_ASKS a meeting at most from each side.
@@ -1035,6 +1211,8 @@ export function createRoom({
       ...Object.fromEntries(Object.entries(plays).map(([card, play]) => [play.list, isClosed(card) ? [] : play.rows(id, others, row)])),
       // The cards open here tonight, in their order: the ones a phone lays out and a person may arm.
       cards: INTENTS.filter((c) => !isClosed(c)),
+      // Shown greyed beside them, never armed: LET'S GUESS where there are no questions. A card the staff closed is not.
+      resting: !quiz && !closed?.cards.includes('guess') ? ['guess'] : [],
       // LET'S GUESS: the questions, and for each one this person answered, how it went. Never anyone else's.
       quiz: quiz && !isClosed('guess') ? {
         questions: dealFor(id).map(({ q, order }) => ({ q: quiz[q].q, options: order.map((o) => quiz[q].options[o]) })),
@@ -1056,8 +1234,13 @@ export function createRoom({
       matches:[...matches.values()].filter((m) => m.a === id || m.b === id).map((m) => {
         const other = m.a === id ? m.b : m.a;
         const both = m.keep[m.a] && m.keep[m.b];
+        const rest = m.finishedAt ? [] : [...inGroup(groupOf(m))].filter((x) => x !== id && x !== other);
         return {
           id: m.id, intent: m.intent, at: m.at, spot: m.spot, number: m.number,
+          // The meeting it is part of, and who else is still in it, by the names they gave.
+          group: groupOf(m), with: rest.map((x) => nameIn(x, groupOf(m))).sort(),
+          // Out of a meeting of more than two: 'you' left it, or 'them'.
+          left: m.left ? (m.left === id ? 'you' : 'them') : null,
           name: people.get(other)?.name || m.names[other] || '', band: m.bands[other],
           pick: m.picks[other], yourPick: m.picks[id],
           score: m.scores?.[other] ?? null, yourScore: m.scores?.[id] ?? null,
@@ -1073,6 +1256,16 @@ export function createRoom({
           notYetAt: m.finishNo && m.finishNo.by !== id ? m.finishNo.at : null,
         };
       }),
+      // Asks to let someone join a meeting you are in, yours to answer: the newcomer as a band and a pick, never a
+      // name before the yes, and who they came by.
+      joinAsks: [...joins.values()].filter((j) => joinOpen(j) && j.who !== id && !j.yes.includes(id) && inGroup(j.group).has(id))
+        .map((j) => ({ id: j.id, intent: j.intent, at: j.at, band: people.get(j.who)?.band ?? null, pick: people.get(j.who)?.pick ?? null,
+          via: people.get(j.via)?.name || '' })),
+      // Your own asks to join: how many yes are still to come, or when it did not happen. Never who said what.
+      joining: [...joins.values()].filter((j) => j.who === id && joinState(j) !== 'in' && (joinState(j) === 'open' || now() - joinEnd(j) < JOIN_MS))
+        .map((j) => ({ id: j.id, intent: j.intent, at: j.at,
+          waiting: [...inGroup(j.group)].filter((x) => !j.yes.includes(x)).length,
+          refusedAt: joinState(j) === 'no' ? joinEnd(j) : null })),
     };
   }
 
@@ -1092,6 +1285,8 @@ export function createRoom({
       // Kept apart from `dances`, so a build from before clips were kept reads this dump as it always did.
       danceClips: [...dances].filter(([, ref]) => ref),
       matches: [...matches.values()],
+      joins: [...joins.values()],
+      nextJoin,
       tombs: [...tombs],
       ended: [...ended].map(([id, e]) => ({ id, ...e })),
       reports: reports.slice(),
@@ -1111,7 +1306,7 @@ export function createRoom({
   }
 
   return {
-    finish,
+    finish, admit,
     join, leave, forgetPerson, forgetLeft, setProfile, arm, setInvisible, setPractice, sweepPractice, fromPhone, pick, postClip, setOpener, setNotice, setTimes, letGo,
     /** The opener as staff named it ({ track, at }), or null. */
     opener: () => (opener ? { ...opener } : null),

@@ -45,9 +45,9 @@ function typed(answers) {
 }
 
 test('typed at a terminal, the venue shows as it is typed and the passcode never does', async () => {
-  const { out, err, code } = await typed(['roundhouse-bruno-mars', 'test-passcode-1', 'test-passcode-1']);
+  const { out, err, code } = await typed(['suncorp-stadium-bruno-mars', 'test-passcode-1', 'test-passcode-1']);
   assert.equal(code, 0, err);
-  assert.match(err, /roundhouse-bruno-mars/, 'what is typed is echoed, so the hiding is what keeps the passcode off');
+  assert.match(err, /suncorp-stadium-bruno-mars/, 'what is typed is echoed, so the hiding is what keeps the passcode off');
   assert.equal((out + err).includes('test-passcode-1'), false, 'the passcode is never shown');
   const [[, entry]] = Object.entries(JSON.parse('{' + out + '}'));
   assert.equal(await checkCode(entry, 'test-passcode-1'), true);
@@ -80,17 +80,17 @@ test('a passcode is the same passcode however its accents were typed', async () 
 });
 
 test('npm run staff-code prints one entry for the venue, and never the passcode', async () => {
-  const { out, err, code } = await run(' Roundhouse-Bruno-Mars \ntest-passcode-1\ntest-passcode-1\n');
+  const { out, err, code } = await run(' Suncorp-Stadium-Bruno-Mars \ntest-passcode-1\ntest-passcode-1\n');
   assert.equal(code, 0, err);
   assert.equal(out.split('\n').filter(Boolean).length, 1, 'one line on stdout');
   const [[venue, entry]] = Object.entries(JSON.parse('{' + out + '}'));
-  assert.equal(venue, 'roundhouse-bruno-mars', 'the venue as its room is named');
+  assert.equal(venue, 'suncorp-stadium-bruno-mars', 'the venue as its room is named');
   assert.equal(await checkCode(entry, 'test-passcode-1'), true);
   assert.equal((out + err).includes('test-passcode-1'), false, 'the passcode is never shown');
 });
 
 test('two passcodes that differ, one too short, or no venue make nothing', async () => {
-  const inputs = ['roundhouse-bruno-mars\ntest-passcode-1\ntest-passcode-2\n', 'roundhouse-bruno-mars\nshort\nshort\n', '\n', '', 'roundhouse-bruno-mars\n'];
+  const inputs = ['suncorp-stadium-bruno-mars\ntest-passcode-1\ntest-passcode-2\n', 'suncorp-stadium-bruno-mars\nshort\nshort\n', '\n', '', 'suncorp-stadium-bruno-mars\n'];
   for (const input of inputs) {
     const { out, code } = await run(input);
     assert.equal(code, 1, JSON.stringify(input));
@@ -109,15 +109,15 @@ test('a made passcode is three groups of four from 31 characters with no i, l, o
 });
 
 test('a typed passcode needs twelve characters: eleven make nothing, twelve make an entry', async () => {
-  const eleven = await run('roundhouse-bruno-mars\neleven-char\neleven-char\n');
+  const eleven = await run('suncorp-stadium-bruno-mars\neleven-char\neleven-char\n');
   assert.deepEqual([eleven.code, eleven.out], [1, '']);
   assert.match(eleven.err, /at least 12 characters, or press Enter/);
-  const twelve = await run('roundhouse-bruno-mars\ntwelve-chars\ntwelve-chars\n');
+  const twelve = await run('suncorp-stadium-bruno-mars\ntwelve-chars\ntwelve-chars\n');
   assert.equal(twelve.code, 0, twelve.err);
 });
 
 test('Enter at the passcode makes one: shown once on stderr, never on stdout, and it opens the entry', async () => {
-  const { out, err, code } = await run('roundhouse-bruno-mars\n\n');
+  const { out, err, code } = await run('suncorp-stadium-bruno-mars\n\n');
   assert.equal(code, 0, err);
   const made = /kept nowhere\): (\S+)/.exec(err)?.[1];
   assert.match(made, /^[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}$/);
@@ -127,12 +127,12 @@ test('Enter at the passcode makes one: shown once on stderr, never on stdout, an
   assert.equal(err.includes('The same passcode again'), false, 'there is nothing to confirm');
   const [[, entry]] = Object.entries(JSON.parse('{' + out + '}'));
   assert.equal(await checkCode(entry, made), true);
-  const again = await run('roundhouse-bruno-mars\n\n');
+  const again = await run('suncorp-stadium-bruno-mars\n\n');
   assert.notEqual(/kept nowhere\): (\S+)/.exec(again.err)?.[1], made, 'a new one each time');
 });
 
 test('at a terminal, Enter at the passcode makes one too', async () => {
-  const { out, err, code } = await typed(['roundhouse-bruno-mars', '']);
+  const { out, err, code } = await typed(['suncorp-stadium-bruno-mars', '']);
   assert.equal(code, 0, err);
   const made = /kept nowhere\): (\S+)/.exec(err)?.[1];
   const [[, entry]] = Object.entries(JSON.parse('{' + out + '}'));

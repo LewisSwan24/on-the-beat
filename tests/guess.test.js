@@ -161,6 +161,20 @@ test('a restart deals the same person the same questions in the same order, and 
 const teamsOf = (r, id) => r.viewFor(id).teams;
 const handleOf = (r, viewer, other) => teamsOf(r, viewer).find((p) => p.band === r.viewFor(other).me.band)?.handle;
 
+test('a room with no quiz still lists LET\'S GUESS, resting: shown, never open, never on the wrist', () => {
+  const r = createRoom({ salt: 'g' });
+  r.join('ana');
+  const v = r.viewFor('ana');
+  assert.deepEqual(v.cards, ['hi', 'song', 'dance'], 'open cards: the wristband steps over LET\'S GUESS');
+  assert.deepEqual(v.resting, ['guess'], 'the phone shows it greyed');
+  assert.ok(!v.quiz, 'no questions to send');
+  const q = room();
+  q.join('ana');
+  assert.deepEqual(q.viewFor('ana').resting, [], 'with a quiz nothing rests');
+  assert.equal(r.setClosed(['guess', 'hi']), true);
+  assert.deepEqual(r.viewFor('ana').resting, [], 'closed by the staff: hidden like any closed card, not greyed');
+});
+
 test('staff cannot close the last open card where LET\'S GUESS has no quiz', () => {
   const r = createRoom({ salt: 'g' });
   assert.equal(r.setClosed(['hi', 'song']), true);

@@ -8,7 +8,7 @@ HUE.finish = { c: '#7CF0A8', g: '#22B866', label: "LET'S FINISH" };
 
 export const hueVars = (id) => (HUE[id] ? { '--c': HUE[id].c, '--g': HUE[id].g } : {});
 
-/** The act as a fan says it: "BRUNO MARS" -> "Bruno", "THE LONG WEEKEND" -> "The Long Weekend". */
+/** The act as a fan says it: "BRUNO MARS" -> "Bruno", "THE WEEKND" -> "The Weeknd". */
 export function actShort(act) {
   const words = String(act || '').toLowerCase().split(/\s+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1));
   if (!words.length) return 'the band';
@@ -32,6 +32,14 @@ const WORDS = {
 /** The home screen's cards, in relay/cards.js's order. */
 export const cards = (act, banded = true) => CARDS.map((c) => ({ id: c.id, to: c.open, ...WORDS[c.id](act, banded) }));
 
+/** A card shown greyed, never armed: LET'S GUESS where the venue has no questions tonight. */
+const RESTING = { guess: { idle: ['No questions', 'here', 'tonight'], why: "no quiz here tonight: LET'S GUESS needs this venue's questions." } };
+
+/** The home deck: `open` (the view's cards; every card before the first view), and the `resting` ones greyed in place. */
+export const deck = (act, banded, open, resting = []) => cards(act, banded)
+  .filter((c) => !open || open.includes(c.id) || resting.includes(c.id))
+  .map((c) => (open && !open.includes(c.id) ? { ...c, ...RESTING[c.id], resting: true } : c));
+
 /** LET'S FINISH on the home screen: after the cards, and a tap opens it rather than arming anything. */
 export const FINISH_CARD = { id: 'finish', to: 'finish', icon: 'logout', title: "LET'S FINISH", atitle: "LET'S FINISH",
   idle: ['Done talking?', 'Tap to end it', 'kindly'], armed: [] };
@@ -52,6 +60,21 @@ export const FINISH = {
   no: 'NOT YET',
 };
 
+/** A meeting of three or four: letting someone join, and asking to. */
+export const JOIN = {
+  title: 'Let someone join you?',
+  sub: (via, intent) => (via || 'Someone in your meeting') + ' said yes to them on ' + (HUE[intent]?.label || 'a card')
+    + '. They join only if everyone in your meeting says yes.',
+  yes: 'YES, THEY CAN JOIN',
+  yesSub: 'you all meet under the same number, at the same spot.',
+  no: 'NO',
+  noSub: 'they are not told who said no.',
+  waiting: 'they are already meeting someone. the others there are asked about you: if everyone says yes, you meet them all.',
+  refused: 'not this time: that meeting stays as it is.',
+  leaveSub: 'you leave this meeting; the others go on.',
+  left: (name) => name + ' headed off. the rest of you go on.',
+};
+
 export const PROMISES = [
   { dot: '#4ED7F1', icon: 'location_off', main: 'Nobody sees where you are.', sub: 'only that you’re near — and never closer than an area, like "near the bar". Your wristband shows a colour, never your name.' },
   { dot: '#F2D65E', icon: 'visibility_lock', main: 'No name and no photo until you both say yes.', sub: 'until then you’re just someone near the bar.' },
@@ -62,7 +85,7 @@ export const PROMISES = [
 /** "How this works", after the promises: the cards, and what makes a match. */
 export const HOW = {
   cards: 'Four cards. SAY HI waves at someone near. FIRST SONG? guesses the opener. LET’S DANCE! puts a clip or a pose on the floor. LET’S GUESS! is tonight’s quiz.',
-  both: 'A match needs you both: a wave waved back, a pick liked both ways, a dance danced back, a team-up both ways. Only then a name, and where to meet.',
+  both: 'A match needs you both: a wave waved back, a pick liked both ways, a dance danced back, a team-up both ways. Only then a name, and where to meet. Up to four can meet as one: a newcomer joins only if everyone says yes.',
 };
 
 /** The poster a venue puts up (/poster/<venue>): what this is, how to play, and the code into the app. */
@@ -287,6 +310,7 @@ export const GUIDE = {
     'find each other at the spot your phone shows.',
     'hold SIDE once you have. it counts when you both have; until then yours says FOUND: WAITING.',
     'or knock your two wristbands together on the number: that counts as found for both of you.',
+    'in a meeting of three or four, one hold counts for all of it; found plays once everyone has.',
     'a meeting number lasts fifteen minutes.',
   ],
   trouble: [

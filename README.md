@@ -2,12 +2,12 @@
 
 Get talking to a stranger at a live gig, then get out of the way.
 
-https://github.com/user-attachments/assets/82580c25-2037-49e7-baf4-133858eb822b
+https://github.com/user-attachments/assets/4881ab35-b553-4f08-b1fe-21d7e0aba578
 
 <details>
 <summary>On a phone? The vertical cut (9:16)</summary>
 
-https://github.com/user-attachments/assets/87d6690f-96b9-4829-8848-19cd1f69d0fc
+https://github.com/user-attachments/assets/285e91b7-d538-46fe-ac64-047810623006
 
 </details>
 
@@ -16,7 +16,11 @@ A phone app for one night at one venue. You arm one of four cards — **SAY HI**
 like other people's picks), **LET'S DANCE!** (five seconds of you dancing, or one pose, on a
 shared floor), **LET'S GUESS!** (tonight's quiz: answer it, then team up with
 someone else who finished) — and when two people both say yes, and only then, each learns
-the other's first name and where to meet. It is built from the Claude Design
+the other's first name and where to meet. A meeting can grow to three or four: a newcomer
+joins only when everyone already in it says yes, and they all share one number. Once you have talked, **LET'S FINISH**
+ends the meeting kindly: the other side gets a thank-you and can say not yet,
+and when it is finished the card you met on goes off. In a meeting of three or four it takes only you
+out, and the rest go on. It is built from the Claude Design
 canvas `On The Beat.dc.html`; the canvas is the design, this is the working
 thing.
 
@@ -54,11 +58,19 @@ staff passcodes are in [docs/running.md](docs/running.md).
 4. If someone declines, you never see each other again tonight, and neither
    side is told.
 
-**The wristband** (an M5StickC Plus or a StickS3) is optional. It pairs to a
-phone by four letters and a number checked on the wrist, then shows the armed
-card's colour, calls when someone waves, and shows the same two-digit number
-as your match's band or phone when you meet. Both buttons held for 3 seconds
-turn it off; its power button turns it on. A phone alone gets the same night.
+**The wristband** (an M5StickC Plus; the firmware also builds for a StickS3)
+is optional. It pairs to a phone by four letters and a number checked on the
+wrist, then lights in the armed card's colour, pulses on the room's beat, and
+lets you change the card with its side button. It calls when someone waves
+(wave back with a held button, or by raising your wrist and waving), answers
+each LET'S GUESS answer right or wrong, and shows the same two-digit number as
+your match's band or phone when you meet; knock the two bands together to say
+you found each other. In a meeting of three or four every band shows the same
+number, one side hold counts for the whole meeting, and found plays once
+everyone has said it. LET'S FINISH and UNPAIR, for leaving early, are on the
+wrist too. A band that knows no Wi-Fi nearby is set up from any phone: hold
+its side button. Both buttons held for 3 seconds turn it off; its power button
+turns it on. A phone alone gets the same night.
 
 **The staff page** (`/staff`) is for a venue's own team: reports from the
 floor, a notice to every phone, moved set times, and naming the opening song.

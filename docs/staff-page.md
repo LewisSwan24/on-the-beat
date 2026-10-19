@@ -32,12 +32,12 @@ Every report reaches the venue's own team at `/staff`
   photo, a handle, or who reported. Open reports come first; *HANDLED* dims
   one on every screen at the venue, and *REOPEN* brings it back.
 - **A new report** flashes the top of the page, counts in the tab's title,
-  `(2) Staff · The Roundhouse, Camden · BRUNO MARS`, and plays two short
+  `(2) Staff · Suncorp Stadium, Brisbane · BRUNO MARS`, and plays two short
   notes once a tap on the page has let it make sound.
 - **Notifications, with the page closed or the phone asleep**
   (`docs/superpowers/specs/2026-09-29-staff-push-design.md`). *NOTIFY THIS
   DEVICE* under the header turns them on. A notification says *New report ·
-  The Roundhouse, Camden* and *2 open — tap to see them*, never who, where
+  Suncorp Stadium, Brisbane* and *2 open — tap to see them*, never who, where
   or what was said, and a tap on it opens the list. On Android it works in
   Chrome as it is; on an iPhone (iOS 16.4 or later), add the page to the
   Home Screen first (Share, then Add to Home Screen) and turn them on from
@@ -99,9 +99,9 @@ It asks for the venue's show id and a passcode of at least twelve
 characters, twice, or Enter for one made for you: three groups of four
 letters and digits, such as `k7m2-q9xr-4twd`, shown once in that terminal
 and kept nowhere. It never shows a passcode you type, and prints one line
-such as `"roundhouse-bruno-mars": "scrypt$16384$8$1$…"`. Put every venue's line
+such as `"suncorp-stadium-bruno-mars": "scrypt$16384$8$1$…"`. Put every venue's line
 between braces, separated by commas, in a file outside the repository as
-one line, `STAFF_CODES={"roundhouse-bruno-mars": "scrypt$…"}`, then:
+one line, `STAFF_CODES={"suncorp-stadium-bruno-mars": "scrypt$…"}`, then:
 
 ```
 flyctl secrets import --stage < staff-codes.env   # PowerShell: Get-Content staff-codes.env | flyctl secrets import --stage

@@ -209,9 +209,14 @@ test('meeting numbers are never shared by two matches at once', () => {
 
 test('past ninety matches at once the room still answers, with two-digit numbers', () => {
   const room = createRoom({ salt: 'x' });
-  const ids = Array.from({ length: 15 }, (_, i) => 'q' + i);   // 105 pairs
-  for (const id of ids) { room.join(id); room.arm(id, 'hi'); }
-  for (const id of ids) for (const p of room.viewFor(id).near) room.wave(id, p.handle);
+  // 105 pairs, each two people meeting only each other: a third on the same card would be an ask to join (groups).
+  const ids = Array.from({ length: 210 }, (_, i) => 'q' + i);
+  for (const id of ids) { room.join(id); room.arm(id, 'hi'); room.pick(id, 'track ' + id); }
+  const h = (v, t) => room.viewFor(v).near.find((p) => p.pick === 'track ' + t).handle;
+  for (let i = 0; i < ids.length; i += 2) {
+    room.wave(ids[i], h(ids[i], ids[i + 1]));
+    room.wave(ids[i + 1], h(ids[i + 1], ids[i]));
+  }
   const all = ids.flatMap((id) => room.viewFor(id).matches);
   assert.equal(new Set(all.map((m) => m.id)).size, 105);
   assert.ok(all.every((m) => m.number >= 10 && m.number <= 99));
@@ -458,13 +463,13 @@ test("a match's id is never another night's: a room made again, as by a relay th
   const first = meet(room, handleOf, 'ana', 'ben').id;
   const back = createRoom({ salt: 'test', restore: room.dump() });
   assert.equal(back.viewFor('ana').matches[0].id, first);
-  room.arm('cai', 'hi');
   const again = createRoom({ salt: 'test', restore: room.dump() });
-  again.arm('cai', 'hi');
-  again.arm('ana', 'hi');
-  const h = (v, t) => again.viewFor(v).near.find((p) => p.band === again.viewFor(t).me.band)?.handle;
-  again.wave('ana', h('ana', 'cai'));
-  again.wave('cai', h('cai', 'ana'));
+  // On another card than the one Ana met Ben on: on the same one, Cai would be an ask to join them.
+  again.pick('ana', 'Treasure');
+  again.pick('cai', 'Grenade');
+  const h = (v, t) => again.viewFor(v).wall.find((p) => p.pick === again.viewFor(t).me.pick)?.handle;
+  again.like('ana', h('ana', 'cai'));
+  again.like('cai', h('cai', 'ana'));
   const ids2 = again.viewFor('ana').matches.map((m) => m.id);
   assert.equal(ids2.length, 2);
   assert.equal(new Set(ids2).size, 2);
@@ -565,6 +570,8 @@ test('found: only the two of a match say it, the first time is kept, and a match
   tick(5_000);
   room.found('ana', id);
   assert.equal(room.viewFor('ana').matches[0].foundAt, t0 + 5_000, "ben's is the later; ana's second changed nothing");
+  room.finish('ana', id, 'ask');
+  room.finish('ben', id, 'yes');
   meet(room, handleOf, 'ana', 'cai');
   const other = room.viewFor('cai').matches[0];
   room.block('cai', other.id);
@@ -989,11 +996,14 @@ test('a room carried across a restart shows everyone what it did, and goes on fr
     r.arm('dan', 'hi');
     r.wave('dan', h(r, 'dan', 'ana'));
     r.wave('ana', h(r, 'ana', 'dan'));
+    // Ana is meeting Ben on SAY HI: Dan joins them once Ben says yes.
+    r.admit('ben', r.viewFor('ben').joinAsks[0].id, 'yes');
     r.report('ana', null, 'a spill by the stairs');
     r.join('cai');
   }
   same('as the night goes on');
-  assert.match(again.viewFor('dan').matches[0].id, /^m2-[0-9a-f]{8}$/, 'the next match takes the next id');
+  assert.deepEqual(again.viewFor('dan').matches.map((m) => m.name).sort(), ['ANA', 'BEN'], 'Dan is in Ana and Ben\'s meeting');
+  assert.match(again.viewFor('dan').matches[0].id, /^m[23]-[0-9a-f]{8}$/, 'the next matches take the next ids');
   assert.equal(again.viewFor('dan').matches[0].id.slice(3), again.viewFor('ana').matches.find((m) => m.id.startsWith('m1-')).id.slice(3),
     'with the mark the room had before the restart');
   assert.equal(again.staffReports(tag)[0].id, 'r2', 'the next report takes the next id');

@@ -79,7 +79,10 @@ never becomes a match.
     for that person, with the options in their own order (a quiz of five or
     fewer is asked whole, still shuffled). The relay keeps the answers, and the
     venue list phones are given carries no quiz. A venue with no quiz has
-    LET'S GUESS! closed all night. A venue nobody listed still gets a room, named by what
+    LET'S GUESS! closed all night: the phone still shows the card, greyed
+    (`resting` in the view), and a tap says there is no quiz here tonight;
+    it never arms, and the wristband steps over it. A listed show with no
+    times yet gets none made up: the phone says "no times yet". A venue nobody listed still gets a room, named by what
     was typed, with case, accents, punctuation, `&` for `and` and a leading
     `the` let go (`app/lib/typed.js`), so "the Fortitude Music Hall" and
     "Fortitude Music Hall!" are one room and not two. The people in such a
@@ -105,7 +108,18 @@ never becomes a match.
     dance back) is its play in `relay/room.js`: who may be sent its yes,
     what the room keeps of one, and the list a phone sees. A yes each way
     is a match, and a block takes every card's yes away, through the one
-    table. `tests/cards.test.js` and `tests/firmware.test.js` hold
+    table. A meeting can grow to `GROUP_MAX` (four): when someone already
+    in a meeting on a card says yes both ways with a newcomer on that card,
+    everyone else in it is asked (`joinAsks`, answered with `admit`), and
+    only when all of them say yes does the newcomer meet each of them under
+    the meeting's own number and spot. One no, or ten minutes with no answer
+    (`JOIN_MS`), keeps them out, and they are not told who. A meeting stays
+    pairs underneath, sharing a `group` id, so keeping a contact, found and
+    the wristband work between two people as before; in a meeting of three
+    or four, LET'S FINISH takes only you out, and the rest go on. One FOUND
+    (side hold or phone) counts for every pair you are in, and the band
+    plays found only once everyone in the meeting has said it; a newcomer
+    who takes back their yes before everyone answers ends the ask. `tests/cards.test.js` and `tests/firmware.test.js` hold
     everything to it, so a card added there is either complete or red:
     words idle and armed, an icon in the subset font, `--id` and `--id-g`
     in the stylesheet, its screens, its play and its own list, and the same

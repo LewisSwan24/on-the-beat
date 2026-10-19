@@ -1042,6 +1042,45 @@ test("a clink naming a band that is not the meeting partner's is refused not the
   });
 });
 
+test('a third joins a meeting once the other says yes on the phone: three bands, one number, and a clink finds the pair it names', async () => {
+  await heldRelay(async (on, clock) => {
+    const airs = [...airPair(), randomBytes(6).toString('hex')];
+    const { aBand, bBand, ana, ben, number } = await meeting('group-of-three', on, clock, airs);
+    const cBand = await on.wristband(62, { air: airs[2] });
+    const cai = await on.phone('group-of-three');
+    await on.pairBand(cai, cBand);
+    clock.t += 3_000;
+    for (const [p, who] of [[ana, 'ana'], [cai, 'cai']]) p.send({ t: 'pick', track: who });
+    cai.send({ t: 'arm', intent: 'hi' });
+    const row = (p, who) => p.view.near.find((r) => r.pick === who);
+    await cai.until((v) => v.near.some((r) => r.pick === 'ana'));
+    await ana.until((v) => v.near.some((r) => r.pick === 'cai'));
+    cai.send({ t: 'wave', handle: row(cai, 'ana').handle });
+    ana.send({ t: 'wave', handle: row(ana, 'cai').handle });
+    const asked = (await ben.until((v) => v.joinAsks?.length === 1)).joinAsks[0];
+    assert.equal(asked.via, '', 'Ana gave no name in this test: her name as she gave it');
+    assert.equal((await cai.until((v) => v.joining?.length === 1)).joining[0].waiting, 1);
+    ben.send({ t: 'admit', join: asked.id, say: 'yes' });
+    await Promise.all([cai.until((v) => v.matches.length === 2), ana.until((v) => v.matches.length === 2), ben.until((v) => v.matches.length === 2)]);
+    const c = await cBand.until((s) => s.kind === 'meet', 5000);
+    assert.equal(c.big, number, "Cai's band shows the meeting's own number");
+    clock.t += 2_000;
+    // Cai and Ana knock bands: of Cai's two meetings under that number, the one with Ana's band is found.
+    assert.deepEqual(await clink(cBand, airs[0], number), { t: 'clink', ok: true });
+    clock.t += 1_000;
+    assert.deepEqual(await clink(aBand, airs[2], number), { t: 'clink', ok: true });
+    const v = await cai.until((x) => x.matches.some((m) => m.foundAt));
+    assert.equal(v.matches.filter((m) => m.foundAt).length, 1, 'only the pair that clinked');
+    // And Cai and Ben.
+    clock.t += 2_000;
+    assert.deepEqual(await clink(cBand, airs[1], number), { t: 'clink', ok: true });
+    clock.t += 1_000;
+    assert.deepEqual(await clink(bBand, airs[2], number), { t: 'clink', ok: true });
+    await cai.until((x) => x.matches.every((m) => m.foundAt));
+    close(ana, ben, cai, aBand, bBand, cBand);
+  });
+});
+
 test('a malformed clink is dropped unanswered; the rest are refused unpaired and too fast before anything is looked up', async () => {
   await heldRelay(async (on, clock) => {
     const loose = await on.wristband();

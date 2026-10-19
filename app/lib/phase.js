@@ -61,6 +61,25 @@ export function phaseLine(show, date = new Date()) {
   }
 }
 
+/** How long the bar takes to fill AFTER's fifth, from the end of the show. */
+const AFTER_MINS = 60;
+
+/**
+ * The bar over the phases, 0 to 1: each phase fills its own fifth, under its own name, as the clock runs through
+ * it. Null when the show was given no times: no progress is made up (N1).
+ */
+export function nightProgress(show, date = new Date()) {
+  if (!givenTimes(show).length) return null;
+  const now = minsOf(date);
+  const t = timesOf(show);
+  const edges = [t.doors, t.support, t.break, t.headline, t.end, t.end + AFTER_MINS];
+  if (now <= edges[0]) return 0;
+  for (let i = 0; i < 5; i++) {
+    if (now < edges[i + 1]) return (i + (now - edges[i]) / Math.max(1, edges[i + 1] - edges[i])) / 5;
+  }
+  return 1;
+}
+
 /** The calendar day a night is filed under. */
 export function nightOf(date = new Date()) {
   const d = new Date(date);

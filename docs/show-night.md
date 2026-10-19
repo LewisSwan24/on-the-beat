@@ -93,7 +93,7 @@ starts, so a change is a restart, and a *Before doors* job like any other
    volume: `flyctl ssh sftp get /data/shows.json -a on-the-beat`, which will
    not overwrite a local file of the same name). It is a JSON list, one entry
    per show, and each needs an `id`: the venue's room, lower case with single
-   spaces, as in `roundhouse-bruno-mars`. The rest is optional, but what is
+   spaces, as in `suncorp-stadium-bruno-mars`. The rest is optional, but what is
    there must be the right kind: `act`, `venue`, `doors`, `support`, `break`,
    `headline` and `end` are text (`"19:00"`, in quotes), `spots` and `setlist`
    are lists of text, and `lat` and `lon` are numbers (`51.5453`, no quotes):
@@ -137,9 +137,9 @@ starts, so a change is a restart, and a *Before doors* job like any other
 A bad file never leaves the relay with no shows. A file that is missing,
 unreadable, not JSON, not a list, or without one usable show leaves the list
 that ships with the relay, and the log says which, by file name: `shows: no
-file at /data/shows.json, using the 4 that ship with the relay`. One bad entry
+file at /data/shows.json, using the 2 that ship with the relay`. One bad entry
 among good ones is dropped and named while the rest stand: `shows: entry 2 of
-/data/shows.json dropped: the id "Moth Club" should read "moth club"`, or
+/data/shows.json dropped: the id "Suncorp" should read "suncorp"`, or
 `shows: entry 3 of /data/shows.json dropped: "doors" must be text` for a time
 written as a number (`1900`) and not as text (`"19:00"`). So when
 `/api/shows` still shows the old list, read the log before anything else. To go

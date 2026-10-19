@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { CARDS, INTENTS, cardOf } from '../relay/cards.js';
 import { INTENTS as ROOM_INTENTS, createRoom } from '../relay/room.js';
 import { bandShow } from '../relay/band.js';
-import { HUE, cards } from '../app/copy.js';
+import { HUE, cards, deck } from '../app/copy.js';
 import { INTENT_OF } from '../app/lib/follow.js';
 import { CONSTS, lit } from '../app/lib/wrist.js';
 
@@ -104,4 +104,15 @@ test('every card has its yes in the room, its own list on the phone, and a yes e
     assert.equal(room.viewFor('ana').matches[0].intent, id);
   }
   assert.equal(lists.size, INTENTS.length);
+});
+
+test('the home deck: the open cards, and a resting one greyed in its place, never a closed one', () => {
+  const ids = (d) => d.map((c) => c.id + (c.resting ? '~' : ''));
+  assert.deepEqual(ids(deck('BRUNO MARS', true, ['hi', 'song', 'dance'], ['guess'])), ['hi', 'song', 'dance', 'guess~'],
+    'no questions here: LET\'S GUESS stays in the row, greyed');
+  assert.deepEqual(ids(deck('BRUNO MARS', true, ['hi', 'dance'], [])), ['hi', 'dance'], 'closed by the staff: gone');
+  assert.deepEqual(ids(deck('BRUNO MARS', true, undefined, undefined)), INTENTS, 'before the first view: every card');
+  const rest = deck('BRUNO MARS', true, ['hi', 'song', 'dance'], ['guess']).at(-1);
+  assert.match(rest.idle.join(' '), /no questions/i, 'its face says so');
+  assert.match(rest.why, /no quiz here tonight/, 'and a tap says why');
 });

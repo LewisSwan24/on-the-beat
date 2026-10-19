@@ -26,8 +26,8 @@ after(async () => {
 });
 
 test('practice hides its person from every other phone until it is said off', async () => {
-  const ana = await phone('roundhouse-bruno-mars');
-  const ben = await phone('roundhouse-bruno-mars');
+  const ana = await phone('suncorp-stadium-bruno-mars');
+  const ben = await phone('suncorp-stadium-bruno-mars');
   ana.send({ t: 'arm', intent: 'hi', seq: 1 });
   ben.send({ t: 'arm', intent: 'hi', seq: 1 });
   await ben.until((v) => v.near.length === 1);
@@ -54,7 +54,7 @@ test('a phone that never says off: the sweep after PRACTICE_MS shows its person 
 });
 
 test('a malformed practice is dropped', async () => {
-  const ana = await phone('roundhouse-bruno-mars');
+  const ana = await phone('suncorp-stadium-bruno-mars');
   ana.send({ t: 'practice', on: 'yes' });
   ana.send({ t: 'profile', name: 'Ana' });
   await ana.until((v) => v.me.name === 'Ana');
@@ -81,7 +81,7 @@ async function endAs(p, was) {
 
 test('ending the practice in the dark puts back the card it opened on, or none, and never the one practised with', async () => {
   for (const opened of ['hi', null]) {
-    const ana = await phone('roundhouse-bruno-mars');
+    const ana = await phone('suncorp-stadium-bruno-mars');
     if (opened) { ana.send({ t: 'arm', intent: opened, seq: 1 }); await ana.until((v) => v.me.armed === opened); }
     const was = { armed: ana.view.me.armed ?? null, invisible: false };
     ana.send({ t: 'practice', on: true });

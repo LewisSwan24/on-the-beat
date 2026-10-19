@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nightOf, phaseLine, phaseOf, timesLine } from '../app/lib/phase.js';
+import { nightOf, nightProgress, phaseLine, phaseOf, timesLine } from '../app/lib/phase.js';
 
 const ROUNDHOUSE = { act: 'BRUNO MARS', doors: '19:00', support: '20:00', break: '20:45', headline: '21:30', end: '23:00' };
 const at = (hh, mm, day = 23) => new Date(2026, 8, day, hh, mm);
@@ -60,4 +60,17 @@ test('F4: whereLine() names the act and the venue as listed, so the phone says w
   assert.equal(whereLine({ venue: 'Moth Club, Hackney' }), 'Moth Club, Hackney');
   assert.equal(whereLine({ act: 'KAYO LANE' }), 'KAYO LANE');
   assert.equal(whereLine(null), '');
+});
+
+test('the bar over the phases: each phase fills its own fifth, by the clock', () => {
+  const p = (hh, mm) => Math.round(nightProgress(ROUNDHOUSE, at(hh, mm)) * 1000) / 1000;
+  assert.equal(p(18, 0), 0, 'before doors: empty');
+  assert.equal(p(19, 0), 0, 'doors open: the first fifth starts');
+  assert.equal(p(19, 30), 0.1, 'half way from doors to support: half the first fifth');
+  assert.equal(p(20, 0), 0.2, 'support starts its own fifth');
+  assert.equal(p(21, 30), 0.6, 'the headline at three fifths');
+  assert.equal(p(22, 15), 0.7, 'half the headline');
+  assert.equal(p(23, 30), 0.9, 'half an hour after the end: half the last fifth');
+  assert.equal(p(1, 0), 1, 'long after: full');
+  assert.equal(nightProgress({ act: 'KAYO' }, at(20, 0)), null, 'no times given: no progress made up');
 });

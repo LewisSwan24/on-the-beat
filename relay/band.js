@@ -99,8 +99,10 @@ export function bandShow({ view = null, battery = null, code = null, check = nul
     return { kind: 'off', battery, quiet: true, ...quiet, ...(view.me.was ? { was: view.me.was } : {}) };
   }
   const waved = view.me.armed === 'hi' && waves.length ? { waves: { ref: waves[0].handle, n: waves.length, seq: waves[0].n } } : {};
+  // In a meeting of more than two, found plays once every pair in it is found, not at the first.
+  const whole = (m) => view.matches.every((x) => (x.group ?? x.id) !== (m.group ?? m.id) || x.finishedAt || x.foundAt);
   const done = view.matches
-    .filter((m) => m.foundAt && now - m.foundAt < FOUND_SHOW_MS)
+    .filter((m) => m.foundAt && now - m.foundAt < FOUND_SHOW_MS && whole(m))
     .sort((a, b) => b.foundAt - a.foundAt)[0];
   // What the band plays once, whatever it shows: found by both, and the opener its person called.
   const plays = done ? { found: { n: done.number, intent: done.intent } } : {};
@@ -112,7 +114,8 @@ export function bandShow({ view = null, battery = null, code = null, check = nul
   const lately = (ms) => answered > 0 && Number.isFinite(quiz.lastAt) && now - quiz.lastAt < ms;
   if (lately(GUESSED_SHOW_MS)) plays.guessed = { n: answered, right: !!quiz.answered[answered - 1].right };
   // LET'S FINISH: finished, on both bands; not yet, on the asker's (only the asker's view carries it).
-  const ended = view.matches.filter((m) => m.finishedAt && now - m.finishedAt < FINISHED_SHOW_MS).sort((a, b) => b.finishedAt - a.finishedAt)[0];
+  // Someone else leaving a meeting of three or four is not yours finishing: theirs only.
+  const ended = view.matches.filter((m) => m.finishedAt && m.left !== 'them' && now - m.finishedAt < FINISHED_SHOW_MS).sort((a, b) => b.finishedAt - a.finishedAt)[0];
   if (ended) plays.finished = { n: ended.finishedAt };
   const notYet = view.matches.filter((m) => m.notYetAt && now - m.notYetAt < FINISHED_SHOW_MS).sort((a, b) => b.notYetAt - a.notYetAt)[0];
   if (notYet) plays.notYet = { n: notYet.notYetAt };

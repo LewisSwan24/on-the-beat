@@ -135,7 +135,7 @@ test('a relay with nobody on it says nothing, but still samples, so the first bu
     await pause(250);
     assert.deepEqual(said, []);
     assert.ok(meter.samples >= 3, 'sampled ' + meter.samples + ' times while idle');
-    await t.phone('roundhouse-bruno-mars');
+    await t.phone('suncorp-stadium-bruno-mars');
     await until(() => said.length > 0);
     assert.equal(said.at(-1), 'load: 1 phone, 0 bands, 0 staff in 1 venue' + CANNED_TAIL);
   } finally {
@@ -147,7 +147,7 @@ test('a relay with nobody on it says nothing, but still samples, so the first bu
 test('the load line says how much video the relay holds, and the figure is the clip store itself, falling as a clip is replaced', async () => {
   const { relay, said, t } = await talkative();
   try {
-    const ana = await t.phone('roundhouse-bruno-mars');
+    const ana = await t.phone('suncorp-stadium-bruno-mars');
     assert.equal(relay.clipBytes(), 0, 'a relay that has been sent nothing holds no video');
     ana.send({ t: 'clip', mime: 'video/webm', data: randomBytes(MB).toString('base64') });   // one mebibyte of video
     await until(() => relay.clipBytes() === MB);
@@ -186,11 +186,11 @@ test('the load line counts phones, live wristbands, staff and venues, and names 
   const { relay, said, t } = await talkative(['moth-club-kayo-lane']);
   let staff = null;
   try {
-    // The roundhouse has two phones on it; the moth club only a staff device; the hall only a worn wristband, its phone
+    // The stadium has two phones on it; the moth club only a staff device; the hall only a worn wristband, its phone
     // gone. Not on it: a wristband nobody has claimed and one that dropped (its record is kept for a minute), and
     // a quiet corner whose phone left (its room is kept for the grace).
-    const rae = await t.phone('roundhouse-bruno-mars');
-    await t.phone('roundhouse-bruno-mars');
+    const rae = await t.phone('suncorp-stadium-bruno-mars');
+    await t.phone('suncorp-stadium-bruno-mars');
     staff = await staffAt(relay, 'moth-club-kayo-lane');
     const phone = await t.phone('the-hall-kayo-lane');
     const worn = await t.wristband();
@@ -209,7 +209,7 @@ test('the load line counts phones, live wristbands, staff and venues, and names 
     assert.equal(relay.roomCount(), 4, 'the quiet corner is still a room');
     for (const line of said) {
       assert.match(line, SHAPE);
-      assert.ok(!/roundhouse|moth-club|hall|quiet-corner/.test(line), 'a venue is named: ' + line);
+      assert.ok(!/suncorp|moth-club|hall|quiet-corner/.test(line), 'a venue is named: ' + line);
       assert.ok(!line.includes(rae.me) && !/[0-9a-f]{16}/.test(line), 'an id is named: ' + line);
       assert.ok(!line.includes('127.0.0.1'), 'an address is named: ' + line);
     }
@@ -226,7 +226,7 @@ test('the library says nothing of its load unless asked: 0 is off, and a meter i
   const relay = await createRelay({ port: 0, host: '127.0.0.1', loadSay: (l) => said.push(l), loadMeter: meter });
   const t = helpers(() => relay.port);
   try {
-    await t.phone('roundhouse-bruno-mars');
+    await t.phone('suncorp-stadium-bruno-mars');
     await pause(200);
     assert.deepEqual(said, []);
     assert.equal(meter.samples, 0);
@@ -239,7 +239,7 @@ test('the library says nothing of its load unless asked: 0 is off, and a meter i
 
 test('closing the relay stops the meter and the minute timer: nothing is said or sampled afterwards', async () => {
   const { relay, said, meter, t } = await talkative();
-  await t.phone('roundhouse-bruno-mars');
+  await t.phone('suncorp-stadium-bruno-mars');
   await pause(120);
   t.cleanup();
   await relay.close();
@@ -276,7 +276,7 @@ test('started on its own, the relay says its machine at start and its load once 
   const t = helpers(() => relay.port);
   try {
     assert.match(relay.lines.find((l) => l.startsWith('load: node ')), /^load: node v\d+\.\d+\.\d+, heap limit \d+ MB on a machine with \d+ MB$/);
-    await t.phone('roundhouse-bruno-mars');
+    await t.phone('suncorp-stadium-bruno-mars');
     const busy = await relay.until((l) => l.startsWith('load: 1 phone'));
     assert.match(busy, SHAPE);
   } finally {
@@ -289,7 +289,7 @@ test('LOAD_EVERY_MS=0 turns the load lines off', async () => {
   const off = await started({ LOAD_EVERY_MS: '0' });
   const t = helpers(() => off.port);
   try {
-    await t.phone('roundhouse-bruno-mars');
+    await t.phone('suncorp-stadium-bruno-mars');
     await pause(500);
     assert.deepEqual(off.lines.filter((l) => l.startsWith('load:')), []);
   } finally {
@@ -307,7 +307,7 @@ for (const [what, value] of [
     const relay = await started({ LOAD_EVERY_MS: value });
     const t = helpers(() => relay.port);
     try {
-      await t.phone('roundhouse-bruno-mars');
+      await t.phone('suncorp-stadium-bruno-mars');
       await pause(500);
       assert.equal(relay.lines.filter((l) => l.startsWith('load:')).length, 1);
       assert.match(relay.lines.find((l) => l.startsWith('load:')), /^load: node /);

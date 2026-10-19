@@ -120,6 +120,7 @@ On any screen, FACE and SIDE held together for three seconds turns it off. POWER
 - find each other at the spot your phone shows.
 - hold SIDE once you have. it counts when you both have; until then yours says FOUND: WAITING.
 - or knock your two wristbands together on the number: that counts as found for both of you.
+- in a meeting of three or four, one hold counts for all of it; found plays once everyone has.
 - a meeting number lasts fifteen minutes.
 
 ## 6. Trouble

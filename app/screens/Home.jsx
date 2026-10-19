@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { FINISH_CARD, HUE, WHERE, cards, hueVars } from '../copy.js';
+import { FINISH_CARD, HUE, WHERE, deck as deckOf, hueVars } from '../copy.js';
 import { DEFAULT_TIMES, PHASES, hhmm, whereLine } from '../lib/phase.js';
 import { wrongLine } from '../lib/where.js';
 import { Icon } from '../ui.jsx';
@@ -60,14 +60,15 @@ const toAdd = (show) => {
   return Object.keys(DEFAULT_TIMES).some((k) => show[k]) ? null : WHERE.addTimes;
 };
 
-/** S3 — where the night is, and the cards open tonight, each arming one thing. `open`: their ids, or all of them. */
-export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm, onOpen, onHow, band, onBand, notice, onHideNotice, dot, away, onNearby, onHere, onCard, focus, onFocused }) {
+/** S3 — where the night is, and the cards open tonight, each arming one thing. `open`: their ids, or all of them;
+ * `resting`: cards shown greyed beside them: a tap says why (onRest), and never arms. */
+export function Home({ show, phase, progress, line, armed, open, resting, onRest, ci: chosen, setCi, onArm, onOpen, onHow, band, onBand, notice, onHideNotice, dot, away, onNearby, onHere, onCard, focus, onFocused }) {
   const deck = useRef(null);
   const [w, setW] = useState(393);
   const [drag, setDrag] = useState({ on: false, dx: 0 });
   const down = useRef(null);
   const pi = Math.max(0, PHASES.indexOf(phase));
-  const list = [...cards(show?.act, !!band).filter((c) => !open || open.includes(c.id)), FINISH_CARD];
+  const list = [...deckOf(show?.act, !!band, open, resting), FINISH_CARD];
   const ci = Math.min(chosen, list.length - 1);   // a card closed while it was the one in front
   // The card the wrist just lit: the carousel turns to it, once.
   useEffect(() => {
@@ -122,16 +123,17 @@ export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm,
   return (
     <div className="scr" style={{ padding: 0 }}>
       <div style={{ padding: '10px 0 0' }}>
-        <div className="phasebar"><i style={{ width: ((pi + 1) / 5) * 100 + '%' }} /></div>
+        {/* Each phase fills its own fifth, over its own name, by the clock; no times given, nothing fills. */}
+        <div className="phasebar"><i style={{ width: (progress ?? 0) * 100 + '%' }} /></div>
         <div className="phases">
-          {PHASES.map((p, i) => <span key={p} className="label" style={{ color: i <= pi ? '#fff' : 'var(--text-2)' }}>{p}</span>)}
+          {PHASES.map((p, i) => <span key={p} className="micro" style={{ color: i === pi ? '#fff' : i < pi ? 'var(--text-2)' : 'var(--text-3)' }}>{p}</span>)}
         </div>
-        <div className="label tnum" aria-live="polite" style={{ padding: '9px 24px 0' }}>{line}</div>
+        <div className="nowline tnum" aria-live="polite">{line}</div>
         {show?.made && onCard ? (
           <button type="button" className="small where-btn" onClick={onCard}>
             {whereLine(show)}{toAdd(show) ? <> · <span className="add">{toAdd(show)}</span></> : null}
           </button>
-        ) : whereLine(show) ? <div className="small" style={{ padding: '2px 24px 0', color: 'var(--text-2)' }}>{whereLine(show)}</div> : null}
+        ) : whereLine(show) ? <div className="small where-line">{whereLine(show)}</div> : null}
         {away ? <Away away={away} show={show} onNearby={onNearby} onHere={onHere} /> : null}
         {notice ? <Notice notice={notice} onHide={onHideNotice} /> : null}
       </div>
@@ -160,9 +162,9 @@ export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm,
             const active = i === ci;
             return (
               <div key={c.id} className="slot" aria-hidden={!active} style={{ transform: `scale(${active ? 1 : 0.92})`, opacity: active ? 1 : 0.42 }}>
-                <button type="button" className={'intent' + (on ? ' armed' : '')} style={hueVars(c.id)}
-                  aria-pressed={on} tabIndex={active ? 0 : -1}
-                  onClick={() => (active ? onArm(c.id) : setCi(i))}>
+                <button type="button" className={'intent' + (on ? ' armed' : '') + (c.resting ? ' resting' : '')} style={hueVars(c.id)}
+                  aria-pressed={c.resting ? undefined : on} tabIndex={active ? 0 : -1}
+                  onClick={() => (!active ? setCi(i) : c.resting ? onRest(c.why) : onArm(c.id))}>
                   {dot === c.id ? <span className="wavedot" role="img" aria-label="someone waved" /> : null}
                   <span className="glyph">{c.icon ? <Icon name={c.icon} size={36} /> : <DanceGlyph />}</span>
                   <span className="name">{on ? c.atitle : c.title}</span>
@@ -170,7 +172,7 @@ export function Home({ show, phase, line, armed, open, ci: chosen, setCi, onArm,
                     <span className="idle" aria-hidden={on}>{c.idle.map((l) => <span key={l}>{l}</span>)}</span>
                     <span className="arm" aria-hidden={!on}>{c.armed.map((l) => <span key={l}>{l}</span>)}</span>
                   </span>
-                  <span className="label hint">{on ? 'tap again to cancel' : c.id === 'finish' ? 'tap to open' : 'tap to arm'}</span>
+                  <span className="label hint">{on ? 'tap again to cancel' : c.resting ? 'tap to see why' : c.id === 'finish' ? 'tap to open' : 'tap to arm'}</span>
                 </button>
                 {on ? (
                   <button type="button" className="chev" style={{ color: HUE[c.id].c }} tabIndex={active ? 0 : -1}

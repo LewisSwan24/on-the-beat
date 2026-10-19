@@ -9,7 +9,7 @@
     "build": "vite build",
     "start": "npm run build && node relay/server.js",
     "relay": "node relay/server.js",
-    "test": "npm run build && node --test",
+    "test": "npm run build && node --import ./tests/midday-tz.js --test",
     "tunnel": "cloudflared tunnel --url http://localhost:8790",
     "icons": "node scripts/icons.mjs",
     "fonts": "node scripts/fonts.mjs",

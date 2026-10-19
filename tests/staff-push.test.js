@@ -17,7 +17,7 @@ const TZ = 'Australia/Brisbane';                     // UTC+10, no daylight savi
 const EIGHT_PM = Date.UTC(2026, 8, 29, 10, 0);      // 20:00 on 29 Sep there
 const NEXT_MORNING = Date.UTC(2026, 8, 29, 20, 30); // 06:30 on 30 Sep there: the next night
 const WINDOW = 600;                                 // a venue's push window, shortened for tests
-const VENUE = 'roundhouse-bruno-mars';              // in relay/shows.json: The Roundhouse, Camden
+const VENUE = 'suncorp-stadium-bruno-mars';              // in relay/shows.json: Suncorp Stadium, Brisbane
 let base;
 let root;
 let CODES;
@@ -196,7 +196,7 @@ test('a report reaches each device that turned notifications on, once, sealed: t
   await until(() => to(a.who).length === 1 && to(b.who).length === 1);
   for (const who of [a.who, b.who]) {
     const [req] = to(who);
-    assert.deepEqual(JSON.parse(who.open(req.body)), { venue: 'The Roundhouse, Camden', open: 1 });
+    assert.deepEqual(JSON.parse(who.open(req.body)), { venue: 'Suncorp Stadium, Brisbane', open: 1 });
     assert.equal(req.headers.ttl, '600');
     assert.equal(req.headers.urgency, 'high');
     assert.equal(req.headers.topic, 'reports');
@@ -218,7 +218,7 @@ test('a venue is sent at most one push a window: later reports wait for its end,
   await pause(WINDOW / 3);
   assert.equal(to(who).length, 1, 'held to the window');
   await until(() => to(who).length === 2);
-  assert.deepEqual(JSON.parse(who.open(to(who)[1].body)), { venue: 'The Roundhouse, Camden', open: 3 });
+  assert.deepEqual(JSON.parse(who.open(to(who)[1].body)), { venue: 'Suncorp Stadium, Brisbane', open: 3 });
   await pause(WINDOW + 200);
   assert.equal(to(who).length, 2, 'that push opened a window of its own, and nothing came in it');
 });

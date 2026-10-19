@@ -3,7 +3,7 @@
 // says "demo" in their name, so a match with one can never pass for a real one.
 //
 //   node scripts/crowd.mjs [venue] [how many] [relay]
-//   node scripts/crowd.mjs roundhouse-bruno-mars 3 ws://localhost:8790
+//   node scripts/crowd.mjs suncorp-stadium-bruno-mars 3 ws://localhost:8790
 //
 // Each of them shows blue, picks a track, waves back at anyone who waves, likes
 // every pick on the wall (so liking theirs back makes a match), and keeps
@@ -12,7 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import WebSocket from 'ws';
 
-const [venue = 'roundhouse-bruno-mars', count = '3', relay = 'ws://localhost:8790'] = process.argv.slice(2);
+const [venue = 'suncorp-stadium-bruno-mars', count = '3', relay = 'ws://localhost:8790'] = process.argv.slice(2);
 const NAMES = ['Mia', 'Jo', 'Sam', 'Priya', 'Tom', 'Ade'];
 const TRACKS = ['Treasure', '24K Magic', 'Grenade', "That's What I Like", 'Just the Way You Are', 'Locked Out of Heaven'];
 

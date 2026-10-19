@@ -1,43 +1,27 @@
 [
   {
-    "id": "roundhouse-bruno-mars",
+    "id": "suncorp-stadium-bruno-mars",
     "act": "BRUNO MARS",
-    "venue": "The Roundhouse, Camden",
-    "lat": 51.5432, "lon": -0.1519,
-    "doors": "19:00", "support": "20:00", "break": "20:45", "headline": "21:30", "end": "23:00",
+    "venue": "Suncorp Stadium, Brisbane",
+    "lat": -27.4647, "lon": 153.0094,
     "spots": [
-      "by the merch stand — it's the quietest corner",
-      "at the end of the long bar, by the water",
-      "by the cloakroom on the lower floor"
+      "by the merch stand on your level",
+      "at the bar nearest your gate",
+      "by the food stalls on your concourse"
     ],
-    "setlist": ["Locked Out of Heaven", "Treasure", "24K Magic", "Grenade", "That's What I Like", "Just the Way You Are"]
-  },
-  {
-    "id": "moth-club-kayo-lane",
-    "act": "KAYO LANE",
-    "venue": "Moth Club, Hackney",
-    "lat": 51.5453, "lon": -0.0560,
-    "doors": "19:30", "support": "20:15", "break": "20:50", "headline": "21:00", "end": "22:45",
-    "spots": ["by the photo booth", "at the far end of the bar", "by the cloakroom"],
-    "setlist": []
-  },
-  {
-    "id": "electric-ballroom-the-long-weekend",
-    "act": "THE LONG WEEKEND",
-    "venue": "Electric Ballroom, Camden",
-    "lat": 51.5390, "lon": -0.1426,
-    "doors": "19:00", "support": "20:00", "break": "20:40", "headline": "21:15", "end": "23:00",
-    "spots": ["by the merch table", "at the bar nearest the door", "by the cloakroom"],
-    "setlist": []
-  },
-  {
-    "id": "earth-sable-court",
-    "act": "SABLE COURT",
-    "venue": "EartH, Dalston",
-    "lat": 51.5491, "lon": -0.0757,
-    "doors": "18:45", "support": "19:45", "break": "20:30", "headline": "21:00", "end": "22:40",
-    "spots": ["by the merch stand", "at the end of the upstairs bar", "by the cloakroom"],
-    "setlist": []
+    "setlist": ["Risk It All", "24K Magic", "Treasure", "Locked Out of Heaven", "Just the Way You Are", "Uptown Funk"],
+    "quiz": [
+      {"q": "Which city was Bruno Mars born in?", "options": ["Los Angeles", "Honolulu", "Las Vegas", "Miami"], "answer": 1, "fact": "Honolulu, Hawaii, on 8 October 1985."},
+      {"q": "What is Bruno Mars's birth name?", "options": ["Peter Gene Hernandez", "Bruno Gene Martinez", "Brian Peter Mars", "Peter Bruno Garcia"], "answer": 0, "fact": "His father called him Bruno when he was two."},
+      {"q": "From the age of four, he performed in Honolulu as which singer?", "options": ["Michael Jackson", "Elvis Presley", "Little Richard", "James Brown"], "answer": 1, "fact": "As \"Little Elvis\", with his family's band, and in the 1992 film Honeymoon in Vegas."},
+      {"q": "What was his debut studio album, in 2010?", "options": ["Unorthodox Jukebox", "24K Magic", "Doo-Wops & Hooligans", "An Evening with Silk Sonic"], "answer": 2, "fact": "It carried \"Just the Way You Are\" and \"Grenade\"."},
+      {"q": "\"Locked Out of Heaven\" is from which album?", "options": ["Doo-Wops & Hooligans", "Unorthodox Jukebox", "24K Magic", "Uptown Special"], "answer": 1, "fact": "His second album, from 2012."},
+      {"q": "Which of his albums won the Grammy for Album of the Year in 2018?", "options": ["Doo-Wops & Hooligans", "Unorthodox Jukebox", "24K Magic", "An Evening with Silk Sonic"], "answer": 2, "fact": "24K Magic, at the 60th Grammy Awards."},
+      {"q": "\"Uptown Funk\" (2014) is whose single, featuring Bruno Mars?", "options": ["Mark Ronson", "Pharrell Williams", "Calvin Harris", "Daft Punk"], "answer": 0, "fact": "It spent 14 weeks at number one in the US."},
+      {"q": "Silk Sonic is Bruno Mars and who?", "options": ["Anderson .Paak", "Pharrell Williams", "The Weeknd", "Childish Gambino"], "answer": 0, "fact": "Their \"Leave the Door Open\" won Record and Song of the Year."},
+      {"q": "In which year did he first headline the Super Bowl halftime show?", "options": ["2012", "2014", "2016", "2018"], "answer": 1, "fact": "Super Bowl XLVIII, in February 2014."},
+      {"q": "\"APT.\" (2024) is his duet with whom?", "options": ["Lady Gaga", "Rosé", "Dua Lipa", "Lisa"], "answer": 1, "fact": "Rosé of BLACKPINK. The same year he sang \"Die with a Smile\" with Lady Gaga."}
+    ]
   },
   {
     "id": "test-night-zara-larsson",

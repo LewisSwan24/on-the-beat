@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { FINISH, HUE, MEET, hueVars, matchName, spotShort } from '../copy.js';
+import { FINISH, HUE, JOIN, MEET, hueVars, matchName, spotShort } from '../copy.js';
+import { alsoLine, finishRows } from '../lib/group.js';
 import { reducedMotion } from '../lib/device.js';
 import { scoreText } from '../lib/guess.js';
 import { FOUND_MINE, foundBoth, metCount, metItem } from '../lib/found.js';
@@ -36,7 +37,8 @@ export function Match({ match, number, held, onMyWay, onNotThis, onPick }) {
         </div>
       ) : null}
       <div className="match" style={hueVars(match.intent)}>
-        <div className="h2">You both said yes.</div>
+        <div className="h2">{match.with?.length ? 'You all said yes.' : 'You both said yes.'}</div>
+        {alsoLine(match) ? <div className="small" style={{ marginTop: 4 }}>{alsoLine(match)}</div> : null}
         {match.intent === 'guess' ? (
           <div className="pair">
             <div>
@@ -307,23 +309,31 @@ export function Leaving({ offline }) {
 
 /** LET'S FINISH: the meetings tonight that are not finished yet, newest first, each with its ask and what came of it. */
 export function Finish({ matches, onBack, onAsk }) {
-  const open = [...(matches || [])].sort((a, b) => b.at - a.at);
+  // One row a meeting: three or four of you are one meeting, and finishing it takes only you out.
+  const open = finishRows(matches);
   const hue = HUE.finish;
   return (
     <div className="scr">
       <div style={{ display: 'flex', alignItems: 'center' }}><Back onClick={onBack} /></div>
       <div className="h1" style={{ marginTop: 8, color: hue.c }}>{FINISH.title}</div>
       <div className="small" style={{ marginTop: 8, marginBottom: 18 }}>{FINISH.sub}</div>
-      {open.length ? open.map((m) => {
-        const name = matchName(m);
+      {open.length ? open.map((r) => {
+        const m = r.match;
+        const name = r.many || r.names.length > 1 ? r.names.join(' and ') : matchName(m);
         return (
-          <div key={m.id} className="keep" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10, marginBottom: 12 }}>
+          <div key={r.key} className="keep" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10, marginBottom: 12 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span className="dot" aria-hidden="true" style={{ width: 10, height: 10, '--c': (HUE[m.intent] || hue).c, '--g': (HUE[m.intent] || hue).g }} />
               <span className="h2" style={{ flex: 1 }}>{name}</span>
               <span className="small tnum">met at {hhmm(m.at)}</span>
             </span>
-            {m.finishedAt ? <span className="small" style={{ color: 'var(--ok)' }}>{FINISH.done}</span>
+            {r.done ? <span className="small" style={{ color: 'var(--ok)' }}>{FINISH.done}</span>
+              : r.many ? (
+                <>
+                  <span className="small">{JOIN.leaveSub}</span>
+                  <Cta hue="finish" onClick={() => onAsk(m)}>{FINISH.ask}</Cta>
+                </>
+              )
               : m.finishAsked === 'you' ? <span className="small">{FINISH.waiting(name)}</span>
               : (
                 <>
