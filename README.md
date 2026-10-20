@@ -17,7 +17,9 @@ like other people's picks), **LET'S DANCE!** (five seconds of you dancing, or on
 shared floor), **LET'S GUESS!** (tonight's quiz: answer it, then team up with
 someone else who finished) — and when two people both say yes, and only then, each learns
 the other's first name and where to meet. A meeting can grow to three or four: a newcomer
-joins only when everyone already in it says yes, and they all share one number. Once you have talked, **LET'S FINISH**
+joins only when everyone already in it says yes, and they all share one number. Until everyone has found each
+other, the people in a meeting can tell each other where they are in a few words, and hold the number up full
+screen over a crowd. Once you have talked, **LET'S FINISH**
 ends the meeting kindly: the other side gets a thank-you and can say not yet,
 and when it is finished the card you met on goes off. In a meeting of three or four it takes only you
 out, and the rest go on. It is built from the Claude Design

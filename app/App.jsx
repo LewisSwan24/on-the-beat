@@ -30,6 +30,7 @@ import { PHOTO_MAX } from './lib/pose.js';
 import { Camera, Floor } from './screens/Dance.jsx';
 import { Finish, Leaving, Match, Mate, Quiet, Thanks, Tonight } from './screens/Met.jsx';
 import { Cta, Sheet } from './ui.jsx';
+import { talkFor } from './lib/talk.js';
 
 const ONBOARDING = new Set(['splash', 'promises', 'venue', 'name']);
 const EMPTY = { me: null, near: [], wall: [], floor: [], teams: [], quiz: null, matches: [] };
@@ -1036,6 +1037,7 @@ export default function App() {
     case 'mate':
       body = match ? (
         <Mate match={match} number={meetingOn(match, now.getTime()) ? match.number : null} held={!paired}
+          talk={talkFor(view, match)} onNote={(text) => net.current?.send({ t: 'note', match: match.id, text })}
           onBack={back} onFound={() => sayFound(match)} onKeep={(on) => keep(match, on)} onTonight={() => go('tonight')}
           onSave={() => saveContact(tonightCard(match))}
           onMore={() => personSheet(match.id, matchName(match))} />

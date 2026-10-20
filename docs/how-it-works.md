@@ -119,7 +119,13 @@ never becomes a match.
     or four, LET'S FINISH takes only you out, and the rest go on. One FOUND
     (side hold or phone) counts for every pair you are in, and the band
     plays found only once everyone in the meeting has said it; a newcomer
-    who takes back their yes before everyone answers ends the ask. `tests/cards.test.js` and `tests/firmware.test.js` hold
+    who takes back their yes before everyone answers ends the ask. Between
+    MEET and FOUND the people in a meeting can send each other notes about
+    where they are (`note`, `view.talk`): a ready line or their own words,
+    up to `NOTE_MAX` (60) characters, one every 1.5 s and 20 each, printable
+    text only. Only the meeting sees them, they close once everyone has
+    found everyone, and they live in memory alone, never in the night file.
+    `tests/talk.test.js`. `tests/cards.test.js` and `tests/firmware.test.js` hold
     everything to it, so a card added there is either complete or red:
     words idle and armed, an icon in the subset font, `--id` and `--id-g`
     in the stylesheet, its screens, its play and its own list, and the same

@@ -1281,6 +1281,7 @@ export function createRelay({ port = 0, host = '0.0.0.0', root, shows: showsFile
       case 'found': room.found(me, m.match); break;
       case 'finish': room.finish(me, String(m.match ?? ''), String(m.say ?? '')); break;
       case 'admit': room.admit(me, String(m.join ?? ''), String(m.say ?? '')); break;
+      case 'note': room.note(me, String(m.match ?? ''), String(m.text ?? '')); break;
       case 'clip': {
         const to = m.to ? String(m.to) : null;
         const ref = keepClip(r, me, m.mime, m.data, to ? 'to:' + to : 'floor');

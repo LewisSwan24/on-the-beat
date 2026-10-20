@@ -423,3 +423,25 @@ h1 { margin: 0; font-weight: 400; }
 .cam .seg button { min-height: 36px; padding: 0 16px; border-radius: 999px; font: var(--label); letter-spacing: .08em; color: var(--text-2); background: none; border: none; }
 .cam .seg button[aria-pressed="true"] { background: var(--dance); color: #000; }
 .cam .pose { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; background: none; border: none; color: #fff; padding: 4px 12px; max-width: 320px; }
+
+/* Between MEET and FOUND: where are you, and the number held up. */
+.talk { margin-bottom: 14px; border: 1px solid var(--line-2); border-radius: 20px; background: var(--ink-1); padding: 16px 16px 14px; display: flex; flex-direction: column; }
+.talk .notes { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 180px; overflow-y: auto; }
+.talk .notes li { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 14px; background: var(--ink-2); align-self: flex-start; max-width: 88%; overflow-wrap: anywhere; }
+.talk .notes li.mine { align-self: flex-end; background: none; border: 1px solid var(--line-2); }
+.talk .notes li .micro { color: var(--c); }
+.talk .notes li.mine .micro { color: var(--text-3); }
+.talk .ready { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.talk .chip { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--ink-2); color: #fff; font: var(--body-s); }
+.talk .chip:active { border-color: var(--c); }
+.talk .say { display: flex; gap: 8px; margin-top: 10px; }
+.talk .say .field { flex: 1; min-width: 0; height: 44px; --c: var(--c); }
+.talk .send { min-height: 44px; padding: 0 16px; border-radius: 14px; border: none; background: var(--c); color: #000; font: var(--label); letter-spacing: .08em; }
+.talk .send:disabled { opacity: .35; }
+.holdup-open { display: block; margin-top: 8px; min-height: 36px; padding: 0; background: none; border: none; letter-spacing: .12em; }
+.holdup { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; border: none; background: #000; color: var(--c); padding: env(safe-area-inset-top, 0px) 16px env(safe-area-inset-bottom, 0px); }
+.holdup .n { font: 400 min(62vw, 46vh)/0.9 var(--disp); text-shadow: 0 0 40px var(--g); }
+.holdup .micro { color: var(--text-2); }
+/* One slow swell a second: seen across a room, never a strobe. */
+@keyframes holdup { 0%, 100% { background: #000; } 50% { background: var(--g); } }
+@media (prefers-reduced-motion: no-preference) { .holdup.pulse { animation: holdup 1s ease-in-out infinite; } }

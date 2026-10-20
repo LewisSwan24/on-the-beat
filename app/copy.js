@@ -126,6 +126,18 @@ export const MEET = {
   held: 'no wristband? hold this screen up: theirs shows the same number.',
 };
 
+/** Between MEET and FOUND: telling each other where you are, and holding the number up. */
+export const TALK = {
+  title: 'Where are you?',
+  sub: 'Only the people you met see this, and it goes once you have found each other.',
+  ready: ["I'm at the spot", "I'm by the stage", "I'm at the bar", "Can't see you: phone up", 'Five minutes late'],
+  placeholder: 'say where you are',
+  send: 'SEND',
+  you: 'you',
+  holdUp: 'HOLD IT UP',
+  holdUpSub: 'tap anywhere to put it down',
+};
+
 /** Turning the band off and on, said where the band is talked about: the sheet, and How this works. */
 export const BAND_OFF = {
   line: 'turned off. its power button turns it on.',

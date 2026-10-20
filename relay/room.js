@@ -145,6 +145,12 @@ export const handleLedger = (max = HANDLES_MAX) => ({ held: 0, max });
 // LET'S FINISH: after a not yet, the one who asked waits this long to ask again, and asks a meeting this often at most.
 export const FINISH_AGAIN_MS = 2 * 60_000;
 export const FINISH_ASKS = 3;
+/** Telling each other where you are, between MEET and FOUND: a few words a note, one every NOTE_GAP_MS, NOTE_EACH a
+ * person in a meeting, and the last NOTES_KEPT of them. */
+export const NOTE_MAX = 60;
+export const NOTE_GAP_MS = 1500;
+export const NOTE_EACH = 20;
+const NOTES_KEPT = 20;
 
 export function createRoom({
   now = () => Date.now(),
@@ -194,6 +200,10 @@ export function createRoom({
   // 'open' until everyone in it said yes ('in') or one said no ('no'). Kept once answered, so the same person is
   // never asked about again for that group, and the newcomer is told how it went.
   const joins = new Map();
+  // A meeting's notes, by group: [{ by, text, at }]; and each person's ration in it, by group + '>' + id. Kept in
+  // memory only, never in the night file, and gone once nobody in the meeting has anything left to find.
+  const notes = new Map();
+  const noteBy = new Map();
   let nextJoin = 1;
   // id -> what the room keeps of someone who left tonight: their last rev, so a
   // person made again never reuses one, and whether they were NOT NOW, so they
@@ -988,6 +998,42 @@ export function createRoom({
    * one side's is never shown to the other. The first time each said it is
    * kept. False for a match that is not theirs, or is gone.
    */
+  /** Code points a note keeps: printable, and no marks that turn the text around. */
+  const plain = (s) => [...String(s ?? '')].filter((c) => {
+    const k = c.codePointAt(0);
+    return k >= 32 && k !== 127 && !(k >= 0x202a && k <= 0x202e) && !(k >= 0x2066 && k <= 0x2069);
+  }).join('').trim();
+  /** Is anyone in this meeting still looking for someone: a pair in it not finished and not found by both. */
+  const looking = (g) => [...matches.values()].some((x) => groupOf(x) === g && !x.finishedAt && !(x.found[x.a] && x.found[x.b]));
+  /** May `id` read and write meeting `g`'s notes: still in it, and someone in it still looking. */
+  const talkOpen = (g, id) => looking(g)
+    && [...matches.values()].some((x) => groupOf(x) === g && !x.finishedAt && (x.a === id || x.b === id));
+
+  /**
+   * After MEET and before everyone said FOUND: a few words to everyone in the meeting about where you are. False for
+   * a meeting that is not theirs, closed, an empty note, or one past the ration.
+   */
+  function note(viewer, matchId, text) {
+    const m = [...matches.values()].find((x) => x.id === matchId && (x.a === viewer || x.b === viewer));
+    if (!m) return false;
+    const group = groupOf(m);
+    if (!talkOpen(group, viewer)) return false;
+    const said = [...plain(text)].slice(0, NOTE_MAX).join('');
+    if (!said) return false;
+    const key = group + '>' + viewer;
+    const mine = noteBy.get(key) ?? { n: 0, at: -Infinity };
+    if (mine.n >= NOTE_EACH || now() - mine.at < NOTE_GAP_MS) return false;
+    noteBy.set(key, { n: mine.n + 1, at: now() });
+    notes.set(group, [...(notes.get(group) ?? []), { by: viewer, text: said, at: now() }].slice(-NOTES_KEPT));
+    // A meeting nobody is looking in any more keeps nothing.
+    for (const g of notes.keys()) {
+      if (looking(g)) continue;
+      notes.delete(g);
+      for (const k of noteBy.keys()) if (k.startsWith(g + '>')) noteBy.delete(k);
+    }
+    return true;
+  }
+
   function found(viewer, matchId) {
     for (const m of matches.values()) {
       if (m.id !== matchId || (m.a !== viewer && m.b !== viewer)) continue;
@@ -1256,6 +1302,12 @@ export function createRoom({
           notYetAt: m.finishNo && m.finishNo.by !== id ? m.finishNo.at : null,
         };
       }),
+      // Each meeting you are in where someone is still looking: what its people said about where they are, by group.
+      // (A block takes the blocker out of the meeting, so nobody here is someone they blocked.)
+      talk: Object.fromEntries([...new Set([...matches.values()]
+        .filter((m) => (m.a === id || m.b === id) && !m.finishedAt).map(groupOf))]
+        .filter((g) => talkOpen(g, id))
+        .map((g) => [g, { group: g, notes: (notes.get(g) ?? []).map((n) => ({ name: n.by === id ? '' : nameIn(n.by, g), text: n.text, at: n.at, mine: n.by === id })) }])),
       // Asks to let someone join a meeting you are in, yours to answer: the newcomer as a band and a pick, never a
       // name before the yes, and who they came by.
       joinAsks: [...joins.values()].filter((j) => joinOpen(j) && j.who !== id && !j.yes.includes(id) && inGroup(j.group).has(id))
@@ -1306,7 +1358,7 @@ export function createRoom({
   }
 
   return {
-    finish, admit,
+    finish, admit, note,
     join, leave, forgetPerson, forgetLeft, setProfile, arm, setInvisible, setPractice, sweepPractice, fromPhone, pick, postClip, setOpener, setNotice, setTimes, letGo,
     /** The opener as staff named it ({ track, at }), or null. */
     opener: () => (opener ? { ...opener } : null),
