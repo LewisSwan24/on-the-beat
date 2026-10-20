@@ -114,3 +114,36 @@ test("the phone finds a match's talk by its meeting, and none once it has closed
   room.found('ben', m.id);
   assert.equal(talkFor(room.viewFor('ben'), match), null);
 });
+
+test('one who joins a meeting reads only what was said after they joined, never the talk before', () => {
+  const { room, meet, wave, tick } = night();
+  const ab = meet('ana', 'ben');
+  room.note('ana', ab.id, 'red jacket, left of the bar');
+  tick(NOTE_GAP_MS);
+  room.found('ana', ab.id);
+  room.found('ben', ab.id);   // the two of them found each other: that talk is over
+  room.arm('cai', 'hi');
+  wave('cai', 'ana');
+  wave('ana', 'cai');
+  room.admit('ben', room.viewFor('ben').joinAsks[0].id, 'yes');
+  tick(NOTE_GAP_MS);
+  const [caiTalk] = talkOf(room, 'cai');
+  assert.deepEqual(caiTalk.notes, [], 'nothing from before Cai was in it');
+  const caiAna = room.viewFor('cai').matches.find((m) => m.name === 'ANA');
+  room.note('ana', caiAna.id, 'here');
+  assert.deepEqual(talkOf(room, 'cai')[0].notes.map((n) => n.text), ['here']);
+  assert.deepEqual(talkOf(room, 'ben')[0].notes.map((n) => n.text), ['here'], 'and the old talk is gone for Ben too');
+});
+
+test('a newcomer let into a meeting that is still looking does not read what was said before they came', () => {
+  const { room, meet, wave, tick } = night();
+  const ab = meet('ana', 'ben');
+  room.note('ben', ab.id, 'blue cap, by the stairs');
+  tick(NOTE_GAP_MS);
+  room.arm('cai', 'hi');
+  wave('cai', 'ana');
+  wave('ana', 'cai');
+  room.admit('ben', room.viewFor('ben').joinAsks[0].id, 'yes');
+  assert.deepEqual(talkOf(room, 'cai')[0].notes, [], 'Cai came after it');
+  assert.deepEqual(talkOf(room, 'ana')[0].notes.map((n) => n.text), ['blue cap, by the stairs'], 'Ana was there for it');
+});

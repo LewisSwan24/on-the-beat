@@ -1025,14 +1025,21 @@ export function createRoom({
     if (mine.n >= NOTE_EACH || now() - mine.at < NOTE_GAP_MS) return false;
     noteBy.set(key, { n: mine.n + 1, at: now() });
     notes.set(group, [...(notes.get(group) ?? []), { by: viewer, text: said, at: now() }].slice(-NOTES_KEPT));
-    // A meeting nobody is looking in any more keeps nothing.
+    sweepNotes();
+    return true;
+  }
+
+  /** A meeting nobody is looking in any more keeps no notes: found by everyone, or ended. */
+  function sweepNotes() {
     for (const g of notes.keys()) {
       if (looking(g)) continue;
       notes.delete(g);
       for (const k of noteBy.keys()) if (k.startsWith(g + '>')) noteBy.delete(k);
     }
-    return true;
   }
+  /** When `id` came into meeting `g`: their first pair in it still going. */
+  const cameInto = (g, id) => Math.min(...[...matches.values()]
+    .filter((x) => groupOf(x) === g && !x.finishedAt && (x.a === id || x.b === id)).map((x) => x.at));
 
   function found(viewer, matchId) {
     for (const m of matches.values()) {
@@ -1043,6 +1050,7 @@ export function createRoom({
         if (!x.found[viewer]) x.found[viewer] = now();
       }
       if (!m.found[viewer]) m.found[viewer] = now();
+      sweepNotes();
       return true;
     }
     return false;
@@ -1303,11 +1311,12 @@ export function createRoom({
         };
       }),
       // Each meeting you are in where someone is still looking: what its people said about where they are, by group.
-      // (A block takes the blocker out of the meeting, so nobody here is someone they blocked.)
+      // Only what was said since you came into it. (A block takes the blocker out of the meeting, so nobody here is
+      // someone they blocked.)
       talk: Object.fromEntries([...new Set([...matches.values()]
         .filter((m) => (m.a === id || m.b === id) && !m.finishedAt).map(groupOf))]
         .filter((g) => talkOpen(g, id))
-        .map((g) => [g, { group: g, notes: (notes.get(g) ?? []).map((n) => ({ name: n.by === id ? '' : nameIn(n.by, g), text: n.text, at: n.at, mine: n.by === id })) }])),
+        .map((g) => [g, { group: g, notes: (notes.get(g) ?? []).filter((n) => n.at >= cameInto(g, id)).map((n) => ({ name: n.by === id ? '' : nameIn(n.by, g), text: n.text, at: n.at, mine: n.by === id })) }])),
       // Asks to let someone join a meeting you are in, yours to answer: the newcomer as a band and a pick, never a
       // name before the yes, and who they came by.
       joinAsks: [...joins.values()].filter((j) => joinOpen(j) && j.who !== id && !j.yes.includes(id) && inGroup(j.group).has(id))
