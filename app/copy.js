@@ -126,6 +126,18 @@ export const MEET = {
   held: 'no wristband? hold this screen up: theirs shows the same number.',
 };
 
+/** Between MEET and FOUND: telling each other where you are, and holding the number up. */
+export const TALK = {
+  title: 'Where are you?',
+  sub: 'Only the people you met see this, and it goes once you have found each other.',
+  ready: ["I'm at the spot", "I'm by the stage", "I'm at the bar", "Can't see you: phone up", 'Five minutes late'],
+  placeholder: 'say where you are',
+  send: 'SEND',
+  you: 'you',
+  holdUp: 'HOLD IT UP',
+  holdUpSub: 'tap anywhere to put it down',
+};
+
 /** Turning the band off and on, said where the band is talked about: the sheet, and How this works. */
 export const BAND_OFF = {
   line: 'turned off. its power button turns it on.',
@@ -209,7 +221,7 @@ export const GUIDE = {
   parts: [['start', 'Turning it on, and Wi-Fi'], ['pair', 'Pairing'], ['buttons', 'Every screen, button by button'], ['lights', 'Lights and sounds'], ['meeting', 'When you meet'], ['trouble', 'When something is wrong']],
   practice: {
     sub: 'a minute with the real buttons. nobody can see you while you practise.',
-    later: 'later', skip: 'skip this one', gotIt: 'GOT IT', done: 'DONE', away: "we'll check this once your wristband is back.",
+    leave: 'SKIP PRACTICE', skip: 'skip this one', gotIt: 'GOT IT', done: 'DONE', away: "we'll check this once your wristband is back.",
     steps: {
       wake: { title: 'Wake it', do: 'press FACE.', back: 'it lights for six seconds.', yes: 'IT LIT UP', no: 'NOT YET', notYet: 'check it is on: press POWER. or find it with' },
       card: { title: 'Change your card', do: 'press SIDE: it shows your card. press again for the next. then stop.', back: 'three seconds later it sends, and says SET.' },

@@ -64,7 +64,10 @@ export function Practice({ view, onEnd, onTest }) {
   const checked = step === 'card' || step === 'dark' || step === 'back';
   return (
     <div className="scr guide">
-      <Back onClick={() => onEnd('back')} />
+      <div className="guide-top">
+        <Back onClick={() => onEnd('back')} />
+        <button type="button" className="guide-leave" onClick={() => onEnd('later')}>{words.leave}</button>
+      </div>
       <p className="small">{words.sub}</p>
       <h1 className="h1">{(i + 1) + '. ' + s.title}</h1>
       <BandDrawing lit={BUTTON_OF[step]} hue={view?.me?.armed || 'hi'} face={FACE_OF[step]} />
@@ -80,10 +83,7 @@ export function Practice({ view, onEnd, onTest }) {
       )}
       {checked && !live && <><p className="small">{words.away}</p><Cta hue="hi" onClick={next}>{words.gotIt}</Cta></>}
       {step === 'meet' && <Cta hue="hi" onClick={next}>{words.gotIt}</Cta>}
-      <div className="guide-foot">
-        {step !== 'meet' ? <button type="button" className="link" onClick={next}>{words.skip}</button> : <span />}
-        <button type="button" className="link" onClick={() => onEnd('later')}>{words.later}</button>
-      </div>
+      {step !== 'meet' && <div className="guide-foot"><button type="button" className="link" onClick={next}>{words.skip}</button></div>}
     </div>
   );
 }

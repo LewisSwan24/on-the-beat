@@ -673,6 +673,22 @@ test('a wristband unpairs itself: new letters on the wrist, and its person\'s ph
   band.ws.close();
 });
 
+test('a note about where you are reaches the one you met, through the relay', async () => {
+  const ana = await phone('room-note');
+  const ben = await phone('room-note');
+  ana.send({ t: 'arm', intent: 'hi' });
+  ben.send({ t: 'arm', intent: 'hi' });
+  const seen = await ana.until((v) => v.near.length === 1);
+  ana.send({ t: 'wave', handle: seen.near[0].handle });
+  const toBen = await ben.until((v) => v.near[0]?.wavedAtYou);
+  ben.send({ t: 'wave', handle: toBen.near[0].handle });
+  const [match] = (await ana.until((v) => v.matches.length === 1)).matches;
+  ana.send({ t: 'note', match: match.id, text: 'by the stage' });
+  const heard = await ben.until((v) => Object.values(v.talk ?? {})[0]?.notes.length === 1);
+  const [note] = Object.values(heard.talk)[0].notes;
+  assert.deepEqual([note.text, note.mine], ['by the stage', false]);
+});
+
 test("LET'S FINISH from the wrist: the band asks by the meeting's number, and the other's band answers", async () => {
   const ana = await phone('band-room-finish');
   const ben = await phone('band-room-finish');

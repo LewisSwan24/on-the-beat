@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FINISH, HUE, JOIN, MEET, hueVars, matchName, spotShort } from '../copy.js';
+import { FINISH, HUE, JOIN, MEET, TALK, hueVars, matchName, spotShort } from '../copy.js';
 import { alsoLine, finishRows } from '../lib/group.js';
 import { reducedMotion } from '../lib/device.js';
 import { scoreText } from '../lib/guess.js';
@@ -7,6 +7,7 @@ import { FOUND_MINE, foundBoth, metCount, metItem } from '../lib/found.js';
 import { PHASES, hhmm, phaseOf, timesOf } from '../lib/phase.js';
 import { tonightKey } from '../lib/store.js';
 import { Back, Cta, Ghost, Icon, More, Pill } from '../ui.jsx';
+import { HoldUp, Talk } from './Talk.jsx';
 
 /** S8 — you both said yes. Now a name, and where to meet. */
 export function Match({ match, number, held, onMyWay, onNotThis, onPick }) {
@@ -91,9 +92,10 @@ function SaveCard({ onSave, label }) {
   );
 }
 
-export function Mate({ match, number, held, onBack, onMore, onFound, onKeep, onTonight, onSave }) {
+export function Mate({ match, number, held, talk, onBack, onMore, onFound, onKeep, onTonight, onSave, onNote }) {
   const name = matchName(match);
   const hue = HUE[match.intent] || HUE.hi;
+  const [up, setUp] = useState(false);
   return (
     <div className="scr">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -112,8 +114,10 @@ export function Mate({ match, number, held, onBack, onMore, onFound, onKeep, onT
         <div className="lede" style={{ marginBottom: 14 }}>
           {MEET.look} <span style={{ font: 'var(--display-l)', color: hue.c }}>{number}</span>
           {held ? <div className="small" style={{ marginTop: 6 }}>{MEET.held}</div> : null}
+          <button type="button" className="micro holdup-open" style={{ color: hue.c }} onClick={() => setUp(true)}>{TALK.holdUp}</button>
         </div>
       ) : null}
+      {up && number ? <HoldUp number={number} hue={match.intent} onClose={() => setUp(false)} /> : null}
       {match.foundAt ? (
         <div className="small tnum" style={{ marginBottom: 14, color: 'var(--ok)' }}>{foundBoth(match.foundAt)}</div>
       ) : match.found ? (
@@ -121,6 +125,7 @@ export function Mate({ match, number, held, onBack, onMore, onFound, onKeep, onT
       ) : (
         <div style={{ marginBottom: 14 }}><Cta hue={match.intent} onClick={onFound}>WE FOUND EACH OTHER</Cta></div>
       )}
+      {talk ? <Talk talk={talk} hue={match.intent} onSend={onNote} /> : null}
       <div className="keep">
         <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span className="h2">Keep after tonight</span>

@@ -30,6 +30,8 @@ import { PHOTO_MAX } from './lib/pose.js';
 import { Camera, Floor } from './screens/Dance.jsx';
 import { Finish, Leaving, Match, Mate, Quiet, Thanks, Tonight } from './screens/Met.jsx';
 import { Cta, Sheet } from './ui.jsx';
+import { talkFor } from './lib/talk.js';
+import { firstScreen } from './lib/onboard.js';
 
 const ONBOARDING = new Set(['splash', 'promises', 'venue', 'name']);
 const EMPTY = { me: null, near: [], wall: [], floor: [], teams: [], quiz: null, matches: [] };
@@ -104,7 +106,9 @@ export default function App() {
   const night = store.tonight(s);
   const listed = night?.show || null;
 
-  const [screen, setScreen] = useState('splash');
+  // Back the same night, already in: straight to it, no splash.
+  const [screen, setScreen] = useState(() => firstScreen(s, night));
+  const justIn = useRef(false);   // came in through the promises this time: venue goes on to pairing
   const [stack, setStack] = useState([]);
   const [shows, setShows] = useState(null);
   const [view, setView] = useState(EMPTY);
@@ -887,7 +891,10 @@ export default function App() {
   const chooseShow = (chosen) => {
     update((prev) => store.startNight(prev, chosenRow(chosen)));
     setStack([]);
-    setScreen(s.name ? 'home' : 'name');
+    // Someone who just came in through the promises goes on to pairing, as the name page used to send them.
+    const fresh = justIn.current;
+    justIn.current = false;
+    setScreen(!s.name ? 'name' : fresh && !paired ? 'pair' : 'home');
   };
   // NOT HERE? ADD IT: the room is joined at once, as a typed one, and its card goes as the first fill once the room
   // has answered (below). The phone's place goes with it only rounded, only if it was found lately, and the card waits
@@ -969,7 +976,7 @@ export default function App() {
   let body = null;
   switch (screen) {
     case 'splash': body = <Splash onNext={afterSplash} />; break;
-    case 'promises': body = <Promises onIn={() => { update((p) => ({ ...p, promisesSeen: true })); setScreen('venue'); }} onHow={howSheet} />; break;
+    case 'promises': body = <Promises name={s.name} onIn={(name) => { update((p) => ({ ...p, promisesSeen: true, name })); justIn.current = true; setScreen('venue'); }} onHow={howSheet} />; break;
     case 'venue':
       body = <Venue shows={shows || []} loading={shows === null} chosen={night && !night.left && !nearbyAsked ? show : null} onChoose={chooseShow}
         onBack={night?.show && !night.left && s.name ? () => setScreen('home') : null}
@@ -1036,6 +1043,7 @@ export default function App() {
     case 'mate':
       body = match ? (
         <Mate match={match} number={meetingOn(match, now.getTime()) ? match.number : null} held={!paired}
+          talk={talkFor(view, match)} onNote={(text) => net.current?.send({ t: 'note', match: match.id, text })}
           onBack={back} onFound={() => sayFound(match)} onKeep={(on) => keep(match, on)} onTonight={() => go('tonight')}
           onSave={() => saveContact(tonightCard(match))}
           onMore={() => personSheet(match.id, matchName(match))} />

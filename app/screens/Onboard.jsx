@@ -23,9 +23,12 @@ export function Splash({ onNext }) {
 }
 
 /** S1 — the four promises, before anything else. */
-export function Promises({ onIn, onHow }) {
+export function Promises({ name, onIn, onHow }) {
+  // The first name rides on the same page, so the way in is one page, not two.
+  const [v, setV] = useState(name || '');
+  const ok = v.trim().length > 0;
   return (
-    <div className="scr tall">
+    <form className="scr tall" onSubmit={(e) => { e.preventDefault(); if (ok) onIn(v.trim()); }}>
       <div className="label" style={{ marginBottom: 12 }}>before we start</div>
       <h1 className="h1" style={{ marginBottom: 26 }}>Four promises, then we're in.</h1>
       <div className="promises">
@@ -39,11 +42,17 @@ export function Promises({ onIn, onHow }) {
           </div>
         ))}
       </div>
+      <div className="field" style={{ '--c': 'var(--hi)', marginTop: 22, borderColor: ok ? 'var(--hi)' : undefined }}>
+        <Icon name="badge" size={20} color={ok ? 'var(--hi)' : 'var(--text-3)'} />
+        <input value={v} onChange={(e) => setV(e.target.value.slice(0, 24))} placeholder="your first name" aria-label="Your first name"
+          autoComplete="given-name" autoCapitalize="words" enterKeyHint="go" />
+      </div>
+      <span className="small" style={{ marginTop: 8 }}>what a match calls you. nobody sees it until you both say yes.</span>
       <div className="foot" style={{ paddingTop: 0 }}>
-        <Cta hue="hi" onClick={onIn}>I'M IN</Cta>
+        <button type="submit" className="cta" style={{ '--c': 'var(--hi)', '--g': 'var(--hi-g)' }} disabled={!ok}>I'M IN</button>
         <Ghost onClick={onHow}>How this works</Ghost>
       </div>
-    </div>
+    </form>
   );
 }
 
