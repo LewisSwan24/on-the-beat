@@ -96,6 +96,9 @@ the relay — the act, the times and how many people are playing.
 | [docs/abuse-resistance.md](docs/abuse-resistance.md) | every guard against misuse, each with its test |
 | [docs/not-done.md](docs/not-done.md) | known limits and capacity numbers |
 | [docs/show-night.md](docs/show-night.md), [docs/rehearsal-night.md](docs/rehearsal-night.md) | running a real night |
+| [docs/a2-poster.png](docs/a2-poster.png) | the team's A2 poster: research, both testing rounds and the theory behind the design |
+| [Design Process Overview](https://github.com/LewisSwan24/on-the-beat/wiki/Design-Process-Overview) (wiki) | how the prototype came to be, and what testing and the trade show changed |
+| [Ethical Considerations](https://github.com/LewisSwan24/on-the-beat/wiki/Ethical-Considerations) (wiki) | the risks we found, what the design does about each, and what is still open |
 
 ## License
 
