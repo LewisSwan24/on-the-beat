@@ -1,0 +1,125 @@
+# ON THE BEAT — putting main (or a v* tag) on the one Fly machine, by hand.
+#
+# Never on a push: a deploy restarts the only machine, and every phone and
+# wristband in the room reconnects. The night carries on (fly.toml's volume),
+# but a person picks the moment, never a merge. So:
+#
+#   1. Actions → Deploy → Run workflow, on main or on a v* tag.
+#   2. gate      the commit must be main's or a v* tag's, CI must have
+#                passed on that exact commit, and the `production`
+#                environment must have a required reviewer.
+#   3. deploy    waits in the `production` environment until its reviewer
+#                approves, then the same command as docs/running.md:
+#                `flyctl deploy --ha=false --remote-only`. Then: still
+#                exactly one machine, and `npm run preflight` against
+#                https://on-the-beat.fly.dev.
+#
+# To go back: run this again on the last good tag or commit of main.
+# Set up once, by hand: Settings → Environments → New environment
+# `production`, with Required reviewers (you) and Deployment branches and
+# tags limited to `main` and the tag rule `v*`; then, in that environment,
+# the secret FLY_API_TOKEN: `flyctl tokens create deploy -a on-the-beat`,
+# made in your own terminal. A deploy token can deploy this app and nothing
+# else.
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  FLY_APP: on-the-beat
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: main or a v* tag only
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/main|refs/tags/v*) echo "deploying $GITHUB_REF at $GITHUB_SHA" ;;
+            *) echo "::error::Deploy runs from main or a v* tag, not $GITHUB_REF"; exit 1 ;;
+          esac
+      - name: CI passed on this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&status=success&per_page=1" --jq '.total_count')
+          if [ "$passed" = 0 ]; then
+            echo "::error::No passing CI run for $GITHUB_SHA. Wait for CI (or fix it), then run Deploy again."
+            exit 1
+          fi
+          echo "CI passed on $GITHUB_SHA"
+      # A job naming an environment that does not exist yet makes it, with no rules at all, and the deploy would go
+      # straight through. So the reviewer is required to be set up first, by hand (docs/running.md).
+      - name: production asks a person before it deploys
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rules=$(gh api "repos/$GITHUB_REPOSITORY/environments/production" --jq '[.protection_rules[]?.type] | join(",")' 2>/dev/null || true)
+          case ",$rules," in
+            *,required_reviewers,*) echo "production rules: $rules" ;;
+            *) echo "::error::The production environment has no required reviewer (rules: '${rules:-none}'). Settings → Environments → production → Required reviewers, then run Deploy again."; exit 1 ;;
+          esac
+
+  deploy:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://on-the-beat.fly.dev
+    steps:
+      - uses: actions/checkout@v5
+      - name: The token is there
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::FLY_API_TOKEN is not set. Make one with: flyctl tokens create deploy -a $FLY_APP"
+            exit 1
+          fi
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: What is running now (to come back to, if this one is wrong)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl image show -a "$FLY_APP" || true
+      - name: flyctl deploy --ha=false --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy -a "$FLY_APP" --ha=false --remote-only --wait-timeout 300
+      - name: Still exactly one machine
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          count=$(flyctl machines list -a "$FLY_APP" --json | jq length)
+          echo "machines: $count"
+          if [ "$count" != 1 ]; then
+            echo "::error::$count machines: every room lives in one machine's memory. Run: flyctl scale count 1 -a $FLY_APP"
+            exit 1
+          fi
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: preflight against https://on-the-beat.fly.dev
+        run: |
+          for try in 1 2 3 4 5; do
+            npm run preflight && exit 0
+            echo "preflight failed (try $try of 5); the machine may still be starting"
+            sleep 15
+          done
+          echo "::error::preflight still fails after the deploy. To go back: run Deploy on the last good tag or commit of main."
+          exit 1
