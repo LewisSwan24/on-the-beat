@@ -2,22 +2,22 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Every report a phone makes reaches the venue's own team within a second, on a staff page at `/staff` signed in with the venue's passcode: when, which part of the room then and now, how often that person was reported tonight and by how many people, and the reporter's own few words — never a name, a contact, a handle or who reported.
+**Goal:** Every report a phone makes reaches the venue's own team within a second, on a staff page at `/staff` signed in with the venue's passcode: when, which part of the room then and now, how often that person was reported tonight and by how many people, and the reporter's own few words, but never a name, a contact, a handle or who reported.
 
 **Architecture:** The room keeps each report with both sides' bands and the words, and says what staff may see (`staffReports(tagOf)`), marks one handled (`markHandled()`) and lets a night's go (`forgetReports()`) (`relay/room.js`). A passcode is kept only as a scrypt entry (`relay/staff.js`), made by `npm run staff-code` (`scripts/staff-code.mjs`) and given to the relay as `STAFF_CODES`. A socket can sign in as staff with the passcode or tonight's token; the relay then pushes the venue's list with every room push and takes marks, holds the room while staff are in it and the reports till 06:00, and signs staff out at 06:00 (`relay/server.js`). The page is a second Vite entry (`app/staff.html`, `app/staff/`), served at `/staff`, never kept by the offline shell (`app/public/sw.js`). The phone's Report opens a sheet with an optional few words (`app/App.jsx`).
 
 **Tech Stack:** Node 22+ (`node --test`, `ws` 8.21, `node:crypto` scrypt/HMAC), React 19, Vite 8.3 (rolldown: `build.rolldownOptions`).
 
-**Spec:** `docs/superpowers/specs/2026-09-28-staff-reports-design.md` (decided with the owner question by question on 28 Sep 2026, reviewed and approved the same day, commit `8b6c869`). Its section *Amended while planning* lists seven changes this plan makes to it and why; read the spec, then that section, before any task.
+**Spec:** `docs/superpowers/specs/2026-09-28-staff-reports-design.md` (decided by us question by question on 28 Sep 2026, reviewed and approved the same day, commit `8b6c869`). Its section *Amended while planning* lists seven changes this plan makes to it and why; read the spec, then that section, before any task.
 
 This plan was written before the build, from the code at `8b6c869`. Where the build finds a block here wrong, the block is corrected in this file in the same commit as the fix, so the plan stays what was built.
 
 ## Global Constraints
 
-- Artefacts are English: code, comments, commit messages, README, test names, the staff page's words. Talk to the owner in Chinese.
+- Artefacts are English: code, comments, commit messages, README, test names, the staff page's words. Talk to us in Chinese.
 - **Promise 2 holds for staff** (spec §6): nothing sent to a staff socket carries a name, a contact, a photo, a handle, a phone's internal id (`me`), or who reported. The person reported is only a staff tag, `P-` and four upper-case hex digits of HMAC-SHA-256 under a key the relay draws at start, over `venue + '|' + id`.
 - **Promise 1 holds for staff**: a place is only ever a band, one of `BANDS` (`in this room`, `near the bar`, `by the stage`, `somewhere out the back`), or `left`.
-- **Passcodes:** never in the repository, `relay/shows.json`, `/api/shows`, a log, the image, or any test but a test passcode (`test-passcode-1`, `test-passcode-2`, `browser-test-passcode`). The real one is the owner's: he makes it with `npm run staff-code` and sets `STAFF_CODES` on Fly himself. Never type, print or ask for his.
+- **Passcodes:** never in the repository, `relay/shows.json`, `/api/shows`, a log, the image, or any test but a test passcode (`test-passcode-1`, `test-passcode-2`, `browser-test-passcode`). The real one is ours: we make it with `npm run staff-code` and set `STAFF_CODES` on Fly ourselves. Never type, print or ask for ours.
 - **Entry format:** `scrypt$16384$8$1$<32 hex salt>$<64 hex hash>`, scrypt N 16384, r 8, p 1, 32-byte key, passcode `normalize('NFC')`d; compared with `timingSafeEqual`.
 - **Constants** (`relay/room.js`): `REPORTS_MAX` 1000 (unchanged), `WHY_MAX` 200. (`relay/server.js`): `STAFF_TOKENS_MAX` 1000, `CODE_MAX` 200; the pairing counters (`SOCKET_TRIES` 5, `ADDRESS_TRIES` 20 per `TRIES_MS` 60 s) count every sign-in by passcode.
 - **Frames:** in `{t:'staff', venue, code}` or `{t:'staff', venue, token}`; `{t:'handled', id, on}` with `on` a boolean. Out `{t:'staff', ok:true, venue, token}`, `{t:'staff', ok:false, why}` with `why` one of `no staff page`, `wrong code`, `too many tries`, `expired`, `bad staff`, `too many venues`; `{t:'reports', reports}`, each `{ id, at, about, times, people, bandNow, bandThen, fromThen, why, handledAt }`. A staff socket closed at 06:00 closes with 4004 `expired`.
@@ -27,11 +27,11 @@ This plan was written before the build, from the code at `8b6c869`. Where the bu
 - `npm test` builds first (the relay serves `dist/`). A relay test file alone needs no build (its relays serve a temp `dist/`); `tests/staff-page.test.js` reads the real `dist/`, so build first and again after restoring a mutation there.
 - Windows host: the Bash tool is Git Bash. Never write JavaScript holding backticks, quotes or `${}` through a Bash heredoc: write it with the editor. A command that holds `git commit` and another program's `-n` is refused by a hook as `--no-verify`: run them separately.
 - Never more than ten background tasks at once. Work directly; this plan needs no fan-out.
-- Deploy to Fly whenever ready unless the owner has said a demo is on. Commit messages end with the attribution trailer the session's system reminder gives (today: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`).
+- Deploy to Fly whenever ready unless we have said a demo is on. Commit messages end with the attribution trailer the session's system reminder gives (today: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`).
 
 ## Four procedures used throughout
 
-**P1 — Mutation check.** Every task that adds a guard lists mutations as JSON: break one guard, run one test file, and exactly the listed tests go red (a listed name is a prefix of the test's). Save this runner outside the repository (the session's scratchpad, as `mutate.mjs`) and run it from the repository root: `node <scratch>/mutate.mjs <scratch>/staff-task-N.json`. It applies each edit (the `from` text must occur exactly once; keep `$` out of `to`, which `String.replace` would read), runs the test file, restores the file byte for byte, runs it again, and prints `ALL MUTATIONS HELD` only if every red set was exactly the listed one and every restore came back green. The lists below are predictions; each is measured at its task, and a list that measures differently is corrected here with the reason (an extra red that is legitimate is kept in the list and said so in the commit).
+**P1: Mutation check.** Every task that adds a guard lists mutations as JSON: break one guard, run one test file, and exactly the listed tests go red (a listed name is a prefix of the test's). Save this runner outside the repository (the session's scratchpad, as `mutate.mjs`) and run it from the repository root: `node <scratch>/mutate.mjs <scratch>/staff-task-N.json`. It applies each edit (the `from` text must occur exactly once; keep `$` out of `to`, which `String.replace` would read), runs the test file, restores the file byte for byte, runs it again, and prints `ALL MUTATIONS HELD` only if every red set was exactly the listed one and every restore came back green. The lists below are predictions; each is measured at its task, and a list that measures differently is corrected here with the reason (an extra red that is legitimate is kept in the list and said so in the commit).
 
 ````js
 // Mutation check (plan procedure P1): break one guard, run one test file,
@@ -71,7 +71,7 @@ for (const m of list) {
 console.log(allOk ? 'ALL MUTATIONS HELD' : 'SOME MUTATION DID NOT HOLD');
 ````
 
-**P2 — A local relay with a staff page.** Make a test entry and start the relay with it, in the background (Bash `run_in_background`), from the repository root:
+**P2: A local relay with a staff page.** Make a test entry and start the relay with it, in the background (Bash `run_in_background`), from the repository root:
 
 ```bash
 export STAFF_CODES="$(node -e "import('./relay/staff.js').then(async (s) => console.log(JSON.stringify({ 'roundhouse-bruno-mars': await s.makeEntry('browser-test-passcode') })))")"
@@ -98,7 +98,7 @@ ws.onopen = () => {
 
 Run it in the background with `node <scratch>/ben.mjs`, and stop it when the check ends.
 
-**P4 — The offline shell in headless Chrome.** The browser pane will not register a service worker, so this runs Chrome headless with a throwaway profile, over its debugging protocol with Node's own `WebSocket`, against the P2 relay: `node <scratch>/cdp-sw.mjs`. It prints where the worker registered, whether `/staff` is controlled, what `otb-shell-v2` holds and the title of `/` and `/staff` offline.
+**P4: The offline shell in headless Chrome.** The browser pane will not register a service worker, so this runs Chrome headless with a throwaway profile, over its debugging protocol with Node's own `WebSocket`, against the P2 relay: `node <scratch>/cdp-sw.mjs`. It prints where the worker registered, whether `/staff` is controlled, what `otb-shell-v2` holds and the title of `/` and `/staff` offline.
 
 ```js
 // Headless Chrome, throwaway profile: does the offline shell keep the app, and never the staff page?
@@ -168,7 +168,7 @@ try { await main(); } finally {
 
 Measured at Task 5: `registered: …/sw.js`, `/staff` controlled, `otb-shell-v2` `/` is `<title>On The Beat</title>`, offline `/` is `On The Beat`, offline `/staff` is Chrome's error page.
 
-**P3 — Deploy.** `flyctl deploy --ha=false --remote-only` from the repository root with the flyctl at `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Fly-io.flyctl_Microsoft.Winget.Source_8wekyb3d8bbwe\flyctl.exe`; then `flyctl machine list -a on-the-beat` shows one machine. A deploy restarts the relay and empties every room.
+**P3: Deploy.** `flyctl deploy --ha=false --remote-only` from the repository root with the flyctl at `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Fly-io.flyctl_Microsoft.Winget.Source_8wekyb3d8bbwe\flyctl.exe`; then `flyctl machine list -a on-the-beat` shows one machine. A deploy restarts the relay and empties every room.
 
 ---
 
@@ -289,7 +289,7 @@ In `tests/markers.test.js`, the last line of the test `'a match keeps the area i
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test tests/room.test.js tests/markers.test.js`
-Expected: FAIL — the five new or rewritten room tests (`r1.id` undefined, `room.staffReports is not a function`, `room.markHandled is not a function`, `room.hasReports is not a function`, `room.forgetReports is not a function`) and the markers test (`aboutBand` undefined).
+Expected: FAIL in the five new or rewritten room tests (`r1.id` undefined, `room.staffReports is not a function`, `room.markHandled is not a function`, `room.hasReports is not a function`, `room.forgetReports is not a function`) and the markers test (`aboutBand` undefined).
 
 - [ ] **Step 3: Implement in `relay/room.js`**
 
@@ -426,7 +426,7 @@ with:
 Run: `node --test tests/room.test.js tests/markers.test.js`
 Expected: PASS, every test.
 
-- [ ] **Step 5: Mutation check (P1)** — `staff-task-1.json`, test file `tests/room.test.js`:
+- [ ] **Step 5: Mutation check (P1)**: `staff-task-1.json`, test file `tests/room.test.js`:
 
 ```json
 [
@@ -458,7 +458,7 @@ Expected: `ALL MUTATIONS HELD`.
 
 - [ ] **Step 6: Whole suite, commit, push**
 
-Run: `npm test` — expected: every test passes.
+Run: `npm test`. Expected: every test passes.
 
 ```bash
 git add relay/room.js tests/room.test.js tests/markers.test.js
@@ -480,7 +480,7 @@ git push origin main
 - Produces: `makeEntry(code: string, salt?: string)` → `Promise<string>`; `checkCode(entry: unknown, code: string)` → `Promise<boolean>`; `isEntry(entry: unknown)` → boolean. `npm run staff-code` prints one line `"<venue>": "<entry>"` on stdout.
 - Consumes: `venueKey`, `loadShows` from `relay/server.js` (existing exports).
 
-- [ ] **Step 1: Write the failing tests** — `tests/staff-code.test.js`:
+- [ ] **Step 1: Write the failing tests**: `tests/staff-code.test.js`:
 
 ```js
 // ON THE BEAT — a staff passcode becomes an entry the relay checks, and the script that makes one
@@ -579,7 +579,7 @@ test('two passcodes that differ, one too short, or no venue make nothing', async
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test tests/staff-code.test.js`
-Expected: FAIL — `Cannot find module '…/relay/staff.js'`.
+Expected: FAIL with `Cannot find module '…/relay/staff.js'`.
 
 - [ ] **Step 3: Write `relay/staff.js`**
 
@@ -693,7 +693,7 @@ In `package.json`, after `"icons": "node scripts/icons.mjs"`, the scripts gain:
 Run: `node --test tests/staff-code.test.js`
 Expected: PASS, five tests.
 
-- [ ] **Step 6: Mutation check (P1)** — `staff-task-2.json`:
+- [ ] **Step 6: Mutation check (P1)**: `staff-task-2.json`:
 
 ```json
 [
@@ -716,7 +716,7 @@ Measured: all four held. The last one survived the first build, whose tests only
 
 - [ ] **Step 7: Whole suite, commit, push**
 
-Run: `npm test` — expected: every test passes.
+Run: `npm test`. Expected: every test passes.
 
 ```bash
 git add relay/staff.js scripts/staff-code.mjs package.json tests/staff-code.test.js
@@ -734,9 +734,9 @@ git push origin main
 
 **Interfaces:**
 - Consumes: `room.staffReports(tagOf)` (Task 1); `checkCode`, `isEntry` (Task 2).
-- Produces: `createRelay({ …, staffCodes })` — `staffCodes` a JSON string, default `process.env.STAFF_CODES`; throws at start on a bad one. `readStaffCodes(text)` → `Map(venue -> entry)`. In the relay: `r.staff` (Set of signed-in staff sockets on each room record), `ws.staff = { key, night }`, `reportsTo(r, sockets = r.staff)`, `tagOf(key, id)`.
+- Produces: `createRelay({ …, staffCodes })`, with `staffCodes` a JSON string, default `process.env.STAFF_CODES`; throws at start on a bad one. `readStaffCodes(text)` → `Map(venue -> entry)`. In the relay: `r.staff` (Set of signed-in staff sockets on each room record), `ws.staff = { key, night }`, `reportsTo(r, sockets = r.staff)`, `tagOf(key, id)`.
 
-- [ ] **Step 1: Write the failing tests** — `tests/staff.test.js`:
+- [ ] **Step 1: Write the failing tests**: `tests/staff.test.js`:
 
 ```js
 // ON THE BEAT — the staff page's side of the relay, over real sockets
@@ -960,17 +960,17 @@ test('STAFF_CODES is read whole, or the relay does not start — and a bad entry
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test tests/staff.test.js`
-Expected: FAIL — every test: the `staff` sign-ins get no answer (`staff timed out`), and `createRelay` starts with a bad `STAFF_CODES`.
+Expected: FAIL in every test: the `staff` sign-ins get no answer (`staff timed out`), and `createRelay` starts with a bad `STAFF_CODES`.
 
 - [ ] **Step 3: Implement in `relay/server.js`**
 
-Imports — after `import { nightOf } from './night.js';` add:
+Imports: after `import { nightOf } from './night.js';` add:
 
 ```js
 import { checkCode, isEntry } from './staff.js';
 ```
 
-Constants — after `const FRAMES_A_SECOND = 20; …` add:
+Constants: after `const FRAMES_A_SECOND = 20; …` add:
 
 ```js
 const STAFF_TOKENS_MAX = 1000;        // staff sign-ins kept for tonight; past it the oldest is forgotten
@@ -1174,7 +1174,7 @@ and its comment's first line `// A venue with nobody in it, nobody in its grace 
 Run: `node --test tests/staff.test.js tests/server.test.js`
 Expected: PASS, every test.
 
-- [ ] **Step 5: Mutation check (P1)** — `staff-task-3.json`, test file `tests/staff.test.js`:
+- [ ] **Step 5: Mutation check (P1)**: `staff-task-3.json`, test file `tests/staff.test.js`:
 
 ```json
 [
@@ -1211,7 +1211,7 @@ Expected: `ALL MUTATIONS HELD`.
 
 - [ ] **Step 6: Whole suite, commit, push**
 
-Run: `npm test` — expected: every test passes.
+Run: `npm test`. Expected: every test passes.
 
 ```bash
 git add relay/server.js tests/staff.test.js
@@ -1231,7 +1231,7 @@ git push origin main
 - Consumes: `room.markHandled`, `room.forgetReports`, `room.hasReports` (Task 1); `reportsTo`, `tokens`, `ws.staff`, `r.staff`, `staffEntries` (Task 3).
 - Produces: `{t:'handled', id, on}` from staff; `{t:'reports', …}` on every change; a staff socket closed 4004 at 06:00.
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/staff.test.js`:
+- [ ] **Step 1: Write the failing tests**: append to `tests/staff.test.js`:
 
 ```js
 test('a report made after sign-in reaches staff within a second: a tag, how often, both bands, the words — never who', async () => {
@@ -1355,7 +1355,7 @@ test('the relay\'s log says a report came, and never what it says or who made it
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test tests/staff.test.js`
-Expected: FAIL — the six new tests (no list after a report, no mark, the room let go with its reports, no sign-out at 06:00, the log line carries the report); the Task 3 tests still pass.
+Expected: FAIL in the six new tests (no list after a report, no mark, the room let go with its reports, no sign-out at 06:00, the log line carries the report); the Task 3 tests still pass.
 
 - [ ] **Step 3: Implement in `relay/server.js`**
 
@@ -1438,7 +1438,7 @@ In `expire()`, before the last line `for (const r of [...rooms.values()]) gcRoom
 Run: `node --test tests/staff.test.js tests/server.test.js tests/room.test.js`
 Expected: PASS, every test.
 
-- [ ] **Step 5: Mutation check (P1)** — `staff-task-4.json`, test file `tests/staff.test.js`:
+- [ ] **Step 5: Mutation check (P1)**: `staff-task-4.json`, test file `tests/staff.test.js`:
 
 ```json
 [
@@ -1471,7 +1471,7 @@ Expected: `ALL MUTATIONS HELD`.
 
 - [ ] **Step 6: Whole suite, commit, push**
 
-Run: `npm test` — expected: every test passes.
+Run: `npm test`. Expected: every test passes.
 
 ```bash
 git add relay/server.js tests/staff.test.js
@@ -1590,7 +1590,7 @@ test('the relay serves the staff page at /staff, and the app everywhere else', a
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test tests/staff-page.test.js tests/staff.test.js`
-Expected: FAIL — `Cannot find module '…/app/staff/list.js'`, and `/staff` served the app's `index.html`.
+Expected: FAIL with `Cannot find module '…/app/staff/list.js'`, and `/staff` served the app's `index.html`.
 
 - [ ] **Step 3: Write `app/staff/list.js`**
 
@@ -2074,7 +2074,7 @@ with
 Run: `npm run build` and check it prints no warning about `rolldownOptions`; `dist/staff.html` exists. Then `node --test tests/staff-page.test.js tests/staff.test.js`.
 Expected: PASS, every test.
 
-- [ ] **Step 9: Mutation check (P1)** — `staff-task-5.json` (build before the runner for the `sw.js` item: the test reads the source, not `dist/`, so no rebuild is needed after it):
+- [ ] **Step 9: Mutation check (P1)**: `staff-task-5.json` (build before the runner for the `sw.js` item: the test reads the source, not `dist/`, so no rebuild is needed after it):
 
 ```json
 [
@@ -2095,7 +2095,7 @@ Expected: PASS, every test.
 
 Expected: `ALL MUTATIONS HELD`.
 
-- [ ] **Step 10: Look at it (P2)** — start the local relay with a test entry (P2), open `http://localhost:8790/staff` in the browser pane at 390×844 and at 1280×800:
+- [ ] **Step 10: Look at it (P2)**: start the local relay with a test entry (P2), open `http://localhost:8790/staff` in the browser pane at 390×844 and at 1280×800:
   - the sign-in lists tonight's shows; a wrong passcode says *That passcode is not right.*; `browser-test-passcode` signs in and shows *No reports tonight.* and *Tap anywhere to hear new reports.*;
   - with `ben.mjs` running and a phone seeded in another tab, *Report* on Ben's row (it sends at once until Task 6) appears within a second, the header flashes, the tab title reads `(1) Staff · The Roundhouse, Camden · BRUNO MARS`; after a click on the page `window` has a running `AudioContext` (the chime's precondition);
   - a second tab signed in shows the same list, and *HANDLED* in one dims the report in both; *REOPEN* brings it back;
@@ -2107,7 +2107,7 @@ Expected: `ALL MUTATIONS HELD`.
 
 - [ ] **Step 11: Whole suite, commit, push**
 
-Run: `npm test` — expected: every test passes.
+Run: `npm test`. Expected: every test passes.
 
 ```bash
 git add app/staff.html app/staff vite.config.js relay/server.js app/public/sw.js tests/staff-page.test.js tests/staff.test.js
@@ -2127,7 +2127,7 @@ git push origin main
 **Interfaces:**
 - Consumes: `{t:'report', handle, why}` (unchanged frame; the relay keeps `why` since Task 1).
 
-- [ ] **Step 1: Write the form** — in `app/App.jsx`, after `ContactForm`, add:
+- [ ] **Step 1: Write the form**: in `app/App.jsx`, after `ContactForm`, add:
 
 ```jsx
 const WORDS_MAX = 200;   // relay/room.js keeps no more
@@ -2203,9 +2203,9 @@ and after the `.field input:focus-visible` rule add:
 
 - [ ] **Step 2: Build and run the suite**
 
-Run: `npm test` — expected: every test passes (no test covers `App.jsx`; the browser is its check).
+Run: `npm test`. Expected: every test passes (no test covers `App.jsx`; the browser is its check).
 
-- [ ] **Step 3: In the browser (P2)** — relay with a test entry, `ben.mjs` running, the pane at 390×844, a phone seeded at `roundhouse-bruno-mars` (named `Rae`) on SAY HI; a staff tab signed in with `browser-test-passcode`:
+- [ ] **Step 3: In the browser (P2)**: relay with a test entry, `ben.mjs` running, the pane at 390×844, a phone seeded at `roundhouse-bruno-mars` (named `Rae`) on SAY HI; a staff tab signed in with `browser-test-passcode`:
   - on the phone, Ben's row → more → *Report*: the sheet says *Report*, shows the field with its placeholder and `0/200`, and focus is on *SEND REPORT*, not the field;
   - type `followed me to the bar` and press *SEND REPORT*: the toast *reported. the venue team has it.*; the staff tab shows `About someone · P-…· reported once by 1 person`, `now in this room · then in this room · reporter was in this room`, and the words, within a second;
   - *Report* again with nothing typed: the staff tab shows `reported 2 times by 1 person` and no words;
@@ -2354,7 +2354,7 @@ with the venue named and the entry never printed. Locally,
 
 - [ ] **Step 2: Run the suite; commit; push**
 
-Run: `npm test` — expected: every test passes (`tests/copy.test.js` reads the README).
+Run: `npm test`. Expected: every test passes (`tests/copy.test.js` reads the README).
 
 ```bash
 git add README.md
@@ -2362,11 +2362,11 @@ git commit -m "README: the staff page" -m "How reports reach the venue team, wha
 git push origin main
 ```
 
-- [ ] **Step 3: Deploy (P3) and check live** — after CI is green for the push: deploy, then
+- [ ] **Step 3: Deploy (P3) and check live**: after CI is green for the push: deploy, then
   - `https://on-the-beat.fly.dev/staff` returns the staff page (its `<title>` is `Staff · On The Beat`);
   - one sign-in from a throwaway socket, `{t:'staff', venue:'roundhouse-bruno-mars', code:'x'}`, is answered `no staff page` (no `STAFF_CODES` is set yet), which proves the live relay has the staff code and is counting nothing it should not;
   - `flyctl machine list -a on-the-beat` shows one machine; both wristbands reconnect.
 
   Measured on 28 Sep 2026 after `0003854` (CI green, test and firmware): the live `/staff` title is `Staff · On The Beat`, the live phone bundle carries `SEND REPORT` and the field's placeholder, a throwaway sign-in was answered `no staff page`, one machine, and both bands' consoles said `relay https://on-the-beat.fly.dev (on it)`, unpaired.
 
-- [ ] **Step 4: Hand over to the owner** — in Chinese: the page is live; to give a venue its page he runs `npm run staff-code` in his own terminal, checks the passcode does not show as he types it, and sets `STAFF_CODES` with the commands in README *The staff page* (`--stage`, then a deploy between nights). Never ask for or read his passcode or the line it prints.
+- [ ] **Step 4: Hand over to the owner**: in Chinese, say the page is live. To give a venue its page we run `npm run staff-code` in our own terminal, check the passcode does not show as we type it, and set `STAFF_CODES` with the commands in README *The staff page* (`--stage`, then a deploy between nights). Never ask for or read our passcode or the line it prints.

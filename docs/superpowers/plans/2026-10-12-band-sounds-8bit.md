@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the band's twelve triangle-wave note lists with the 8-bit set he chose by ear: square waves, noise and rests in segments, rendered to identical bytes by C++ on the band and JS in the `/band` stand-in.
+**Goal:** Replace the band's twelve triangle-wave note lists with the 8-bit set we chose by ear: square waves, noise and rests in segments, rendered to identical bytes by C++ on the band and JS in the `/band` stand-in.
 
 **Architecture:** A sound is a list of segments `[wave, hz0, hz1, ms, env, a, b]`. The same table lives in `app/lib/wrist.js` and `firmware/src/band_logic.h`. One integer-only render turns it into 8-bit samples at 16 kHz. It is written twice, in `app/lib/sound.js` and in `band_logic.h render()`, and a test holds the two to the same bytes through a hash of every sound. The Plus plays the table's pitches. The stand-in and a speaker build play them an octave down.
 
@@ -196,7 +196,7 @@ Expected: FAIL. The import fails because `app/lib/sound.js` does not exist and `
 
 - [ ] **Step 3: The table in `app/lib/wrist.js`**
 
-Replace the `SOUNDS` block at lines 88–103 with:
+Replace the `SOUNDS` block at lines 88-103 with:
 
 ```js
 // The band's notes: F7 A7 C8 is the motif, "on-the-BEAT"; D8 tops it. The
@@ -470,7 +470,7 @@ void sound() {
 
 Keep the three `plainField` checks that close the old function, followed by its `}`.
 
-Replace the `sounds` verb (lines 877–886) with the two verbs:
+Replace the `sounds` verb (lines 877-886) with the two verbs:
 
 ```cpp
   if (c.verb == "sounds") {
@@ -517,7 +517,7 @@ Expected: FAIL. The host build fails on `LEAD_IN_MS`, `Segment`, `Env`, `volumeA
 
 - [ ] **Step 3: The table and render in `band_logic.h`**
 
-Replace lines 57–201 (from `// ---------- what the wrist plays ----------` to the end of `render()`) with:
+Replace lines 57-201 (from `// ---------- what the wrist plays ----------` to the end of `render()`) with:
 
 ```cpp
 // ---------- what the wrist plays ----------
@@ -686,7 +686,7 @@ This removes `Note`, `notesMs`, `BUZZER_TOP_HZ`, `highestHz`, `buzzerFactor`, `B
 
 - Line 102: change `// a buzzer, as the StickC Plus has: sounds go octaves up` to `// a buzzer, as the StickC Plus has: sounds at the table's pitch; a speaker plays them an octave down`.
 - Line 998: change `"on the buzzer, octaves up" : "on the speaker"` to `"on the buzzer" : "on the speaker, an octave down"`.
-- Lines 1358–1359: change `same sounds through its buzzer, powered as above, whole octaves higher.` to `same sounds through its buzzer, powered as above, an octave above a speaker.`
+- Lines 1358-1359: change `same sounds through its buzzer, powered as above, whole octaves higher.` to `same sounds through its buzzer, powered as above, an octave above a speaker.`
 
 - [ ] **Step 5: Run the firmware tests**
 
@@ -933,7 +933,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: The reactions paragraph**
 
-In `docs/wristband.md`, replace the sentence at lines 83–86:
+In `docs/wristband.md`, replace the sentence at lines 83-86:
 
 > `held equal by tests/firmware.test.js; the notes are starting points, to be tuned by ear on a band. /band plays the same notes through Web Audio once its page has been tapped, which is when a browser first lets a page sound.`
 
@@ -948,7 +948,7 @@ with:
 
 - [ ] **Step 2: The buffer paragraph**
 
-Replace the bullet at lines 396–417 (`- **A sound plays from a buffer of its own.**` through `…\`show\` prints the free heap.`) with:
+Replace the bullet at lines 396-417 (`- **A sound plays from a buffer of its own.**` through `…\`show\` prints the free heap.`) with:
 
 ```markdown
 - **A sound plays from a buffer of its own.** When the wrist names a sound,
@@ -992,9 +992,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 5: Acceptance on the band (needs him)
 
-This task is not code. Each step that flashes a board or plays a sound waits for him.
+This task is not code. Each step that flashes a board or plays a sound waits for us.
 
-- [ ] **Step 1: Ask before flashing.** Use AskUserQuestion to ask which test band to flash (COM9 or COM11, whichever is plugged in now). Flash it only with his yes. The other two Plus are not flashed.
+- [ ] **Step 1: Ask before flashing.** Use AskUserQuestion to ask which test band to flash (COM9 or COM11, whichever is plugged in now). Flash it only with our yes. The other two Plus are not flashed.
 
 Note: this flashes `sounds-8bit`, which is `main` plus sounds, and has no motion code. The band will not have the clink and wave from `wrist-motion` until Task 7. Say so when asking.
 
@@ -1004,11 +1004,11 @@ Run from `firmware/`: `pio run -e m5stickc -t upload --upload-port COM<n>`. Then
 
 Note that Fly runs `wrist-motion` (relay e5f14fc). This band's firmware is `main` plus sounds. The wire protocol between them is unchanged, but the band will not send clinks.
 
-- [ ] **Step 3: Play the twelve for his ear.** Send `sound <name>` over the console, twice each, in the table's order: tick, double, up, fall, low, hello, jingle, found, calledit, ask, down, warn. Tell him that `warn`'s rests are now 30 ms and its gap 120 ms, and that the decays are now half-lives. Ask with AskUserQuestion whether each family sounds right. Any sound he rejects goes back to design, and nothing merges.
+- [ ] **Step 3: Play the twelve for his ear.** Send `sound <name>` over the console, twice each, in the table's order: tick, double, up, fall, low, hello, jingle, found, calledit, ask, down, warn. Tell us that `warn`'s rests are now 30 ms and its gap 120 ms, and that the decays are now half-lives. Ask with AskUserQuestion whether each family sounds right. Any sound we reject goes back to design, and nothing merges.
 
-- [ ] **Step 4: Dropped ticks.** Ask him to press a key five times in a row, at about two presses a second. Expected: five ticks heard, and five `sound: tick` lines on the console.
+- [ ] **Step 4: Dropped ticks.** Ask us to press a key five times in a row, at about two presses a second. Expected: five ticks heard, and five `sound: tick` lines on the console.
 
-- [ ] **Step 5: Record.** Write the outcome to `C:\Users\LewisDong\Documents\on-the-beat-proposals\wrist-motion\results.md` under a new heading "Sounds, 8-bit, on the band". This file is outside the repository. Record his answers, the heap figure and the tick count.
+- [ ] **Step 5: Record.** Write the outcome to `C:\Users\LewisDong\Documents\on-the-beat-proposals\wrist-motion\results.md` under a new heading "Sounds, 8-bit, on the band". This file is outside the repository. Record our answers, the heap figure and the tick count.
 
 ---
 
@@ -1017,18 +1017,18 @@ Note that Fly runs `wrist-motion` (relay e5f14fc). This band's firmware is `main
 - [ ] **Step 1:** `git checkout main && git merge --ff-only sounds-8bit`. If it is not a fast-forward, stop and ask.
 - [ ] **Step 2:** `npm test` on `main` gives `# fail 0`.
 - [ ] **Step 3:** `git push origin main`. A failure to connect to github.com:443 is the network: retry, and leave the git config alone. The remote is `LewisSwan24/on-the-beat`. The pre-push hook refuses any cimi2232 remote.
-- [ ] **Step 4:** Do not redeploy Fly. The live relay serves `/band` from `wrist-motion`, so the stand-in's new sounds go live only with a deploy, and a deploy waits for his word.
+- [ ] **Step 4:** Do not redeploy Fly. The live relay serves `/band` from `wrist-motion`, so the stand-in's new sounds go live only with a deploy, and a deploy waits for our word.
 
 ---
 
 ### Task 7: Carry it onto the other branches (after the merge)
 
-- [ ] **Step 1:** Rebase `beat-port` onto the new `main` and resolve any conflicts in `band_logic.h`. The beat code touches the wrist, not the sound table. `npm test` gives `# fail 0`. `beat-port` is pushed, so pushing the rebase is a force-push to a shared branch: ask him first.
+- [ ] **Step 1:** Rebase `beat-port` onto the new `main` and resolve any conflicts in `band_logic.h`. The beat code touches the wrist, not the sound table. `npm test` gives `# fail 0`. `beat-port` is pushed, so pushing the rebase is a force-push to a shared branch: ask us first.
 - [ ] **Step 2:** Rebase `wrist-motion` onto the rebased `beat-port`. It is local only and stays unpushed. Then add its two sounds to both tables, plus the call sites that today play `hello`/`double` for a raised wave and a clink, and update the host and JS tests:
   - `waving`: `[slide(F7, D8, 80)]`, with an envelope from 1.0 to 0.6. Write it as a LINE slide: `['square', 2794, 4699, 80, 'line', 32767, 19660]`, and in C++ `{Wave::SQUARE, HZ_F7, HZ_D8, 80, Env::LINE, FULL, 19660}`.
   - `clink`: `[noise(9000, 6, FULL, 16384), struck(C8, 260, FULL, 51)]`.
   Both stay under 540 ms, so `SOUND_SAMPLES` does not change.
-- [ ] **Step 3:** With his yes, flash the two test bands from `wrist-motion`. Ask before any Fly redeploy.
+- [ ] **Step 3:** With our yes, flash the two test bands from `wrist-motion`. Ask before any Fly redeploy.
 
 ---
 

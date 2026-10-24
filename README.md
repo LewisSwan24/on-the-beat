@@ -11,11 +11,11 @@ https://github.com/user-attachments/assets/285e91b7-d538-46fe-ac64-047810623006
 
 </details>
 
-A phone app for one night at one venue. You arm one of four cards — **SAY HI**
+A phone app for one night at one venue. You arm one of four cards: **SAY HI**
 (your screen turns blue: hello), **FIRST SONG?** (pick the opening track and
 like other people's picks), **LET'S DANCE!** (five seconds of you dancing, or one pose, on a
 shared floor), **LET'S GUESS!** (tonight's quiz: answer it, then team up with
-someone else who finished) — and when two people both say yes, and only then, each learns
+someone else who finished). When two people both say yes, and only then, each learns
 the other's first name and where to meet. A meeting can grow to three or four: a newcomer
 joins only when everyone already in it says yes, and they all share one number. Until everyone has found each
 other, the people in a meeting can tell each other where they are in a few words, and hold the number up full
@@ -23,10 +23,10 @@ screen over a crowd. Once you have talked, **LET'S FINISH**
 ends the meeting kindly: the other side gets a thank-you and can say not yet,
 and when it is finished the card you met on goes off. In a meeting of three or four it takes only you
 out, and the rest go on. It is built from the Claude Design
-canvas `On The Beat.dc.html`; the canvas is the design, this is the working
+canvas `On The Beat.dc.html`. The canvas is the design, and this is the working
 thing.
 
-**This repository is the working build and its full history.** The DECO3500
+This repository is the working build and its full history. The DECO3500
 team repository (`cimi2232/DECO3500`) holds a copy of the code under
 `prototype/` for the course submission: work happens here and is copied there,
 never pushed from here. A `pre-push` hook refuses any remote under the team
@@ -47,7 +47,7 @@ npm run tunnel       # an https address for real phones (cloudflared must be ins
 
 Phones need https: the camera, the screen wake lock and the offline shell are
 refused on plain http, so use `npm run tunnel` for real phones. The relay is
-also always on at **https://on-the-beat.fly.dev** (one Fly.io machine in
+also always on at https://on-the-beat.fly.dev (one Fly.io machine in
 Sydney). The night ends at 06:00 venue time; set it with
 `NIGHT_TZ=Australia/Brisbane`. Every other command, CI, deploying and the
 staff passcodes are in [docs/running.md](docs/running.md).
@@ -80,8 +80,8 @@ turns it on. A phone alone gets the same night.
 floor, a notice to every phone, moved set times, and naming the opening song.
 
 **The poster** (`/poster/<venue>`) is for a venue's wall or a screen by the
-door: what this is, how to play, a code into the app, and tonight live from
-the relay — the act, the times and how many people are playing.
+door. It shows what this is, how to play, a code into the app, and tonight live
+from the relay (the act, the times and how many people are playing).
 
 ## Documentation
 
@@ -96,6 +96,9 @@ the relay — the act, the times and how many people are playing.
 | [docs/abuse-resistance.md](docs/abuse-resistance.md) | every guard against misuse, each with its test |
 | [docs/not-done.md](docs/not-done.md) | known limits and capacity numbers |
 | [docs/show-night.md](docs/show-night.md), [docs/rehearsal-night.md](docs/rehearsal-night.md) | running a real night |
+| [docs/a2-poster.png](docs/a2-poster.png) | the team's A2 poster: research, both testing rounds and the theory behind the design |
+| [Design Process Overview](https://github.com/LewisSwan24/on-the-beat/wiki/Design-Process-Overview) (wiki) | how the prototype came to be, and what testing and the trade show changed |
+| [Ethical Considerations](https://github.com/LewisSwan24/on-the-beat/wiki/Ethical-Considerations) (wiki) | the risks we found, what the design does about each, and what is still open |
 
 ## License
 

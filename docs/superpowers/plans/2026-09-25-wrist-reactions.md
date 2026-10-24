@@ -8,13 +8,13 @@
 
 **Tech Stack:** Node 22+ (`node --test`, `ws`), React 19 + Vite 8, C++17 on the laptop (MinGW-W64 g++ here, GCC in CI), C++11 on the band (Arduino-ESP32 2.x through PlatformIO `espressif32@^6.9.0`), M5Unified 0.2.22 or later, Web Audio.
 
-**Spec:** `docs/superpowers/specs/2026-09-25-wrist-reactions-design.md` (approved by the owner on 25 Sep 2026; §1 the moments, §2 the rules, §3 who does what, §4 tests and proof). Read it before any task. The rule numbers below are the spec's.
+**Spec:** `docs/superpowers/specs/2026-09-25-wrist-reactions-design.md` (approved by us on 25 Sep 2026; §1 the moments, §2 the rules, §3 who does what, §4 tests and proof). Read it before any task. The rule numbers below are the spec's.
 
 This plan was written from a finished build: every task below was built in a scratch worktree, test first, and committed on its own with `npm test` green. The code blocks are those commits' diffs, so applying a task's blocks in order reproduces it. Each Step 2 was measured by running the task's tests on its parent's code. Each mutation list was measured at its task's commit, and all of them again on the finished code, where every one is still caught.
 
 ## Global Constraints
 
-- Artefacts are English: code, comments, commit messages, README, test names. Talk to the owner in Chinese.
+- Artefacts are English: code, comments, commit messages, README, test names. Talk to us in Chinese.
 - **The principle (spec, Goal):** the wristband is quiet unless its wearer did something on it, or something came for them. A change the wearer makes on the phone to their own card or NOT NOW makes no sound, and NOT NOW makes none at all.
 - **Sounds (spec §1):** triangle waves at full volume; `[Hz, ms]`, 0 Hz a rest. `tick` 1800/25 · `double` 1800/25, 0/60, 1800/25 · `down` 1047/90, 784/180 · `up` 1047/70, 1319/70, 1568/70, 2093/140 · `fall` 1568/100, 1047/200 · `low` 784/120, 523/220 · `ask` 1319/80, 0/50, 1760/160 · `jingle` 1319/80, 1568/80, 2637/80, 2093/80, 2349/80, 3136/200 · `warn` 880/150, 698/150, 880/150, 698/150. The longest, `jingle` and `warn`, last 600 ms.
 - **Flashes (spec §1):** count × on / off ms. SET: the card's colour (white for OFF), 2 × 150/100 · CHANGED: red `#FF6B6B`, 3 × 120/90 · NOT SENT and a warning: orange `#FF8A00`, 2 × 350/250 · the check number: white, 2 × 150/100 · a meeting call: the meeting face, then off, `BLINK_MS` each, until answered. An on step is the colour at `LIGHT_FULL` with no words, code or bar; an off step is `LIGHT_OFF`.
@@ -27,7 +27,7 @@ This plan was written from a finished build: every task below was built in a scr
 - `npm test` builds first (the relay serves `dist/`). Running one test file alone: `npm run build` first, and again after restoring a mutation.
 - Windows host: the Bash tool is Git Bash; `python` there is the Store alias and hangs, so scripts are Node. The host binary's output is split on `/\r?\n/`. MinGW has no sanitizers; CI keeps them.
 - `tests/copy.test.js` refuses the old one-button wording anywhere in `app/`, `relay/`, `firmware/src/` and `README.md`, including the phrase "three seconds": write 3 s.
-- Flashing a band needs the owner's yes first, every time. The StickS3 is on `COM8`, the StickC Plus on `COM9`.
+- Flashing a band needs our yes first, every time. The StickS3 is on `COM8`, the StickC Plus on `COM9`.
 - Never more than ten background tasks at once. Work directly; this plan needs no fan-out.
 - Commit messages end with the attribution trailer the session's system reminder gives (today: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`).
 
@@ -112,10 +112,10 @@ Modified: `app/lib/wrist.js`, `firmware/src/band_logic.h`, `firmware/host/logic_
 
 | Stage | Tasks | Leaves |
 |---|---|---|
-| A. The wrist reacts | 1–6 | every rule of spec §2 in both twins, on one table |
-| B. The sound, carried | 7–9 | the band's renderer and colours; the relay and the phone carry the switch |
-| C. The players | 10–11 | `main.cpp` plays and paints; `/band` plays and paints |
-| D. Docs and proof | 12–14 | README; the browser proof; the real bands with the owner |
+| A. The wrist reacts | 1-6 | every rule of spec §2 in both twins, on one table |
+| B. The sound, carried | 7-9 | the band's renderer and colours; the relay and the phone carry the switch |
+| C. The players | 10-11 | `main.cpp` plays and paints; `/band` plays and paints |
+| D. Docs and proof | 12-14 | README; the browser proof; the real bands with us |
 
 Every task ends green and is committed on its own; each stage ends with P2.
 
@@ -125,9 +125,9 @@ Every task ends green and is committed on its own; each stage ends with P2.
 
 Every task in this stage changes both twins and the one table. The table's step keys used here:
 
-- `"sounds": [...]` — the names `sounds()` gives at that step: exact, and `[]` unless said, so a stray sound anywhere fails.
-- `"press": k` — a key down and, `PRESS` ms later, its key up. The step's `sent`, `sounds` and `face` are the key up's; `"downSounds"` (default `["tick"]`) is the key down's.
-- `"show": ..., "with": {...}` (from Task 3) — a named show with fields laid over it, such as `"with": {"sound": false}`.
+- `"sounds": [...]`: the exact names `sounds()` gives at that step, and `[]` unless said, so a stray sound anywhere fails.
+- `"press": k`: a key down and, `PRESS` ms later, its key up. The step's `sent`, `sounds` and `face` are the key up's; `"downSounds"` (default `["tick"]`) is the key down's.
+- `"show": ..., "with": {...}` (from Task 3): a named show with fields laid over it, such as `"with": {"sound": false}`.
 
 Run the table on both twins with `npm run build >/dev/null && node --test tests/wrist.test.js tests/firmware.test.js 2>&1 | grep -E "^✖|^ℹ (pass|fail)"`. Each case runs as `wrist.js: <name>` and as `band_logic.h: <name>`.
 
@@ -1067,7 +1067,7 @@ In `firmware/src/band_logic.h`:
 Run: `node --test tests/wrist.test.js tests/firmware.test.js 2>&1 | grep -E "^ℹ (pass|fail)"`, then `npm test 2>&1 | grep -E "^ℹ (tests|pass|fail|skipped)"`.
 Expected: `ℹ fail 0`; the suite is `ℹ tests 189`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -1611,9 +1611,9 @@ In `firmware/src/band_logic.h`:
    /** `held`: a KEY2 hold sends it at once, and says so with a double tick, except from NOT NOW, which is silent. */
 ````
 
-- [ ] **Step 4: Run** — the table as above, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 197`.
+- [ ] **Step 4: Run** the table as above, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 197`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -1728,7 +1728,7 @@ EOF
 - Test: `tests/wrist-table.js`, `tests/fixtures/wrist-cases.json`
 
 **Interfaces:**
-- Consumes: Tasks 1–2.
+- Consumes: Tasks 1-2.
 - Produces: a show's `sound` (only `true` or `false` count; C++ `Frame::sound` is 1, 0 or -1 for not said) sets the wrist's `soundOn`, and each reaction records `audible = soundOn`; letters set it back on after their own reactions. `silent` holds NOT NOW's silence (rule 1): set by the FACE hold and by a quiet show about the person, ended by a show about them that shows them once no hold of the wrist's own is pending, and by letters. The check plays `ask` and flashes white; the test show plays `up`; a check that ends without YES plays `fall`. Two shows that differ only in `sound` are the same show. The harness's `with` overlay lays fields over a named show.
 
 - [ ] **Step 1: Write the failing cases, and the harness's `with`.**
@@ -2218,9 +2218,9 @@ In `firmware/src/band_logic.h`:
  // ---------- the serial console ----------
 ````
 
-- [ ] **Step 4: Run** — the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 219`.
+- [ ] **Step 4: Run** the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 219`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -2457,7 +2457,7 @@ EOF
 - Test: `firmware/host/logic_test.cpp` (the constant), `tests/fixtures/wrist-cases.json`
 
 **Interfaces:**
-- Consumes: Tasks 1–3.
+- Consumes: Tasks 1-3.
 - Produces: `BLINK_MS = 500` (exported, in `CONSTS`, and in the host's `consts`); wrist state `called` (the last number called for), `calling`, `callAt`; `blinking(now)` = calling, resting, believed, and a meeting show. The first key down while it blinks sets `calling = false` and marks the key fired, so it only answers. A show about the person that is not a meeting forgets `called` and ends the call; letters forget it too (the spec forgets it at a non-meeting show about the person; letters reset everything else about the person, so they reset this as well). The moment gains a queue: `settle` starts its first reaction and puts the rest ahead of whatever was waiting, and `advance` starts each waiting reaction at the time the one before it ended. A meeting still running when the wearer comes back from NOT NOW is the first moment with two reactions: the SET, then the call.
 
 - [ ] **Step 1: Write the failing cases, and the constant on the host.**
@@ -2988,9 +2988,9 @@ In `firmware/src/band_logic.h`:
  // ---------- the serial console ----------
 ````
 
-- [ ] **Step 4: Run** — the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 233`.
+- [ ] **Step 4: Run** the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 233`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -3217,7 +3217,7 @@ EOF
 - Test: `firmware/host/logic_test.cpp` (the constants), `tests/fixtures/wrist-cases.json`
 
 **Interfaces:**
-- Consumes: Tasks 1–4.
+- Consumes: Tasks 1-4.
 - Produces: `HINT_MS = 3000`, `PAIR_AWAKE_MS = 120000` in both twins, `CONSTS` and the host; state `litUntil`, `pairCode`, `waitAt`, `hintUntil`; `pairingFace(now)` (believed, no hold pending, and a pairing or check show) and `wake(now)`, which also lights a waiting face. New letters (a code not seen before) and the start of waiting light the face until `litUntil`. On the letters or the check a key ticks, sets `hintUntil`, lights the letters again, and does nothing more. `restFace` lays the hint over the face's small line (`PAIR ON YOUR PHONE`) and turns the light off once `litUntil` has passed; the picture stays.
 
 - [ ] **Step 1: Write the failing cases, and the constants on the host.**
@@ -3596,9 +3596,9 @@ In `firmware/src/band_logic.h`:
  // ---------- the serial console ----------
 ````
 
-- [ ] **Step 4: Run** — the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 239`.
+- [ ] **Step 4: Run** the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 239`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -3782,7 +3782,7 @@ EOF
 - Test: `tests/wrist-table.js`, `firmware/host/logic_test.cpp`, `tests/fixtures/wrist-cases.json`
 
 **Interfaces:**
-- Consumes: Tasks 1–5.
+- Consumes: Tasks 1-5.
 - Produces: `setBattery(level, now)` in both twins (it was `setBattery(level)`); the harness's `battery` verb passes the step's time. State: `warned` (reach, wait, away), `armed` (low, empty), and `owed` (a JS `Set`; a C++ bitmask `REACH | WAIT | AWAY | BATTERY`). `warn(name)` owes the warning while silent or not resting, and otherwise calls `playWarn()`, which adds `warn`/`warn` at class 2 unless the moment already has one. `payOwed()` plays one warning if any owed one still holds (the battery holds at 15% or below), and runs when silence ends and at the top of `settle` when resting. Out of reach: a paired band, `STALE_MS` without the relay. Waiting: `STALE_MS` after it began. Away: an away show. Unpaired: letters reaching a band that held a secret, at once. Battery: at or below 15% once, re-armed at 20%; at or below 5% once, re-armed at 10%; the first reading counts. `settle` now puts the moment in order first, a stable sort by class: a warning owed through NOT NOW is added before the moment's call, and must still play after the SET and the call.
 
 - [ ] **Step 1: Write the failing cases; the harness and the host pass the time to `setBattery`.**
@@ -4437,9 +4437,9 @@ In `firmware/src/main.cpp`:
    help();
 ````
 
-- [ ] **Step 4: Run** — the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 261`.
+- [ ] **Step 4: Run** the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 261`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -5028,9 +5028,9 @@ In `app/lib/wrist.js`:
  
 ````
 
-- [ ] **Step 4: Run** — the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 262`.
+- [ ] **Step 4: Run** the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 262`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -5373,9 +5373,9 @@ In `relay/server.js`:
          ws.r = null;
 ````
 
-- [ ] **Step 4: Run** — the files, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 269`.
+- [ ] **Step 4: Run** the files, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 269`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -5669,9 +5669,9 @@ In `app/App.jsx`:
    });
 ````
 
-- [ ] **Step 4: Run** — the files, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 271`.
+- [ ] **Step 4: Run** the files, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 271`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -5734,7 +5734,7 @@ EOF
 
 What M5Unified gives, read from its `Speaker_Class.hpp` and `.inl` (0.2.23):
 - `playRaw(const uint8_t* data, size_t len, uint32_t rate, bool stereo, uint32_t repeat, int channel, bool stop_current_sound)` reads `data` for as long as the sound plays. Each channel has two slots: the one playing and one queued.
-- `setBufferReleaseCallback(args, fn(args, data, channel))` (from 0.2.22) is called on the speaker's task once a request's buffer may be written again: after it finished, or when a newer request cut it. A request replaced while still only queued is discarded and **never** called back, but it was never read either. Set the callback before the first `play*()`.
+- `setBufferReleaseCallback(args, fn(args, data, channel))` (from 0.2.22) is called on the speaker's task once a request's buffer may be written again: after it finished, or when a newer request cut it. A request replaced while still only queued is discarded and never called back, but it was never read either. Set the callback before the first `play*()`.
 - `isPlaying(channel)` counts the channel's occupied slots.
 - On the StickC Plus, M5Unified drives the buzzer on GPIO 2 as the speaker, from the same samples. The first M5StickC has no speaker pin, so `begin()` returns false there (`_setup_i2s()` fails on `pin_data_out < 0`).
 
@@ -6435,9 +6435,9 @@ In `app/styles.css`:
  
 ````
 
-- [ ] **Step 4: Run** — the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 274`.
+- [ ] **Step 4: Run** the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 274`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -6653,7 +6653,7 @@ EOF
 
 ### Task 13: The browser proof
 
-Run on `main` once Tasks 1–12 are pushed. Tabs of the browser pane at 900 × 900 on one relay: the phone (seed `localStorage['otb:v1']` as CLAUDE.md shows, a night at a test room) and `/band` with the oscillator spy from Task 11 Step 6. Press the phone's buttons with `element.click()`. The band's first press must be a real click, to unlock its audio; after that a `keydown`/`keyup` of Enter dispatched on `.bandbtn` presses it too.
+Run on `main` once Tasks 1-12 are pushed. Tabs of the browser pane at 900 × 900 on one relay: the phone (seed `localStorage['otb:v1']` as CLAUDE.md shows, a night at a test room) and `/band` with the oscillator spy from Task 11 Step 6. Press the phone's buttons with `element.click()`. The band's first press must be a real click, to unlock its audio; after that a `keydown`/`keyup` of Enter dispatched on `.bandbtn` presses it too.
 
 - **Two phones need two origins:** tabs on one origin share `localStorage`. Use `http://localhost:<port>` for one person (phone and band) and `http://127.0.0.1:<port>` for the other.
 - **Keep the pane on screen while sampling.** A hidden tab (`document.visibilityState === 'hidden'`) runs timers about once a second, so the stand-in's 50 ms beat stops and a sampled face freezes. The spy's oscillator records do not depend on it.
@@ -6668,11 +6668,11 @@ Run on `main` once Tasks 1–12 are pushed. Tabs of the browser pane at 900 × 9
 
 ### Task 14: The real bands, with the owner
 
-Nothing here starts without the owner's yes: ask in Chinese before each flash. His bands: the StickS3 on `COM8`, the StickC Plus on `COM9` (`firmware/`: `pio run -e m5sticks3 -t upload --upload-port COM8`, `pio run -e m5stickc -t upload --upload-port COM9`, with P3's directories). Both use the always-on relay, `https://on-the-beat.fly.dev`; deploy the relay first (the owner logs in to Fly himself), unless he has said a demo is on.
+Nothing here starts without our yes: ask in Chinese before each flash. Our bands: the StickS3 on `COM8`, the StickC Plus on `COM9` (`firmware/`: `pio run -e m5sticks3 -t upload --upload-port COM8`, `pio run -e m5stickc -t upload --upload-port COM9`, with P3's directories). Both use the always-on relay, `https://on-the-beat.fly.dev`; deploy the relay first (we log in to Fly ourselves), unless we have said a demo is on.
 
-- [ ] **Step 1: Deploy the relay**, when the owner agrees, and check that https://on-the-beat.fly.dev/ loads the app.
+- [ ] **Step 1: Deploy the relay**, when we agree, and check that https://on-the-beat.fly.dev/ loads the app.
 - [ ] **Step 2: Flash both bands.** In each console, `show`: the `memory` line gives the free heap (the Plus's is the one that matters) and `sound on the speaker`.
-- [ ] **Step 3: With the owner, listen and look:** a press ticks; the check asks and flashes white; the check's words and `PAIR ON YOUR PHONE` stand whole on each screen; `YES` chirps up; SET, CHANGED (if it can be reached), NOT SENT (turn the Wi-Fi off during a send); the switch off and on from his phone; a meeting between the StickS3 and the Plus (jingle, blink, a press answers). The Plus's buzzer is the open question (spec, Risks): if it stays silent while the console prints `sound: <name>`, the fallback is LEDC tones on its pin, a change of its own.
-- [ ] **Step 4: Tune by ear** only what the owner asks for: each sound is one line in each twin's table, and `tests/firmware.test.js` holds them equal.
-- [ ] **Step 5: Unpair every test persona** from his real bands, and tell him in which state each band is left.
+- [ ] **Step 3: With the owner, listen and look:** a press ticks; the check asks and flashes white; the check's words and `PAIR ON YOUR PHONE` stand whole on each screen; `YES` chirps up; SET, CHANGED (if it can be reached), NOT SENT (turn the Wi-Fi off during a send); the switch off and on from our phone; a meeting between the StickS3 and the Plus (jingle, blink, a press answers). The Plus's buzzer is the open question (spec, Risks): if it stays silent while the console prints `sound: <name>`, the fallback is LEDC tones on its pin, a change of its own.
+- [ ] **Step 4: Tune by ear** only what we ask for: each sound is one line in each twin's table, and `tests/firmware.test.js` holds them equal.
+- [ ] **Step 5: Unpair every test persona** from our real bands, and tell us in which state each band is left.
 - [ ] **Step 6: Record it.** Replace "The reactions have not been heard on a wrist yet." in the README's "What is not done" with what was heard and seen, the Plus's free heap included. Commit, push (P2).

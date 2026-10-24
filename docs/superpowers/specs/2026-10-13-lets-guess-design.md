@@ -5,7 +5,7 @@
 ## Why
 
 The team's v3 flow adds a music quiz. The first night it will run on is a
-Zara Larsson show. He chose to make the quiz a card like the other three,
+Zara Larsson show. We chose to make the quiz a card like the other three,
 not an activity after a match: you arm LET'S GUESS, answer tonight's questions
 on your own, and then find a teammate among the people who also finished. A
 team-up each way is a match, and from there everything is what the other
@@ -14,7 +14,7 @@ cards already do (names, the meeting number, the meeting spot, found, keep).
 The design proposal outside this repository (`new-cards/design.md` §5.3,
 KNOW THEM?) asked the team whether a quiz should pair people at all. This card
 is the answer: it does, through a team-up. It replaces KNOW THEM? in that
-proposal. He told me to start on 13 Oct 2026 (「现在就开工」), after the team's
+proposal. We started on 13 Oct 2026 (「现在就开工」), after the team's
 v3 flow, so the new-card gate is passed for this card only.
 
 ## Decisions (his picks, 13 Oct 2026)
@@ -43,14 +43,14 @@ v3 flow, so the new-card gate is passed for this card only.
 - `q`: 1 to 140 characters. `options`: exactly 4 distinct strings, each 1 to
   60 characters. `answer`: the index (0 to 3) of the right option. `fact`: 0 to
   140 characters, shown after the person locks an answer.
-- **A deal for each person** (14 Oct 2026, his ask): each person is asked 5 of
+- **A deal for each person** (14 Oct 2026, our ask): each person is asked 5 of
   the quiz (`QUIZ_DEAL`; all of it when it has 5 or fewer), each with its four
   options in that person's own order (`relay/quiz.js` `dealOf`). The draw is a
   hash of the quiz's print and the person, so a reload or a restart deals them
   the same; nothing new is stored. An answer is sent as the place tapped on the
   person's own screen and kept as the option's place in the quiz; a night file
   saved before deals (no `quizDeal`) drops its answers, as a corrected quiz does.
-- **The band answers back** (14 Oct 2026, his ask): for 20 s after an answer
+- **The band answers back** (14 Oct 2026, our ask): for 20 s after an answer
   (`GUESSED_SHOW_MS`) every show about its person but NOT NOW carries
   `guessed: { n, right }`, and the band plays it once per `n`: `right` (two
   flashes in LET'S GUESS's colour) or `wrong` (one white flash). For 8 s after
@@ -127,7 +127,7 @@ SONG, DANCE, GUESS, OFF, skipping any closed card. The band only shows the
 card's colour and words; teaming up happens on the phone, as liking does for
 FIRST SONG?. A band still running older firmware that is sent `guess` must
 not crash or show another card's colour; a host test covers it. All four
-StickC Plus need reflashing, which waits for his yes.
+StickC Plus need reflashing, which waits for our yes.
 
 **Relay plumbing.** `relay/server.js`: the `answer` message, the quiz check in
 `showFault`'s neighbourhood, and stripping answers out of every shows list a
@@ -166,4 +166,4 @@ well-known fact about her career.
   and playing the act's recordings is the venue's licensing matter.
 - Doing the quiz together after a match. That was the team's v3 activity and
   lives in the 14 Oct test prototype, outside this repository.
-- Deploying to Fly and reflashing bands: each waits for his yes.
+- Deploying to Fly and reflashing bands: each waits for our yes.

@@ -1,36 +1,36 @@
-# Rehearsal night — the run-sheet
+# Rehearsal night: the run-sheet
 
 Everything in *What is not done* (docs/not-done.md) that is waiting on a person: a
 hand on a button, an ear, an eye, a phone that is not Chrome's fake camera, a
 room that is not a desk. This sheet puts those checks in the order they happen
 on the day, with what to do, what counts as a pass, and where the answer is
-written. `docs/show-night.md` is the runbook for a real show — the carry list,
-the health checks, what a restart costs; this is the one-off that comes before
-the first of those.
+written. `docs/show-night.md` is the runbook for a real show (the carry list,
+the health checks, what a restart costs). This sheet is the one-off that comes
+before the first of those.
 
-**Who and what.** The owner and at least two helpers; phones of both kinds, an
-iPhone and an Android, because most steps differ between them; the two real
-bands (a StickS3 and a StickC Plus) with their cables and a wall charger; the
-laptop with this repository. **Two bands is a limit.** A marker is a band told
-`marker bar`, so the walk (step 6) and the two-wearer steps (11 to 17) take
-turns, and step 16 cannot be settled with two at all.
+**Who and what.** One of us and at least two helpers; phones of both kinds, an
+iPhone and an Android, because most steps differ between them; the four real
+bands (all StickC Plus: the StickS3 left the kit on 6 Oct 2026) with their
+cables and a wall charger; the laptop with this repository. Four bands is
+still a limit. A marker is a band told `marker bar`, so a band on the wall
+is one fewer on a wrist, and step 16 cannot be settled with four at all.
 
 **How a step ends.**
 - *Pass*: replace the "not yet" claim in the bullet in docs/not-done.md named under *Then*
   with the date and what was seen, in the bullet's own style: numbers, not
   adjectives.
-- *Fail*: write down exactly what happened — the console line, the face, the
-  number, which phone — before touching anything. Fix it, then repeat the step.
+- *Fail*: write down exactly what happened (the console line, the face, the
+  number, which phone) before touching anything. Fix it, then repeat the step.
 - *Not tried*: leave the bullet as it is. A step that did not happen that night
-  stays owed; it is not quietly dropped.
+  stays owed; it is not dropped without saying so.
 
-Step 4 is the only deploy here, and it is the owner's call, between nights.
+Step 4 is the only deploy here, and it is our call, between nights.
 
 ## Before the day
 
 ### 1. Preflight the relay
 
-`npm run preflight` — read-only, about two seconds. It opens the app and
+`npm run preflight` is read-only and takes about two seconds. It opens the app and
 `/staff`, reads the show list, joins a throwaway venue and leaves it, tries a
 socket from another site's page, and reads the certificate the way a
 wristband does. `npm run preflight -- http://localhost:8790` checks another
@@ -46,21 +46,11 @@ relay; `-- --json` prints the result alone.
 - **Then** run it again from the venue's network (step 5) and once more just
   before doors.
 
-### 2. The StickS3 meets the relay's Origin check
+### 2. The StickS3 and the relay's Origin check (dropped)
 
-Since 29 Sep 2026 the relay turns away a socket from another site's page; a
-band's library sends `Origin: file://`, which it lets in. The StickC Plus has
-been through that on the live relay. The StickS3 has not: it has not been on
-the relay since.
-
-- **Do**: plug it in and type `show` at its console, on a Wi-Fi it knows.
-- **Passes when** it says `relay https://on-the-beat.fly.dev (on it)`.
-- A silent console most likely means it is not running the band firmware:
-  flash it from `firmware/` (docs/wristband.md, *The wristband's firmware*), then `show`
-  again. If it runs the firmware and still will not reach the relay, read the
-  console's reason before anything else; the Origin check is the first thing
-  to rule out.
-- **Then** nothing to record unless it fails.
+The StickS3 left the kit on 6 Oct 2026, so this step has nothing left to
+check: all four StickC Plus bands have been on the live relay since the
+Origin check came in on 29 Sep 2026.
 
 ### 3. The phone app's policy, on an iPhone
 
@@ -69,7 +59,7 @@ headless WebKit, but the live app still runs under the framing rule alone, and
 `fly.toml` holds it there (`APP_CSP = "framing-only"`), so a deploy does not
 wait on this try; the try is what turns the policy on. The open question is
 how Safari on a real iPhone reads `connect-src 'self' ws: wss:`. That can be
-tried **without a deploy**: `npm start` serves the policy already (a relay with
+tried without a deploy: `npm start` serves the policy already (a relay with
 no `APP_CSP` serves it in full), and `npm run tunnel` gives the iPhone an https
 address for it. Wait for cloudflared's `Registered tunnel connection` line and
 a minute or two before a phone looks the address up.
@@ -97,7 +87,7 @@ a minute or two before a phone looks the address up.
 
 ### 4. Deploy main, then the venue's shows and passcode
 
-The owner's call, between nights: `npm run image-check` first (it rehearses
+Our call, between nights: `npm run image-check` first (it rehearses
 the image build without Docker and fails on a mistake a deploy would only show
 once it had started), then `flyctl deploy --ha=false --remote-only`
 ships everything on main since the last deploy (docs/running.md): the shows
@@ -212,7 +202,7 @@ inside the minute the letters live.
 
 ## The show
 
-Two people each wear one of the two bands, paired to their own phones, the
+Two people each wear one of the bands, paired to their own phones, the
 bands' sound on, both on SAY HI. The venue's music plays at its show level for
 steps 11 to 15: steps 13 and 14 are about whether a wrist can be heard and
 read in it.
@@ -271,10 +261,9 @@ what was missed.
 
 ### 14. The wrist: faces, buttons, timings
 
-- **Do**: wear both bands for the length of the show, the StickS3 on the
-  left, as the owner does, and the Plus on whichever wrist its wearer chooses
-  (on a Plus, a press of the power button turns the face to the other side).
-  Press the Plus's face button by hand.
+- **Do**: wear two bands for the length of the show, one on the left and
+  one on whichever wrist its wearer chooses (a press of the power button
+  turns the face to the other side). Press each face button by hand.
 - **Passes when** each face reads at a glance on the wrist with no twisting of
   the arm, and the Plus's face button does what *The wristband* says. For each
   of the timings, the wearer says whether it feels right: six seconds awake
@@ -297,20 +286,20 @@ was last heard. The only run so far kept the phone's socket open throughout.
   match.
 - **Then** *The firmware has run on two wristbands, for one day*.
 
-### 16. Who is near — what two bands can show
+### 16. Who is near: what four bands can show
 
 *Who is near has not met a crowd.* The list is the five heard most strongly,
-and with one other band heard there is nothing to rank, so this step cannot be
-settled with two bands: it needs enough people, several times as many bands as
-there are in a five. What two can show is how strong each is to the other over
-a real floor.
+and with three other bands heard there are never more than five to choose
+from, so this step cannot be settled with four bands: it needs enough people,
+several times as many bands as there are in a five. What four can show is how
+strong each is to the others over a real floor.
 
-- **Do**: run the walk of step 6 again, with the second band worn by someone
-  who stays put instead of standing as a marker. It records band-to-band
+- **Do**: run the walk of step 6 again, with the other bands worn by people
+  who stay put instead of standing as a marker. It records band-to-band
   strength against the same spots, as the first run recorded the marker's.
 - **Then** add the readings to the bullet, and say plainly that the ranking of
   a crowd is still only modelled. Whether to borrow or buy more bands for a
-  crowd test is the owner's call.
+  crowd test is our call.
 
 ### 17. Battery for a night
 
@@ -318,14 +307,14 @@ a real floor.
   start and again at the end, type `show` and write down the battery and, on
   the Plus, the mA it says.
 - **Passes when** both bands are still on and `(on it)` when the show ends,
-  and neither has warned at 15%. A warning is a failure with an hour to write
-  down, not a surprise.
+  and neither has warned at 15%. A warning counts as a failure. It comes with
+  about an hour of battery left, so there is time to write it down.
 - **Then** *The firmware has run on two wristbands, for one day* (the battery
   half).
 
 ## After
 
-### 18. A restart with people in the room (optional, the owner's call)
+### 18. A restart with people in the room (optional, our call)
 
 `docs/show-night.md` says a restart takes about 5 to 60 s and the night
 carries on: rooms, cards, matches and sign-ins stay, bands go back to their
@@ -352,6 +341,21 @@ two bands, not with a room of people.
 - The night file goes by itself at 06:00 venue time. Run `npm run preflight`
   the next day to see the relay as it is when nobody is in the room.
 
+### 20. What came after this sheet, by hand
+
+Built after 5 Oct 2026, so none of it is in the steps above; try it during
+the show, between steps 11 and 17.
+
+- **Do**: on the bands, raise a wrist and wave on `SOMEONE WAVED`; knock two
+  bands together on a meeting number; finish a meeting from the wrist, and
+  UNPAIR past OFF. On phones, let a third person into a meeting, send a note
+  between `MEET` and found, and hold the number up with HOLD IT UP.
+- **Passes when** each does what docs/wristband-guide.md and the README say,
+  by hand and in the show's noise, and the third person meets under the
+  meeting's own number.
+- **Then** the bullets in docs/not-done.md on found, on UNPAIR and LET'S
+  FINISH, and on meetings of three or four.
+
 ## What this night cannot settle
 
 - **How many people one machine holds.** A rehearsal's crowd is small. The
@@ -360,9 +364,11 @@ two bands, not with a room of people.
   lines show what a small crowd costs on the real machine, and say how far the
   heap and memory limits are from the laptop's. Nor will a handful of people
   spend the CPU quota's burst balance: a keen room of 100 takes about an hour
-  to.
-- **A crowd's WHO'S NEAR** (step 16): two bands cannot rank anything.
-- **The beat.** Flashing on the music's beat waits on its own gate with the
-  real bands, outside any show: `docs/superpowers/plans/2026-09-27-wrist-beat.md`.
-- **Turning the StickS3 over from the wrist**, offered and not taken up, **and
-  saying *found* with a bump**, a later change after a spike.
+  to spend it.
+- **A crowd's WHO'S NEAR** (step 16): four bands cannot rank anything.
+- **The beat, fully.** It joined the bands on 14 Oct 2026 after a 120 BPM
+  click track (docs/not-done.md). A lit card watched during the show says
+  whether it keeps time to that night's music, and no more.
+- **Saying *found* with a knock while worn.** Two bands knocked on two
+  wrists were not recognised in testing (docs/not-done.md); two bands
+  touched together off the wrist are.

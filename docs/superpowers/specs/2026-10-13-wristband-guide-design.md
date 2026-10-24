@@ -1,13 +1,13 @@
 # The wristband guide: practice after pairing, and a page to look things up
 
 13 Oct 2026. Asked for the same day: a tutorial in the phone app, or instructions
-for the wristband. His picks: both a guided first run and a page to look things up;
+for the wristband. Our picks: both a guided first run and a page to look things up;
 the guided run has the person really press the band, with the phone checking; it
 covers the two buttons, what the lights and sounds mean, how a meeting works, and
 power and trouble; built on the phone (approach A), with no firmware change; and
-the practice is **not public**: nobody sees a practising person on any list.
+the practice is not public: nobody sees a practising person on any list.
 
-Revised the same evening after his review: the page was not detailed enough. It
+Revised the same evening after our review: the page was not detailed enough. It
 now walks through the whole life of a band, step by step: turning it on and
 setting its Wi-Fi from a phone, pairing, what every button does on every screen,
 and what to do when something is wrong (§3). The Wi-Fi setup stays: it was
@@ -57,7 +57,7 @@ step began. A change made from the phone never ticks a step; only `by === 'band'
 does.
 
 **The band out of reach.** When the band is not live (`view.me.wristband` absent,
-off or away), steps 2–4 show their card and say *we'll check this once your
+off or away), steps 2-4 show their card and say *we'll check this once your
 wristband is back*; GOT IT moves on without the check. The guide never waits on
 something that cannot arrive.
 
@@ -75,7 +75,7 @@ with, and nothing about the practice is public at any moment.
 
 ## 2. Practice is private (relay)
 
-A person may be **practising**. While they are:
+A person may be practising. While they are:
 
 - nobody else is shown them: `shows(a, b)` in `relay/room.js` is false when `b`
   is practising, exactly as when `b` is invisible. That one function already
@@ -282,7 +282,7 @@ the same table, so a test holds the two to the same screens.
 
 ## 5. Depends on
 
-N3 (13 Oct, his pick): coming back from NOT NOW puts back the card a person had,
+N3 (13 Oct, our pick): coming back from NOT NOW puts back the card a person had,
 from the phone and from the wrist. Step 4 says so; without it, step 4 would come
 back on SAY HI. N3 lands first.
 
@@ -293,7 +293,7 @@ back on SAY HI. N3 lands first.
   completeness tests above; the relay tests in §2.
 - The whole suite green, the build included.
 - In a browser: the headless rig from the 13 Oct end-to-end run, with a stand-in
-  band. A person pairs for the first time and lands on the guide; steps 2–4 tick
+  band. A person pairs for the first time and lands on the guide; steps 2-4 tick
   only from the band's buttons; a second phone in the room never sees the
   practising person on SAY HI while their band is blue; DONE puts the card back
   and ends practice; the reference page plays every sound. Screenshots kept, as
@@ -301,7 +301,7 @@ back on SAY HI. N3 lands first.
 - The reference page at phone width (375 px): every part reached from its chip,
   the button table readable without a page-wide sideways scroll (it scrolls in
   its own box if it must), each trouble row opening.
-- On a real band, with him: §3.1 followed word for word by someone who has not
+- On a real band, with us: §3.1 followed word for word by someone who has not
   set a band up before, from power on to four letters, and every row of the
   button table pressed once on the band it describes. Where the band and the
   page disagree, the page is wrong.

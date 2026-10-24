@@ -20,7 +20,7 @@
 - App CSP becomes `img-src 'self' data: blob:` for the phone app only; the staff page keeps `img-src 'self' data:`.
 - Every commit ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; send `git commit` as its own command.
 - Single test files that start a relay serving the app need `npm run build` first.
-- Deploying waits for his yes.
+- Deploying waits for our yes.
 
 ## Review Focus
 

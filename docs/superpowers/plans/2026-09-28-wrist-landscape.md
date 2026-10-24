@@ -8,18 +8,18 @@
 
 **Tech Stack:** C++17 on the laptop (MinGW-W64 g++ here, GCC in CI), C++11 on the band (Arduino-ESP32 2.0.17 through PlatformIO `espressif32@^6.9.0`), M5Unified (`M5.Imu`, `M5.Display`), M5GFX (`M5Canvas`); Python 3 with pyserial (PlatformIO's own) and Node's jsQR for the checks.
 
-**Spec:** `docs/superpowers/specs/2026-09-28-wrist-landscape-design.md` (decided with the owner question by question on 28 Sep 2026, reviewed and approved the same day, commit `bc78387`). Read it before any task.
+**Spec:** `docs/superpowers/specs/2026-09-28-wrist-landscape-design.md` (decided with us question by question on 28 Sep 2026, reviewed and approved the same day, commit `bc78387`). Read it before any task.
 
 This plan was written before the build, from the code at `bc78387`. Where the build finds a block here wrong, the block is corrected in this file in the same commit as the fix.
 
 ## Global Constraints
 
-- Artefacts are English: code, comments, commit messages, README, test names. Talk to the owner in Chinese.
+- Artefacts are English: code, comments, commit messages, README, test names. Talk to us in Chinese.
 - **Constants** (`band_logic.h`): `TURN_READ_MS` 100, `TURN_TILT` 0.35 (g), `TURN_HOLD_MS` 500. The display's two landscape rotations are 1 and 3; which is USB-left, and which accelerometer axis and sign run across the short side, are measured on each board in Task 4 before they are trusted.
 - **Console:** `turn auto|usb-left|usb-right`, kept as `turn` in `Preferences`, default `auto`, removed by `forget`; `show` (and a marker's `show`) gains `face    landscape, USB left (auto), tilt +0.62 g  (accel x … y … z …)`; `snap` answers one line `snap <W> <H> <base64>`, RGB565 little-endian, row by row. A marker takes `turn` and `snap` too.
 - **No portrait** anywhere on a band; the browser stand-in (`/band`) is not touched.
 - **The band's compiler takes C++11** after `Arduino.h`'s macros; `firmware/host/as_band.cpp` holds `band_logic.h` to that on every run, and a variable left unused is an error (`-Werror`). The ESP32 core also defines a class `base64`: the encoder is `toBase64`.
-- **Flashing a band needs the owner's yes, every time.** The StickS3 is on `COM8`, the StickC Plus on `COM9`. A stand-in phone paired to one of his bands is unpaired before the check ends, and each band's state is said. A band made a marker is made a wristband again (`marker off`) before the check ends.
+- **Flashing a band needs the owner's yes, every time.** The StickS3 is on `COM8`, the StickC Plus on `COM9`. A stand-in phone paired to one of our bands is unpaired before the check ends, and each band's state is said. A band made a marker is made a wristband again (`marker off`) before the check ends.
 - Never print `firmware/src/secrets.h`, and never grep `firmware/src/*.h` broadly.
 - Repository `LewisSwan24/on-the-beat` (private). Commit after each task and push to `main` when `npm test` is green. Never the team repository `cimi2232/DECO3500`. Never `--no-verify`. `CLAUDE.md` is not edited.
 - Windows host: the Bash tool is Git Bash. Never write JavaScript, Python or C++ holding backticks, quotes or `${}` through a Bash heredoc: write it with the editor.
@@ -68,7 +68,7 @@ for (const m of list) {
 console.log(allOk ? 'ALL MUTATIONS HELD' : 'SOME MUTATION DID NOT HOLD');
 ````
 
-**P2 — Build both bands.** From `firmware/`, with PlatformIO's own `pio` at `C:\Users\LewisDong\.platformio\penv\Scripts\pio.exe`: `pio run -e m5sticks3` and `pio run -e m5stickc`, each ending `[SUCCESS]`. Flashing adds `-t upload --upload-port COM8` (StickS3) or `COM9` (StickC Plus), and only after the owner's yes.
+**P2 — Build both bands.** From `firmware/`, with PlatformIO's own `pio` at `C:\Users\LewisDong\.platformio\penv\Scripts\pio.exe`: `pio run -e m5sticks3` and `pio run -e m5stickc`, each ending `[SUCCESS]`. Flashing adds `-t upload --upload-port COM8` (StickS3) or `COM9` (StickC Plus), and only after our yes.
 
 **P3 — Look at a face.** `snap.py` asks a band for `snap` over its console without resetting it, and writes the frame as a PNG three times the size, for Read, and as raw RGBA beside it, for `qr.mjs`. Both live in the scratchpad; run `snap.py` with PlatformIO's Python (`C:/Users/LewisDong/.platformio/penv/Scripts/python.exe`, which has pyserial), and `qr.mjs` from the repository root so `jsqr` resolves.
 
@@ -217,7 +217,7 @@ ws.onclose = () => say('closed');
 **Interfaces:**
 - Produces: `constexpr uint32_t TURN_READ_MS = 100; constexpr float TURN_TILT = 0.35f; constexpr uint32_t TURN_HOLD_MS = 500;` `enum TurnMode { TURN_AUTO = 0, TURN_USB_LEFT = 1, TURN_USB_RIGHT = 2 };` `int turnNamed(const std::string&)` (the mode, or -1); `const char* turnName(int mode)`; `class Turning { void set(TurnMode); TurnMode mode() const; bool usbRight() const; bool read(float down, uint32_t now); }` where `down` is gravity across the short side in g, positive when the USB-left face is the right way up, and `read()` is true when the side changed; `std::string toBase64(const uint8_t* bytes, size_t n)`.
 
-- [ ] **Step 1: Write the failing checks** — in `firmware/host/logic_test.cpp`, inside the anonymous namespace that holds the checks (after `markers()`, before the line `}  // namespace` that closes it), add:
+- [ ] **Step 1: Write the failing checks.** In `firmware/host/logic_test.cpp`, inside the anonymous namespace that holds the checks (after `markers()`, before the line `}  // namespace` that closes it), add:
 
 ```cpp
 void turning() {
@@ -271,9 +271,9 @@ and in `main()`, after `markers();`, add `turning();`.
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `node --test tests/firmware.test.js`
-Expected: FAIL — *the wristband logic passes its own checks* does not compile: `'Turning' was not declared in this scope`. (`as_band.cpp` still compiles: nothing in `band_logic.h` changed yet.)
+Expected: FAIL, because *the wristband logic passes its own checks* does not compile: `'Turning' was not declared in this scope`. (`as_band.cpp` still compiles: nothing in `band_logic.h` changed yet.)
 
-- [ ] **Step 3: Write the section in `band_logic.h`** — before the line `// ---------- the serial console ----------`, add:
+- [ ] **Step 3: Write the section in `band_logic.h`.** Before the line `// ---------- the serial console ----------`, add:
 
 ```cpp
 // ---------- which way up (docs/superpowers/specs/2026-09-28-wrist-landscape-design.md §2) ----------
@@ -371,7 +371,7 @@ inline std::string toBase64(const uint8_t* bytes, size_t n) {
 Run: `node --test tests/firmware.test.js`
 Expected: PASS, every test (the logic binary prints `ok: <n> checks`).
 
-- [ ] **Step 5: Mutation check (P1)** — `landscape-task-1.json`, every item with `"file": "firmware/src/band_logic.h"`, `"test": "tests/firmware.test.js"`, `"expect": ["the wristband logic passes its own checks"]`:
+- [ ] **Step 5: Mutation check (P1).** Use `landscape-task-1.json`, every item with `"file": "firmware/src/band_logic.h"`, `"test": "tests/firmware.test.js"`, `"expect": ["the wristband logic passes its own checks"]`:
 
 | label | from | to |
 |---|---|---|
@@ -386,7 +386,7 @@ Expected: PASS, every test (the logic binary prints `ok: <n> checks`).
 
 - [ ] **Step 6: Whole suite, commit, push**
 
-Run: `npm test` — expected: every test passes.
+Run: `npm test`. Expected: every test passes.
 
 ```bash
 git add firmware/src/band_logic.h firmware/host/logic_test.cpp
@@ -405,7 +405,7 @@ git push origin main
 - Consumes: `toBase64()` (Task 1).
 - Produces: `float scaleOf(int W, int H)`; `ROTATION[2]` (USB left, USB right; `{3, 1}` as measured in Task 4); `void snap()`, answering `snap` for a wristband and a marker.
 
-- [ ] **Step 1: Scale from the canvas's band turned** — add after `int px(float v, float k) { … }`:
+- [ ] **Step 1: Scale from the canvas's band turned.** Add after `int px(float v, float k) { … }`:
 
 ```cpp
 /** How the canvas's band, 135 x 240 drawn portrait, scales to this face: turned, 240 x 135. */
@@ -414,7 +414,7 @@ float scaleOf(int W, int H) { return std::min(W / 240.0f, H / 135.0f); }
 
 In `paint()`, replace `const float k = std::min(W / 135.0f, H / 240.0f);  // the canvas draws the wristband 135 x 240` with `const float k = scaleOf(W, H);`. In `drawMarker()`, replace `const float k = std::min(face.width() / 135.0f, face.height() / 240.0f);` with `const float k = scaleOf(face.width(), face.height());`.
 
-- [ ] **Step 2: Lines centred where they are asked** — replace `drawLines()`:
+- [ ] **Step 2: Lines centred where they are asked.** Replace `drawLines()`:
 
 ```cpp
 void drawLines(const std::vector<std::string>& lines, const lgfx::IFont* font, int step, int& y) {
@@ -441,7 +441,7 @@ void drawLines(const std::vector<std::string>& lines, const lgfx::IFont* font, i
 }
 ```
 
-- [ ] **Step 3: The number as large as the height left allows** — in `drawMeet()`, replace
+- [ ] **Step 3: The number as large as the height left allows.** In `drawMeet()`, replace
 
 ```cpp
   const float size = std::min(2.0f * k, static_cast<float>(maxW) / std::max(1, widthIn(NUMBER, w.big)));
@@ -457,7 +457,7 @@ with
   const float size = std::min({2.0f * k, static_cast<float>(maxW) / std::max(1, widthIn(NUMBER, w.big)), tall});
 ```
 
-- [ ] **Step 4: Pairing, the code beside its letters** — replace the whole of `drawPairing()` and its comment:
+- [ ] **Step 4: Pairing, the code beside its letters.** Replace the whole of `drawPairing()` and its comment:
 
 ```cpp
 /**
@@ -507,7 +507,7 @@ void drawPairing(const std::string& code, const std::string& hint, float k) {
 }
 ```
 
-- [ ] **Step 5: `snap`** — after `markerFace()`, add:
+- [ ] **Step 5: `snap`.** After `markerFace()`, add:
 
 ```cpp
 /**
@@ -541,7 +541,7 @@ In `run()`, the marker branch gains `else if (c.verb == "snap") snap();` before 
 
 `help()` gains the line `"  snap                    the screen, as one line of base64 for a script\n"` after the `face` line, and `helpMarker()` the same after its `face` line.
 
-- [ ] **Step 6: Landscape from boot** — at the top of the anonymous namespace's screen section (after `constexpr uint16_t WHITE = 0xFFFF;`), add:
+- [ ] **Step 6: Landscape from boot.** At the top of the anonymous namespace's screen section (after `constexpr uint16_t WHITE = 0xFFFF;`), add:
 
 ```cpp
 // The display's two landscape rotations: the USB-C socket to the left of the words, and to their right.
@@ -565,7 +565,7 @@ with
 
 - [ ] **Step 7: Build both (P2), run the suite**
 
-Run P2's two builds — expected `[SUCCESS]` for each, no warnings from `main.cpp`. Run `npm test` — expected: every test passes.
+Run P2's two builds. Expected: `[SUCCESS]` for each, no warnings from `main.cpp`. Run `npm test`. Expected: every test passes.
 
 - [ ] **Step 8: Commit, push**
 
@@ -585,7 +585,7 @@ git push origin main
 **Interfaces:**
 - Consumes: `Turning`, `turnNamed`, `turnName`, `TURN_READ_MS` (Task 1); `ROTATION` (Task 2).
 
-- [ ] **Step 1: Readings and the turn** — after the `ROTATION` constant, add:
+- [ ] **Step 1: Readings and the turn.** After the `ROTATION` constant, add:
 
 ```cpp
 // Which accelerometer axis runs across the band's short side, and the sign that makes gravity along it positive
@@ -645,7 +645,7 @@ void setTurn(const std::string& name) {
 }
 ```
 
-- [ ] **Step 2: The console** — `report()` gains `reportTurn();` before `reportNear(millis());`; a marker's `show` in `run()` becomes `{ reportMarker(); reportTurn(); }`, and `setup()`'s marker branch calls `reportTurn();` after `reportMarker();` (`reportMarker()` stands above the screen section, so it cannot call `reportTurn()` itself without a forward declaration, which this file has none of). In `run()`, the marker branch gains `else if (c.verb == "turn") setTurn(trim(c.arg));` before `else helpMarker();`; the wristband chain gains, before `} else if (c.verb == "snap") {`:
+- [ ] **Step 2: The console.** `report()` gains `reportTurn();` before `reportNear(millis());`; a marker's `show` in `run()` becomes `{ reportMarker(); reportTurn(); }`, and `setup()`'s marker branch calls `reportTurn();` after `reportMarker();` (`reportMarker()` stands above the screen section, so it cannot call `reportTurn()` itself without a forward declaration, which this file has none of). In `run()`, the marker branch gains `else if (c.verb == "turn") setTurn(trim(c.arg));` before `else helpMarker();`; the wristband chain gains, before `} else if (c.verb == "snap") {`:
 
 ```cpp
   } else if (c.verb == "turn") {
@@ -661,7 +661,7 @@ and `forget` gains, after `prefs.remove("relay");`:
 
 `help()` gains `"  turn auto|usb-left|usb-right  which way up: worked out, or held (kept)\n"` after the `snap` line, and `helpMarker()` the same after its `snap` line.
 
-- [ ] **Step 3: Boot and loop** — in `setup()`, after `prefs.begin("otb", false);` and the line after it, add:
+- [ ] **Step 3: Boot and loop.** In `setup()`, after `prefs.begin("otb", false);` and the line after it, add:
 
 ```cpp
   // Which way up: worked out from the accelerometer, or held to the side `turn` kept.
@@ -671,7 +671,7 @@ and `forget` gains, after `prefs.remove("relay");`:
   applyTurn();
 ```
 
-In `loop()`, after `readBattery(now);`, add `readTurn(now);` — once, before the marker branch, so a marker turns too.
+In `loop()`, after `readBattery(now);`, add `readTurn(now);`, once, before the marker branch, so a marker turns too.
 
 - [ ] **Step 4: Build both (P2), run the suite**
 
@@ -689,28 +689,28 @@ git push origin main
 
 ### Task 4: On both real bands
 
-Needs the owner: ask in Chinese, with AskUserQuestion, before flashing; and ask whether he is at the desk to hold and wear the bands.
+Needs us: ask in Chinese, with AskUserQuestion, before flashing, and ask whether we are at the desk to hold and wear the bands.
 
-- [ ] **Step 1: Flash both (P2, `-t upload`)** after his yes. Then `show` on each (ask.py): `face    landscape, USB left (auto), tilt …` with numbers, and the relay `on it`.
+- [ ] **Step 1: Flash both (P2, `-t upload`)** after our yes. Then `show` on each (ask.py): `face    landscape, USB left (auto), tilt …` with numbers, and the relay `on it`.
 
-- [ ] **Step 2: Measure which rotation is which, with him.** `turn usb-left` on a band; ask him whether the USB-C socket is to the left of the words. If not, swap `ROTATION`'s two values. Then, still held, ask him to hold the band as he reads a watch; read `show`'s raw axes: the axis of x and y with the larger size is the one across the short side (`ACROSS_IS_Y`), and its sign must make `tilt` positive (`ACROSS_SIGN`). Both bands, each its own constants. `turn auto` on both after.
+- [ ] **Step 2: Measure which rotation is which, with him.** `turn usb-left` on a band; ask us whether the USB-C socket is to the left of the words. If not, swap `ROTATION`'s two values. Then, still held, ask us to hold the band as we read a watch; read `show`'s raw axes: the axis of x and y with the larger size is the one across the short side (`ACROSS_IS_Y`), and its sign must make `tilt` positive (`ACROSS_SIGN`). Both bands, each its own constants. `turn auto` on both after.
 
-  *Measured 28 Sep 2026:* at `turn usb-left` with rotation 1 the owner saw the socket to the right of the words on both bands, so `ROTATION` is `{3, 1}` on both. Held upright facing him, socket to his left: StickC Plus x +0.16, **y +0.94**, z +0.35; StickS3 x -0.02, **y +0.70**, z +0.72 (tipped back as a raised wrist is). Both boards: `ACROSS_IS_Y` true, `ACROSS_SIGN` +1, so the per-board `#if` went. Before this, on the provisional x axis, he reported that the Plus did not turn as it should on auto.
+  *Measured 28 Sep 2026:* at `turn usb-left` with rotation 1 we saw the socket to the right of the words on both bands, so `ROTATION` is `{3, 1}` on both. Held upright facing us, socket to our left: StickC Plus x +0.16, **y +0.94**, z +0.35; StickS3 x -0.02, **y +0.70**, z +0.72 (tipped back as a raised wrist is). Both boards: `ACROSS_IS_Y` true, `ACROSS_SIGN` +1, so the per-board `#if` went. Before this, on the provisional x axis, we noted that the Plus did not turn as it should on auto.
 
-- [ ] **Step 3: If a constant changed**, correct it (Task 2 or 3's block here too), P2 builds, `npm test`, commit (`The band's turn, as measured on both boards`), push, and ask him again before flashing again.
+- [ ] **Step 3: If a constant changed**, correct it (Task 2 or 3's block here too), P2 builds, `npm test`, commit (`The band's turn, as measured on both boards`), push, and ask us again before flashing again.
 
 - [ ] **Step 4: Look at every face (P3), on both bands, on both sides** (`turn usb-left`, then `turn usb-right`; back to `turn usb-left` after). A face is lit by `press face` (ask.py) before its snap. Faces:
   1. unpaired letters and QR, and the same after a press (the hint);
-  2. the pairing check number: P4's stand-in phone at `https://on-the-beat.fly.dev`, venue `band-check-landscape`, with the band's letters, `300` s and `CONFIRM_AFTER_MS=15000` — snap once `CHECK` prints, before the YES, and the band's `face` shows the same number;
+  2. the pairing check number: P4's stand-in phone at `https://on-the-beat.fly.dev`, venue `band-check-landscape`, with the band's letters, `300` s and `CONFIRM_AFTER_MS=15000`: snap once `CHECK` prints, before the YES, and the band's `face` shows the same number;
   3. paired and idle; a card after `press side`; KEEP HOLDING part way (`hold face`, snap at once); NOT NOW after the hold;
   4. a marker's face: `marker bar`, `press face`, snap, `marker off`.
   Read every PNG. Decode each pairing frame's QR with `qr.mjs`: the address must be the relay's pairing link for the letters shown. Unpair the stand-in when done (it does so itself at the end of its time), and say each band's state.
 
   *Done 28-29 Sep 2026, after Task 4b.* `snap` reads the sprite, which is the same whichever side is up, so the sides were checked once: the StickS3's pairing face snapped at USB right and again after `turn usb-left` gave byte-identical 240 x 135 frames. Faces, read as PNGs: the pairing face with and without the hint on both (QR decoded to `https://on-the-beat.fly.dev/pair/TVGC` and `/pair/SFJQ`, the letters shown); the check (66 on the StickS3, 58 on the Plus, one line of ON YOUR PHONE? over the number); READY / 100% and READY / SIDE TO CHANGE; a card, HI :) in its colour, on both (so the RGB565 byte order is right); KEEP HOLDING with its bar about 70% along, clear of the words, on the Plus only; a marker's face, MARKER / NEAR THE BAR, on the StickS3, whose marker `show` gave the side too. NOT NOW is a dark face: nothing new is drawn. The Plus's `snap` takes about 4 s over its UART at 115200, the StickS3's about 1.5 s. The first check typed at the StickS3 (TVGC, 92) ended `false` the moment YES was sent: the band had reconnected with new letters (FEZF) while the relay held the old; the relay does not log band sockets, and the two checks after it paired. `faces.py` in the scratchpad runs the check-and-paired sequence against `pairphone.mjs`'s output; `snap.py` takes lines to type first, and `wait:<s>`. Both bands left on Y70, `on it`, USB left, unpaired.
 
-- [x] **Step 5: On the wrist, with him.** Worn in the clip: raising the wrist reads the right way up; turning the arm the other way round turns the face within about half a second; flat on the table and hanging at his side, it does not flicker. Each wrist once. `show` on the Plus before and after five minutes of wear for the power line.
+- [x] **Step 5: On the wrist, with him.** Worn in the clip: raising the wrist reads the right way up; turning the arm the other way round turns the face within about half a second; flat on the table and hanging at our side, it does not flicker. Each wrist once. `show` on the Plus before and after five minutes of wear for the power line.
 
-  *Worn 28 Sep 2026, and it failed:* on both bands, raising the wrist read the right way up and flat or hanging never flickered, but moving to the other wrist never turned the face. `tiltlog.py` (below) recorded why: looking at the StickS3 on his left wrist as at a watch, socket toward the elbow, the face lay nearly flat (z +0.75 to +0.95 g), gravity in its plane ran along the arm (x -0.5 to -0.7 g), and across the short side read only -0.1 to -0.3 g, the opposite way to a face held upright. A face seen from above has no down that gravity can find, and across the short side is the only reading in which the two wrists differ. He asked whether it was too hard, and chose to hold the side and turn it over by hand. The spec's §2 and §3 were amended; Task 4b builds that.
+  *Worn 28 Sep 2026, and it failed:* on both bands, raising the wrist read the right way up and flat or hanging never flickered, but moving to the other wrist never turned the face. `tiltlog.py` (below) recorded why: looking at the StickS3 on our left wrist as at a watch, socket toward the elbow, the face lay nearly flat (z +0.75 to +0.95 g), gravity in its plane ran along the arm (x -0.5 to -0.7 g), and across the short side read only -0.1 to -0.3 g, the opposite way to a face held upright. A face seen from above has no down that gravity can find, and across the short side is the only reading in which the two wrists differ. We asked whether it was too hard, and chose to hold the side and turn it over by hand. The spec's §2 and §3 were amended; Task 4b builds that.
 
   ```python
   """Log a band's turn line (side, tilt, raw axes) four times a second, without resetting it.
@@ -774,15 +774,15 @@ Needs the owner: ask in Chinese, with AskUserQuestion, before flashing; and ask 
 **Interfaces:**
 - Produces: `int turnNamed(const std::string&)`: 0 for `usb-left`, 1 for `usb-right`, -1 for anything else, `auto` included; `const char* turnName(bool usbRight)`; in `main.cpp`, `bool usbRight` and `void turnTo(bool right)`, which keeps the side as `turn`, turns the display and says so.
 
-- [x] **Step 1: The checks** — `turning()` in `logic_test.cpp` checks `turnNamed("usb-left") == 0`, `turnNamed("usb-right") == 1`, `-1` for `auto`, `""`, `left` and `USB-LEFT`, both names from `turnName()`, and the base64 checks as before. Red against Task 1's code: `turnNamed("usb-left")` was 1.
-- [x] **Step 2: `band_logic.h`** — the turning section is a comment on why the side is held, `turnNamed()` and `turnName(bool)`. Green: 111 of 111.
-- [x] **Step 3: `main.cpp`** — `bool usbRight` replaces `Turning` and the accelerometer; `applyTurn()` turns the display to `ROTATION[usbRight]`; `turnTo(right)` keeps `turn`, applies and reports; `setTurn()` takes the two names; `setup()` reads `turn` with `usb-left` as the fallback, so a kept `auto` reads as USB left; `loop()`, before the marker branch, has `if (M5.BtnPWR.wasClicked()) turnTo(!usbRight);`; `forget` sets USB left; `show` says `face    landscape, USB left; the power button turns it over`; `help()` and `helpMarker()` say `turn usb-left|usb-right  which side is up (kept); the power button turns it over`.
-- [x] **Step 4: Build both, the suite, two mutations** — both `[SUCCESS]`; `npm test` 470 of 470; *the two sides swapped* and *an old auto taken as a side* each turn *the wristband logic passes its own checks* red, restored byte for byte.
-- [x] **Step 5: Commit, push, and flash both** (he said yes, 28 Sep 2026). `335573e`. Both came back `on it`, and the `auto` each had kept read as USB left.
-- [x] **Step 6: On both bands, with him** — `show` says USB left; a short press of the power button turns the face over and `show` says USB right; a second press turns it back; left on USB right, a restart (`pio device monitor`'s reset, or power) comes back USB right; then back to USB left. If `M5.BtnPWR` never clicks on a board, say so and stop: the gesture is his to choose again.
+- [x] **Step 1: The checks.** `turning()` in `logic_test.cpp` checks `turnNamed("usb-left") == 0`, `turnNamed("usb-right") == 1`, `-1` for `auto`, `""`, `left` and `USB-LEFT`, both names from `turnName()`, and the base64 checks as before. Red against Task 1's code: `turnNamed("usb-left")` was 1.
+- [x] **Step 2: `band_logic.h`.** The turning section is a comment on why the side is held, `turnNamed()` and `turnName(bool)`. Green: 111 of 111.
+- [x] **Step 3: `main.cpp`.** `bool usbRight` replaces `Turning` and the accelerometer; `applyTurn()` turns the display to `ROTATION[usbRight]`; `turnTo(right)` keeps `turn`, applies and reports; `setTurn()` takes the two names; `setup()` reads `turn` with `usb-left` as the fallback, so a kept `auto` reads as USB left; `loop()`, before the marker branch, has `if (M5.BtnPWR.wasClicked()) turnTo(!usbRight);`; `forget` sets USB left; `show` says `face    landscape, USB left; the power button turns it over`; `help()` and `helpMarker()` say `turn usb-left|usb-right  which side is up (kept); the power button turns it over`.
+- [x] **Step 4: Build both, the suite, two mutations.** Both `[SUCCESS]`; `npm test` 470 of 470; *the two sides swapped* and *an old auto taken as a side* each turn *the wristband logic passes its own checks* red, restored byte for byte.
+- [x] **Step 5: Commit, push, and flash both** (we said yes, 28 Sep 2026). `335573e`. Both came back `on it`, and the `auto` each had kept read as USB left.
+- [x] **Step 6: On both bands, with him.** `show` says USB left; a short press of the power button turns the face over and `show` says USB right; a second press turns it back; left on USB right, a restart (`pio device monitor`'s reset, or power) comes back USB right; then back to USB left. If `M5.BtnPWR` never clicks on a board, say so and stop: the gesture is ours to choose again.
 
-  *28 Sep 2026:* the StickC Plus turned over on a press (its console: `USB right`, then `USB left` 1.2 s later on the second press). The StickS3 powered off or restarted on a short press, from its power chip, and its console never saw a click. Offered a press of both buttons at once or a phone-app button, he chose to leave the StickS3 to `turn` from the laptop and keep the power button on the Plus.
-- [x] **Step 6b: The power button on the Plus only** (`4f604f2`, flashed on his yes; after `turn usb-right` and a reset through the serial port both came back USB right, the StickS3's `show` without the power button, the Plus's with it) — `main.cpp` reads `M5.BtnPWR` only where `axp` (the StickC Plus, whose AXP192 it comes from); `show` adds `; the power button turns it over` only there; `help()` and `helpMarker()` say `turn usb-left|usb-right  which side is up (kept); on a StickC Plus the power button turns it over too`. Build both, `npm test`, commit, push; ask him before flashing both. Then on the Plus a press turns it over and a restart keeps the side; on the StickS3 `turn usb-right`, a restart keeps it, `turn usb-left` back.
+  *28 Sep 2026:* the StickC Plus turned over on a press (its console: `USB right`, then `USB left` 1.2 s later on the second press). The StickS3 powered off or restarted on a short press, from its power chip, and its console never saw a click. Offered a press of both buttons at once or a phone-app button, we chose to leave the StickS3 to `turn` from the laptop and keep the power button on the Plus.
+- [x] **Step 6b: The power button on the Plus only** (`4f604f2`, flashed on our yes; after `turn usb-right` and a reset through the serial port both came back USB right, the StickS3's `show` without the power button, the Plus's with it). `main.cpp` reads `M5.BtnPWR` only where `axp` (the StickC Plus, whose AXP192 it comes from); `show` adds `; the power button turns it over` only there; `help()` and `helpMarker()` say `turn usb-left|usb-right  which side is up (kept); on a StickC Plus the power button turns it over too`. Build both, `npm test`, commit, push; ask us before flashing both. Then on the Plus a press turns it over and a restart keeps the side; on the StickS3 `turn usb-right`, a restart keeps it, `turn usb-left` back.
 - [x] **Step 7:** Task 4's Step 4 (every face snapped, both sides) and Task 5 go on from here.
 
 ---
@@ -792,7 +792,7 @@ Needs the owner: ask in Chinese, with AskUserQuestion, before flashing; and ask 
 **Files:**
 - Modify: `README.md` (*Where this differs from the canvas*; *The wristband's firmware*; *What is not done*)
 
-- [x] **Step 1: README** — *Written 29 Sep 2026, after Task 4b: the blocks below describe the accelerometer and were not used as they stand. The README says instead that the side is held, `turn usb-left|usb-right`, the Plus's power button, why the StickS3 has none, why the accelerometer was dropped with the numbers, `snap`; and under What is not done, that the band never turns itself, that the StickS3 turns only from a laptop, and the one unexplained reconnect.* As planned — *Where this differs from the canvas*, at the end of the list:
+- [x] **Step 1: README.** *Written 29 Sep 2026, after Task 4b: the blocks below describe the accelerometer and were not used as they stand. The README says instead that the side is held, `turn usb-left|usb-right`, the Plus's power button, why the StickS3 has none, why the accelerometer was dropped with the numbers, `snap`; and under What is not done, that the band never turns itself, that the StickS3 turns only from a laptop, and the one unexplained reconnect.* As planned — *Where this differs from the canvas*, at the end of the list:
 
 ```
 - **The band is landscape, and turns itself.** Revision 6 draws a portrait
@@ -824,7 +824,7 @@ base64, which is how every landscape face was looked at from a laptop.
   worn for a night; each is one constant in `band_logic.h`.
 ```
 
-- [x] **Step 2: Suite, commit, push** — `npm test` green (470 of 470, 29 Sep 2026) (`tests/copy.test.js` reads the README).
+- [x] **Step 2: Suite, commit, push.** `npm test` green (470 of 470, 29 Sep 2026) (`tests/copy.test.js` reads the README).
 
 ```bash
 git add README.md
@@ -832,4 +832,4 @@ git commit -m "README: the band sideways" -m "Why the band is landscape, how it 
 git push origin main
 ```
 
-- [x] **Step 3: Memory** — update `watch-kit` (done, with the measured constants and his wear test) and its line in `MEMORY.md`.
+- [x] **Step 3: Memory.** Update `watch-kit` (done, with the measured constants and our wear test) and its line in `MEMORY.md`.

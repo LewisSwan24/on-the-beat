@@ -8,16 +8,16 @@
 
 **Tech Stack:** Node 22+ (`node --test`, `ws`), C++17 on the laptop (MinGW-W64 g++ here, GCC in CI), C++11 on the band (Arduino-ESP32 2.0.17 through PlatformIO `espressif32@^6.9.0`, ESP-IDF 4.4's `esp_now.h` and `esp_wifi.h`), M5Unified 0.2.22 or later.
 
-**Spec:** `docs/superpowers/specs/2026-09-27-wrist-markers-design.md` (decided with the owner section by section on 27 Sep 2026, after a model of three kinds of floor and a spike on both real bands: §1 the marker, §2 the band's listen and report, §3 the relay's area, §4 privacy and abuse, §5 who does what, §6 tests and proof). Its floor was first -60 dBm and is -56: this build measured the hold through the real room, and the owner chose again the same day (commit `d0f50f0`, "The hold moves the floor"). It builds on the beacons, the listen and the report of `docs/superpowers/specs/2026-09-26-wrist-near-design.md`, whose plan is done. Read the markers spec before any task.
+**Spec:** `docs/superpowers/specs/2026-09-27-wrist-markers-design.md` (decided by us section by section on 27 Sep 2026, after a model of three kinds of floor and a spike on both real bands: §1 the marker, §2 the band's listen and report, §3 the relay's area, §4 privacy and abuse, §5 who does what, §6 tests and proof). Its floor was first -60 dBm and is -56: this build measured the hold through the real room, and we chose again the same day (commit `d0f50f0`, "The hold moves the floor"). It builds on the beacons, the listen and the report of `docs/superpowers/specs/2026-09-26-wrist-near-design.md`, whose plan is done. Read the markers spec before any task.
 
 This plan was written from a finished build: every task below was built in a scratch worktree (branch `markers-build`), test first, and committed on its own with `npm test` green at every commit. The code blocks are those commits' diffs, so applying a task's blocks in order reproduces it. Each Step 2 was measured by running the task's tests on its parent's code, and each mutation list was measured at its task's commit.
 
 ## Global Constraints
 
-- Artefacts are English: code, comments, commit messages, README, test names. Talk to the owner in Chinese.
+- Artefacts are English: code, comments, commit messages, README, test names. Talk to us in Chinese.
 - **Still a band, never a number, never a map** (promise 1, spec §4). No reading, marker or order reaches a phone or a band: a row says one of the four phrases the product always had. Readings live `HEARD_MS` (30 s) in the relay's memory and nowhere else.
 - **Only markers name an area.** `join`'s `band` and `{t:'band'}` are gone; nothing a phone says sets an area. No phone sends either today.
-- **Better unnamed than named wrong** (the owner's choice). A person is `in this room` unless their band's loudest marker, by the median over `HEARD_MS`, is `MARK_FLOOR` or louder, or the area they are in still holds.
+- **Better unnamed than named wrong** (our choice). A person is `in this room` unless their band's loudest marker, by the median over `HEARD_MS`, is `MARK_FLOOR` or louder, or the area they are in still holds.
 - **Constants** (`relay/room.js`): `MARKS = { bar: 'near the bar', stage: 'by the stage', back: 'somewhere out the back' }`, `MARK_FLOOR = -56` (dBm), `MARK_HOLD = 4` (dB); near's `HEARD_MS` and `NEAR_TICK_MS` (5 s) unchanged. (`firmware/src/band_logic.h`): `MARK_BEACON = "OTBM"` (four bytes, then the letter, no ending 0), `MARK_CHANNELS = 13`, `MARK_AREA` = `bar`/`b`/`NEAR THE BAR`, `stage`/`s`/`BY THE STAGE`, `back`/`o`/`OUT THE BACK`; `FRAME_MAX` 320 → 384; near's `BEACON_MS` (500) and the face's `WAKE_MS` (6000) reused.
 - **The area** at each tick, per person: each area's median over `HEARD_MS`; the area they are in holds while its median is `MARK_FLOOR - MARK_HOLD` (-60) or louder and no other area's is `MARK_HOLD` or more above it; otherwise the loudest, if `MARK_FLOOR` or louder; otherwise `in this room`. `nearTick()` says a view changed when anyone's area did.
 - **Frames:** a report may end `,"marks":[["bar",-52],...]`, strongest first, only when the listen heard a marker. The relay takes `marks` only as an array of at most three `[area, rssi]` pairs, each area a key of `MARKS` and none twice, each `rssi` a whole number from -100 to 0; anything else drops the whole report, as a malformed report is dropped.
@@ -29,13 +29,13 @@ This plan was written from a finished build: every task below was built in a scr
 - `CLAUDE.md` is not in git and is not edited by this plan. Nothing from `../on-the-beat-research/` or `../on-the-beat-design/` enters the repository.
 - `npm test` builds first (the relay serves `dist/`). Running one test file alone: `npm run build` first, and again after restoring a mutation.
 - Windows host: the Bash tool is Git Bash, and the plan's scripts are Node. Never write JavaScript or Python holding backticks, quotes or `${}` through a Bash heredoc: write it with the editor. A command that holds `git commit` and another program's `-n` (such as `grep -n`) is refused by a hook as `--no-verify`: run them separately.
-- Flashing a band needs the owner's yes first, every time. The StickS3 is on `COM8`, the StickC Plus on `COM9`. Stand-in personas paired to his bands are unpaired when a test ends, and each band's state is said. A band made a marker is made a wristband again (`marker off`) before the test ends, unless he says otherwise.
+- Flashing a band needs our yes first, every time. The StickS3 is on `COM8`, the StickC Plus on `COM9`. Stand-in personas paired to our bands are unpaired when a test ends, and each band's state is said. A band made a marker is made a wristband again (`marker off`) before the test ends, unless we say otherwise.
 - Never more than ten background tasks at once. Work directly; this plan needs no fan-out.
 - Commit messages end with the attribution trailer the session's system reminder gives (today: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`).
 
 ## Three procedures used throughout
 
-**P1 — Mutation check.** Every task that adds a guard lists mutations as JSON: break one guard, run one test file, and exactly the listed tests go red (a listed name is a prefix of the test's). The lists were measured at each task's own commit; run later, a list may find more red as later tests join, and a mutation whose line a later task rewrote no longer applies.
+**P1: Mutation check.** Every task that adds a guard lists mutations as JSON: break one guard, run one test file, and exactly the listed tests go red (a listed name is a prefix of the test's). The lists were measured at each task's own commit; run later, a list may find more red as later tests join, and a mutation whose line a later task rewrote no longer applies.
 
 Save this runner outside the repository (for example in your scratch directory as `mutate.mjs`) and run it from the repository root: `node <scratch>/mutate.mjs <scratch>/task-N.json`. It applies each edit (the `from` text must occur exactly once), runs the test file, restores the file byte for byte, runs the file again, and prints `ALL MUTATIONS HELD` only if every red set was exactly the listed one and every restore came back green. A C++ mutation runs `tests/firmware.test.js`, which compiles the host tests, about 40 s a run, twice: Task 4's thirteen take about twenty minutes, so run them in the background. Never run two lists at once when one mutates a file the other's tests use: `tests/firmware.test.js` runs the real relay, so no relay list runs beside Task 4's, and no PlatformIO build runs while `band_logic.h` holds a mutant.
 
@@ -79,9 +79,9 @@ console.log(allOk ? 'ALL MUTATIONS HELD' : 'SOME MUTATION DID NOT HOLD');
 
 If the wrong test goes red, or none does, stop: the test does not hold the guard. Fix the test, not the guard. Put `Mutation-checked: <n> mutations, all held` in the task's commit body.
 
-**P2 — Close a stage.** `npm test` (expect `ℹ fail 0`, `ℹ skipped 0`), then `git push origin main`. A push that cannot reach github.com:443 while `gh` works is the network: check with `curl -sI https://github.com`, retry, leave git config alone. `npm test` here sometimes loses a whole file to a Node fatal error (exit `0xC0000409`, the file's tests missing from the count rather than failed): run it again.
+**P2: Close a stage.** `npm test` (expect `ℹ fail 0`, `ℹ skipped 0`), then `git push origin main`. A push that cannot reach github.com:443 while `gh` works is the network: check with `curl -sI https://github.com`, retry, leave git config alone. `npm test` here sometimes loses a whole file to a Node fatal error (exit `0xC0000409`, the file's tests missing from the count rather than failed): run it again.
 
-**P3 — Build the band.** Windows' path limit breaks PlatformIO in a deep directory, so build with short output directories:
+**P3: Build the band.** Windows' path limit breaks PlatformIO in a deep directory, so build with short output directories:
 
 ```bash
 T=/c/Users/LEWISD~1/AppData/Local/Temp/otbpio
@@ -110,9 +110,9 @@ Not modified, on purpose: everything in `app/` (a row already says `someone(band
 
 | Stage | Tasks | Leaves |
 |---|---|---|
-| A. The relay | 1–3 | the area from the markers, held, and no area from a phone; `marks` checked and handed to the room; the crowd model through the real room |
-| B. The band | 4–5 | the marker's beacon and face and the listen's marks in `band_logic.h`, held on the laptop and against the relay; marker mode, the sweep and the console in `main.cpp` |
-| C. Docs and proof | 6–7 | README; the real bands, with the owner |
+| A. The relay | 1-3 | the area from the markers, held, and no area from a phone; `marks` checked and handed to the room; the crowd model through the real room |
+| B. The band | 4-5 | the marker's beacon and face and the listen's marks in `band_logic.h`, held on the laptop and against the relay; marker mode, the sweep and the console in `main.cpp` |
+| C. Docs and proof | 6-7 | README; the real bands, with us |
 
 Every task ends green and is committed on its own; each stage ends with P2.
 
@@ -579,9 +579,9 @@ In `relay/server.js`:
          // Rules 3 to 5 are in room.fromPhone(). A seq that is there but not a number drops the frame.
 ````
 
-- [ ] **Step 4: Run** — the two files, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 410`.
+- [ ] **Step 4: Run**: the two files, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 410`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. One condition is not in the list, on purpose: a band's readings go with its last report, so a first draft's check that the band had reported in `HEARD_MS` could not be told apart from none, since its readings are just as old; it was taken out.
+- [ ] **Step 5: Mutation check (P1)**: expected `ALL MUTATIONS HELD`. One condition is not in the list, on purpose: a band's readings go with its last report, so a first draft's check that the band had reported in `HEARD_MS` could not be told apart from none, since its readings are just as old; it was taken out.
 
 ````json
 [
@@ -874,9 +874,9 @@ Expected: `ℹ tests 51`, `ℹ pass 49`, `ℹ fail 2`: the area test times out w
    function refuseBand(ws) {
 ````
 
-- [ ] **Step 4: Run** — the file (`ℹ pass 51`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 413`.
+- [ ] **Step 4: Run**: the file (`ℹ pass 51`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 413`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**: expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -1099,11 +1099,11 @@ new file mode 100644
 
 - [ ] **Step 2: Run it.** `node --test tests/markers-crowd.test.js 2>&1 | grep -E "^✖|^ℹ (pass|fail)|named"`
 
-Expected: it passes on Tasks 1–2 as they are, in under a second: named 23.2, 12.4 and 35.4%; the wrong marker 0, 0 and 0.21% of those; nine in ten within 8.7, 6.1 and 9.8 m; areas changed 2.2, 0.9 and 3.6% a listen. It is a proof, not a new rule: its mutations below are what show it can fail. Measured while choosing the floor: at -60 dBm, markers above heads gave 1.26% wrong and 12.2 m; with no hold, areas changed 4.5, 1.3 and 6.0%.
+Expected: it passes on Tasks 1-2 as they are, in under a second: named 23.2, 12.4 and 35.4%; the wrong marker 0, 0 and 0.21% of those; nine in ten within 8.7, 6.1 and 9.8 m; areas changed 2.2, 0.9 and 3.6% a listen. It is a proof and adds no new rule; its mutations below show it can fail. Measured while choosing the floor: at -60 dBm, markers above heads gave 1.26% wrong and 12.2 m; with no hold, areas changed 4.5, 1.3 and 6.0%.
 
 - [ ] **Step 3: Run** `npm test`. Expected: `ℹ fail 0`, `ℹ tests 416`.
 
-- [ ] **Step 4: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. Naming the first marker heard rather than the loudest is not in this list: with only two markers at opposite ends, it leaves the people near the stage unnamed, which this test allows; Task 1's hold test catches it.
+- [ ] **Step 4: Mutation check (P1)**: expected `ALL MUTATIONS HELD`. Naming the first marker heard rather than the loudest is not in this list: with only two markers at opposite ends, it leaves the people near the stage unnamed, which this test allows; Task 1's hold test catches it.
 
 ````json
 [
@@ -1178,7 +1178,7 @@ EOF
 - Test: `firmware/host/logic_test.cpp`, `tests/firmware.test.js`
 
 **Interfaces:**
-- Consumes: near's `Hearing` (`heard`, `size`, `clear`, `strongest`, `frame`), `BEACON`, `BEACON_MS`, `FRAME_MAX`; `Words`, `fold()` and `WAKE_MS` in `firmware/src/band_logic.h`; the host tests' `CHECK`, `hear()`, `answer()` and `speak`; `speak()`, `open()` and `phone()` in `tests/firmware.test.js`; Tasks 1–2's relay.
+- Consumes: near's `Hearing` (`heard`, `size`, `clear`, `strongest`, `frame`), `BEACON`, `BEACON_MS`, `FRAME_MAX`; `Words`, `fold()` and `WAKE_MS` in `firmware/src/band_logic.h`; the host tests' `CHECK`, `hear()`, `answer()` and `speak`; `speak()`, `open()` and `phone()` in `tests/firmware.test.js`; Tasks 1-2's relay.
 - Produces: `MARK_BEACON[4]`, `MARK_CHANNELS` (13), `struct MarkArea { area, letter, words }`, `MARK_AREA[]`, `MARK_AREAS` (3); `markNamed(const std::string&)` and `markLettered(uint8_t)` → the area's index, or -1; `markSweep()` → `std::vector<int>` of channels 1..13. `Hearing::heardMark(uint8_t letter, int rssi)`, `Hearing::marks()` → `std::vector<Hearing::Marked>` (`const char* area`, `int rssi`), strongest first; `frame(ch)` ends with `marks` only when there are any; `clear()` clears them. `class Marker(int area)` with `area()`, `beacon()` → the five bytes, `press(now)`, `lit(now)` and `words()` → `{"MARKER", "NEAR THE BAR"}` and the like. `FRAME_MAX` 384. The host binary's `heard` verb gains `<letter>=<rssi>`. In `tests/firmware.test.js`, `pairedBands()` and `report()` come out of near's round-trip test for the new one to share.
 
 - [ ] **Step 1: Write the failing tests.** In `logic_test.cpp`, `markers()`: the three areas by word and by letter, and a word or letter no marker has; each marker's beacon bytes, never a band's `OTB1`, and the sweep of channels 1 to 13; a marker's face dark, lit `WAKE_MS` by a key, again by another, with its words in the screen's alphabet; a listen keeping each area once at its strongest, never among the bands, brought into -100..0, strongest first, saying nothing of markers when it heard none, and cleared with the rest; and the longest report, twelve bands and three markers on channel 14, 346 bytes and inside `FRAME_MAX`. In `tests/firmware.test.js`, three bands paired in one room report as the firmware writes them, one marker each (and a letter no marker has), and each phone shows the others in the area its band heard.
@@ -1584,9 +1584,9 @@ In `firmware/src/band_logic.h`:
  /**
 ````
 
-- [ ] **Step 4: Run** — the file (`ℹ pass 107` of 107; the host binary says `ok: 552 checks`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 417`.
+- [ ] **Step 4: Run**: the file (`ℹ pass 107` of 107; the host binary says `ok: 552 checks`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 417`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. Run it in the background: thirteen C++ mutations take about twenty minutes, and nothing else may run the relay or build the band meanwhile (P1).
+- [ ] **Step 5: Mutation check (P1)**: expected `ALL MUTATIONS HELD`. Run it in the background: thirteen C++ mutations take about twenty minutes, and nothing else may run the relay or build the band meanwhile (P1).
 
 ````json
 [
@@ -2249,7 +2249,7 @@ EOF
 
 ### Task 7: The real bands, with the owner
 
-Nothing here is automated, and every step needs the owner: flashing needs his yes first, and a band he wears is his. The relay must be the one with Tasks 1–2: deploy it to Fly first if the band is to use `https://on-the-beat.fly.dev` (he logs in himself; deploy any time except while he has said a demo is on), or run `npm start` and `npm run tunnel` and give the band the tunnel's address with `relay`.
+Nothing here is automated, and every step needs us: flashing needs our yes first, and a band we wear is ours. The relay must be the one with Tasks 1-2: deploy it to Fly first if the band is to use `https://on-the-beat.fly.dev` (we log in ourselves; deploy any time except while we have said a demo is on), or run `npm start` and `npm run tunnel` and give the band the tunnel's address with `relay`.
 
 - [ ] **Step 1: Flash both** (P3's directories, `-t upload`, `--upload-port COM8` for the StickS3 and `COM9` for the Plus), after asking. On each console, `show` must say what it said before: a wristband, `near    not now: not paired`.
 - [ ] **Step 2: Make the Plus a marker.** `marker bar` on its console: it says `a marker, bar: restarting`, and comes back as `ON THE BEAT marker: bar`. Ten seconds later `show` says about 260 beacons sent (thirteen channels, twice a second), none lost or refused, and a last sweep of about 30 ms. A press lights `MARKER` over `NEAR THE BAR` for six seconds; then the face is dark.

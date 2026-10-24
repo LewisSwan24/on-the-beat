@@ -8,13 +8,13 @@
 
 **Tech Stack:** Node 22+ (`node --test`, `ws`), React 19 + Vite 8, C++17 on the laptop (MinGW-W64 g++ here, GCC in CI), C++11 on the band (Arduino-ESP32 2.x through PlatformIO `espressif32@^6.9.0`), M5Unified 0.2.22 or later.
 
-**Spec:** `docs/superpowers/specs/2026-09-25-wrist-waves-design.md` (approved by the owner on 25 Sep 2026: "The owner's decisions after review" 1–6, §1 the receiver's band, §2 the sender, the phones and the meeting, §3 the relay, the wrist and the phone, §4 tests and proof). It builds on `docs/superpowers/specs/2026-09-25-wrist-reactions-design.md` and on its plan, `docs/superpowers/plans/2026-09-25-wrist-reactions.md`, which must be done first: this plan uses its sounds, flashes, calls, reaction queue, sound switch and NOT NOW silence. Read both specs before any task.
+**Spec:** `docs/superpowers/specs/2026-09-25-wrist-waves-design.md` (approved by us on 25 Sep 2026: "The owner's decisions after review" 1-6, §1 the receiver's band, §2 the sender, the phones and the meeting, §3 the relay, the wrist and the phone, §4 tests and proof). It builds on `docs/superpowers/specs/2026-09-25-wrist-reactions-design.md` and on its plan, `docs/superpowers/plans/2026-09-25-wrist-reactions.md`, which must be done first: this plan uses its sounds, flashes, calls, reaction queue, sound switch and NOT NOW silence. Read both specs before any task.
 
 This plan was written from a finished build: every task below was built in a scratch worktree, test first, and committed on its own with `npm test` green at every commit. The code blocks are those commits' diffs, so applying a task's blocks in order reproduces it. Each Step 2 was measured by running the task's tests on its parent's code, and each mutation list was measured at its task's commit.
 
 ## Global Constraints
 
-- Artefacts are English: code, comments, commit messages, README, test names. Talk to the owner in Chinese.
+- Artefacts are English: code, comments, commit messages, README, test names. Talk to us in Chinese.
 - **The owner's decisions (spec):** (1) a short call that ends by itself: `hello` and three blue flashes, whatever the keys do; (2) a count, not a list: a SIDE hold waves back to the newest, and the phone answers the others; (3) the band may say yes without the phone; (4) waves only while its person shows SAY HI; (5) a FACE press opens them; (6) keys wait out the call: a key only ticks, a FACE hold still goes NOT NOW, and a meeting calling underneath is answered by the first key after the flashes.
 - **Never who.** The band shows that someone waved and how many wait. No name, no photo, no pick, no area, and never a handle on its console.
 - **The call (spec §3):** sound `hello` = 1568/60, 2093/120 · flash `wave` = the HI blue (`colour: 'hi'`), 3 × 500 / 500, not ended by a key. **The words:** `SOMEONE WAVED`, `HOLD SIDE: WAVE BACK`, `N WAITING - HOLD SIDE` (`9+` past nine), `WAVE BACK`, `SENDING`. The wave face is black, at `LIGHT_AWAKE`, with the HI blue for the words, as the chooser shows HI.
@@ -27,13 +27,13 @@ This plan was written from a finished build: every task below was built in a scr
 - `CLAUDE.md` is not in git and is not edited by this plan. Nothing from `../on-the-beat-research/` or `../on-the-beat-design/` enters the repository.
 - `npm test` builds first (the relay serves `dist/`). Running one test file alone: `npm run build` first, and again after restoring a mutation.
 - Windows host: the Bash tool is Git Bash; `python` there is the Store alias and hangs, so scripts are Node. A heredoc whose text holds a backslash before a backtick breaks the Bash tool: write such a script to a file first. A command that holds `git commit` and another program's `-n` (such as `grep -n`) is refused by a hook as `--no-verify`: run them separately.
-- Flashing a band needs the owner's yes first, every time. The StickS3 is on `COM8`, the StickC Plus on `COM9`.
+- Flashing a band needs our yes first, every time. The StickS3 is on `COM8`, the StickC Plus on `COM9`.
 - Never more than ten background tasks at once. Work directly; this plan needs no fan-out.
 - Commit messages end with the attribution trailer the session's system reminder gives (today: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`).
 
 ## Three procedures used throughout
 
-**P1 — Mutation check.** Every task that adds a guard lists mutations as JSON: break one guard, run one test file, and exactly the listed tests go red. The lists were measured at each task's own commit; run later, a list may find more red as later tests join, and a mutation whose line a later task rewrote no longer applies.
+**P1: Mutation check.** Every task that adds a guard lists mutations as JSON: break one guard, run one test file, and exactly the listed tests go red. The lists were measured at each task's own commit; run later, a list may find more red as later tests join, and a mutation whose line a later task rewrote no longer applies.
 
 Save this runner outside the repository (for example in your scratch directory as `mutate.mjs`) and run it from the repository root: `node <scratch>/mutate.mjs <scratch>/task-N.json`. It applies each edit (the `from` text must occur exactly once), runs the test file, restores the file byte for byte, runs the file again, and prints `ALL MUTATIONS HELD` only if every red set was exactly the listed one and every restore came back green.
 
@@ -77,9 +77,9 @@ console.log(allOk ? 'ALL MUTATIONS HELD' : 'SOME MUTATION DID NOT HOLD');
 
 If the wrong test goes red, or none does, stop: the test does not hold the guard. Fix the test, not the guard. Put `Mutation-checked: <n> mutations, all held` in the task's commit body.
 
-**P2 — Close a stage.** `npm test` (expect `ℹ fail 0`, `ℹ skipped 0`), then `git push origin main`. A push that cannot reach github.com:443 while `gh` works is the network: check with `curl -sI https://github.com`, retry, leave git config alone.
+**P2: Close a stage.** `npm test` (expect `ℹ fail 0`, `ℹ skipped 0`), then `git push origin main`. A push that cannot reach github.com:443 while `gh` works is the network: check with `curl -sI https://github.com`, retry, leave git config alone.
 
-**P3 — Build the band.** Windows' path limit breaks PlatformIO in a deep directory, so build with short output directories:
+**P3: Build the band.** Windows' path limit breaks PlatformIO in a deep directory, so build with short output directories:
 
 ```bash
 T=/c/Users/LEWISD~1/AppData/Local/Temp/otbpio
@@ -108,10 +108,10 @@ Not modified, on purpose: `firmware/src/main.cpp` and `app/screens/Band.jsx`. Bo
 
 | Stage | Tasks | Leaves |
 |---|---|---|
-| A. The relay | 1–3 | waves numbered by the clock; shows tell a band on SAY HI who waits; a band's wave back taken or refused with a reason |
-| B. The wrist | 4–7 | the call, the wave face and the wave back in both twins, on one table; the band's console says waves |
+| A. The relay | 1-3 | waves numbered by the clock; shows tell a band on SAY HI who waits; a band's wave back taken or refused with a reason |
+| B. The wrist | 4-7 | the call, the wave face and the wave back in both twins, on one table; the band's console says waves |
 | C. The phone | 8 | a buzz only without a live band; the new lines |
-| D. Proof and docs | 9–11 | the browser proof; README and the promises; the real bands with the owner |
+| D. Proof and docs | 9-11 | the browser proof; README and the promises; the real bands with us |
 
 Every task ends green and is committed on its own; each stage ends with P2.
 
@@ -344,9 +344,9 @@ In `relay/room.js`:
      has: (id) => people.has(id),
 ````
 
-- [ ] **Step 4: Run** — the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 278`.
+- [ ] **Step 4: Run** the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 278`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expecting `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -732,9 +732,9 @@ In `relay/server.js`:
  
 ````
 
-- [ ] **Step 4: Run** — the files, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 282`.
+- [ ] **Step 4: Run** the files, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 282`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expecting `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -1160,9 +1160,9 @@ In `relay/room.js`:
    };
 ````
 
-- [ ] **Step 4: Run** — the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 288`.
+- [ ] **Step 4: Run** the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 288`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. A refused wave that pushed anyway would not be caught, and needs no guard: a push sends a view or a show only when its text changed, and a refusal changes nothing.
+- [ ] **Step 5: Mutation check (P1)**, expecting `ALL MUTATIONS HELD`. A refused wave that pushed anyway would not be caught, and needs no guard: a push sends a view or a show only when its text changed, and a refusal changes nothing.
 
 ````json
 [
@@ -1980,9 +1980,9 @@ In `firmware/src/band_logic.h`:
    uint32_t litUntil_ = 0;
 ````
 
-- [ ] **Step 4: Run** — the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 312`.
+- [ ] **Step 4: Run** the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 312`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expecting `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -2635,9 +2635,9 @@ In `firmware/src/band_logic.h`:
      rest();
 ````
 
-- [ ] **Step 4: Run** — the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 330`.
+- [ ] **Step 4: Run** the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 330`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expecting `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -3187,9 +3187,9 @@ In `firmware/src/band_logic.h`:
    }
 ````
 
-- [ ] **Step 4: Run** — the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 342`.
+- [ ] **Step 4: Run** the table, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 342`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expecting `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -3463,9 +3463,9 @@ In `firmware/src/band_logic.h`:
    return "the relay shows: " + what;
 ````
 
-- [ ] **Step 4: Run** — the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 342`. Then P3: both envs build.
+- [ ] **Step 4: Run** the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 342`. Then P3: both envs build.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**, expecting `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -3725,9 +3725,9 @@ In `app/screens/Hi.jsx`:
                <div className="person">
 ````
 
-- [ ] **Step 4: Run** — the file, `tests/copy.test.js`, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 346`.
+- [ ] **Step 4: Run** the file, `tests/copy.test.js`, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 346`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. The effect in `App.jsx` is held by the browser proof (Task 9), not by a unit test.
+- [ ] **Step 5: Mutation check (P1)**, expecting `ALL MUTATIONS HELD`. The effect in `App.jsx` is held by the browser proof (Task 9), not by a unit test.
 
 ````json
 [
@@ -3813,7 +3813,7 @@ EOF
 
 ### Task 9: The browser proof
 
-Two people on one relay, each a phone and a `/band` stand-in, in the browser pane. Run it on `main` once Tasks 1–8 are pushed; it comes before the README because the README says what it saw. When this plan was written it was done on the finished build, and everything below was seen.
+Two people on one relay, each a phone and a `/band` stand-in, in the browser pane. Run it on `main` once Tasks 1-8 are pushed; it comes before the README because the README says what it saw. When this plan was written it was done on the finished build, and everything below was seen.
 
 - **Two people need two origins:** tabs on one origin share `localStorage`. Use `http://localhost:<port>` for A (phone and band) and `http://127.0.0.1:<port>` for B.
 - Seed each phone's `localStorage['otb:v1']` as CLAUDE.md shows (a night at a test room, the same `show.room` for both), then open `/pair/<letters>` and press YES with `element.click()`.
@@ -4018,11 +4018,11 @@ EOF
 
 ### Task 11: The real bands, with the owner
 
-Nothing here starts without the owner's yes: ask in Chinese before each flash. Two real people, no stand-in: his phone and his second phone or tablet, each paired to one of the StickS3 (`COM8`) and the StickC Plus (`COM9`), through the always-on relay `https://on-the-beat.fly.dev`; deploy the relay first (the owner logs in to Fly himself), unless he has said a demo is on.
+Nothing here starts without our yes: ask in Chinese before each flash. Two real people, no stand-in: our phone and our second phone or tablet, each paired to one of the StickS3 (`COM8`) and the StickC Plus (`COM9`), through the always-on relay `https://on-the-beat.fly.dev`; deploy the relay first (we log in to Fly ourselves), unless we have said a demo is on.
 
-- [ ] **Step 1: Deploy the relay**, when the owner agrees, and check that https://on-the-beat.fly.dev/ loads the app.
+- [ ] **Step 1: Deploy the relay**, when we agree, and check that https://on-the-beat.fly.dev/ loads the app.
 - [ ] **Step 2: Flash both bands** (P3's directories; `pio run -e m5sticks3 -t upload --upload-port COM8`, `pio run -e m5stickc -t upload --upload-port COM9`).
 - [ ] **Step 3: With the owner:** both on SAY HI. A waves on the phone: B's band chirps `hello` and flashes blue three times, and its console says `the relay shows: hi (1 waiting)`. B presses FACE and sees `SOMEONE WAVED` whole on the screen, then holds SIDE: both bands show the same `MEET` at once and both phones the match. Then a third person, a browser tab, waves at B too, to see the count (`2 WAITING - HOLD SIDE`).
-- [ ] **Step 4: Tune by ear** only what the owner asks for: `hello` is one line in each twin's table.
-- [ ] **Step 5: Unpair every stand-in** from his real bands, and tell him in which state each band is left.
+- [ ] **Step 4: Tune by ear** only what we ask for: `hello` is one line in each twin's table.
+- [ ] **Step 5: Unpair every stand-in** from our real bands, and tell us in which state each band is left.
 - [ ] **Step 6: Record it.** Replace "Waves on the wrist have been tried only in the tables and a browser" in the README's "What is not done" with what was seen and heard. Commit, push (P2).

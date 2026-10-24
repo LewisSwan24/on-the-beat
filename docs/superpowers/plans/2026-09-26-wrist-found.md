@@ -8,14 +8,14 @@
 
 **Tech Stack:** Node 22+ (`node --test`, `ws`), React 19 + Vite 8, C++17 on the laptop (MinGW-W64 g++ here, GCC in CI), C++11 on the band (Arduino-ESP32 2.x through PlatformIO `espressif32@^6.9.0`), M5Unified 0.2.22 or later.
 
-**Spec:** `docs/superpowers/specs/2026-09-26-wrist-found-design.md` (decided with the owner section by section on 26 Sep 2026: §1 what people see and do, §2 the relay, §3 who does what, §4 tests and proof). It builds on `docs/superpowers/specs/2026-09-25-wrist-waves-design.md` and `docs/superpowers/specs/2026-09-25-wrist-reactions-design.md`, whose plans are done: this plan uses their meeting number and call, the side hold, `NOT SENT`, the reaction queue, the sound switch and NOT NOW's silence. Read the found spec before any task.
+**Spec:** `docs/superpowers/specs/2026-09-26-wrist-found-design.md` (decided with us section by section on 26 Sep 2026: §1 what people see and do, §2 the relay, §3 who does what, §4 tests and proof). It builds on `docs/superpowers/specs/2026-09-25-wrist-waves-design.md` and `docs/superpowers/specs/2026-09-25-wrist-reactions-design.md`, whose plans are done: this plan uses their meeting number and call, the side hold, `NOT SENT`, the reaction queue, the sound switch and NOT NOW's silence. Read the found spec before any task.
 
 This plan was written from a finished build: every task below was built in a scratch worktree (branch `found-build`), test first, and committed on its own with `npm test` green at every commit. The code blocks are those commits' diffs, so applying a task's blocks in order reproduces it. Each Step 2 was measured by running the task's tests on its parent's code, and each mutation list was measured at its task's commit.
 
 ## Global Constraints
 
-- Artefacts are English: code, comments, commit messages, README, test names. Talk to the owner in Chinese.
-- **It counts only if you both do** (spec, as for `Keep after tonight`). Saying it alone changes nothing the other person can see — not their view, not their band, not their phone — and never puts away a number they may still be looking for.
+- Artefacts are English: code, comments, commit messages, README, test names. Talk to us in Chinese.
+- **It counts only if you both do** (spec, as for `Keep after tonight`). Saying it alone changes nothing the other person can see (not their view, their band or their phone) and never puts away a number they may still be looking for.
 - **The words:** on the band `HOLD SIDE: FOUND` (woken meeting face), `FOUND: WAITING` (said on this side), `SENDING`, `NOT SENT`; on S11 `WE FOUND EACH OTHER`, `found on your side. they won't know unless they say so too.`, `you found each other at HH:MM`; Tonight `met <name>`. Offline: *Saved. It'll sync when you're out.*
 - **The reaction:** sound `found` = 1568/70, 2093/70, 2637/70, rest 40, 2637/70, 3136/220 (540 ms; the longest sound stays 600 ms, so `SOUND_SAMPLES` does not change) · flash `found` = the meeting's card (`colour: 'card'`), 3 × 200 / 150. Once per found number; under NOT NOW, nothing.
 - **Constants:** `FOUND_SHOW_MS = 60_000` (`relay/band.js`: how long after both said it a band still plays it), `FOUND_GAP_MS = 1000` (`relay/server.js`: the least time between two founds from one band, a stamp of its own). No new wrist constant: a found waits `CONFIRM_MS`, a result stays `RESULT_MS`.
@@ -27,7 +27,7 @@ This plan was written from a finished build: every task below was built in a scr
 - `CLAUDE.md` is not in git and is not edited by this plan. Nothing from `../on-the-beat-research/` or `../on-the-beat-design/` enters the repository.
 - `npm test` builds first (the relay serves `dist/`). Running one test file alone: `npm run build` first, and again after restoring a mutation.
 - Windows host: the Bash tool is Git Bash; `python` there is the Store alias and hangs, so scripts are Node. Never write JavaScript holding backticks or `${}` through a Bash heredoc: write it with the editor. A command that holds `git commit` and another program's `-n` (such as `grep -n`) is refused by a hook as `--no-verify`: run them separately.
-- Flashing a band needs the owner's yes first, every time. The StickS3 is on `COM8`, the StickC Plus on `COM9`. Playing sound on a band needs him free to hear it.
+- Flashing a band needs our yes first, every time. The StickS3 is on `COM8`, the StickC Plus on `COM9`. Playing sound on a band needs us free to hear it.
 - Never more than ten background tasks at once. Work directly; this plan needs no fan-out.
 - Commit messages end with the attribution trailer the session's system reminder gives (today: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`).
 
@@ -108,10 +108,10 @@ Not modified, on purpose: `firmware/src/main.cpp`, `app/screens/Band.jsx`, `app/
 
 | Stage | Tasks | Leaves |
 |---|---|---|
-| A. The relay | 1–3 | the room records found and shows it only once both said it; the band's meeting face waits or goes; a band's and a phone's found taken or refused with a reason |
-| B. The wrist | 4–6 | the side hold, the hint and `NOT SENT` in both twins; the found reaction once per number; the band's console says found |
+| A. The relay | 1-3 | the room records found and shows it only once both said it; the band's meeting face waits or goes; a band's and a phone's found taken or refused with a reason |
+| B. The wrist | 4-6 | the side hold, the hint and `NOT SENT` in both twins; the found reaction once per number; the band's console says found |
 | C. The phone | 7 | S11's button, words and number; Tonight's line and count; a buzz only without a live band |
-| D. Proof and docs | 8–10 | the browser proof; README and the waves spec's line; the real bands with the owner |
+| D. Proof and docs | 8-10 | the browser proof; README and the waves spec's line; the real bands with us |
 
 Every task ends green and is committed on its own; each stage ends with P2.
 
@@ -251,9 +251,9 @@ In `relay/room.js`:
      has: (id) => people.has(id),
 ````
 
-- [ ] **Step 4: Run** — the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 348`.
+- [ ] **Step 4: Run** the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 348`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**. Expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -339,7 +339,7 @@ EOF
 
 **Interfaces:**
 - Consumes: Task 1's `found` and `foundAt` on each of `view.matches`; `MEET_MS`, `bandShow()` in `relay/band.js`.
-- Produces: `export const FOUND_SHOW_MS = 60_000`. The meeting face is shown while a match is under `MEET_MS` old **and has no `foundAt`**, with `small: 'FOUND: WAITING'` once its person said found (`'MEET'` before). For `FOUND_SHOW_MS` after the newest `foundAt`, every show about its person — the meeting face, HI, FIRST SONG?, LET'S DANCE! and off — carries `found: { n: <number>, intent: <that meeting's card> }`; NOT NOW and the shows about nobody (letters, the check, the test light, waiting, not in a room) never do. The card is the meeting's, not the armed one: that is the colour the band flashes.
+- Produces: `export const FOUND_SHOW_MS = 60_000`. The meeting face is shown while a match is under `MEET_MS` old and has no `foundAt`, with `small: 'FOUND: WAITING'` once its person said found (`'MEET'` before). For `FOUND_SHOW_MS` after the newest `foundAt`, every show about its person (the meeting face, HI, FIRST SONG?, LET'S DANCE! and off) carries `found: { n: <number>, intent: <that meeting's card> }`; NOT NOW and the shows about nobody (letters, the check, the test light, waiting, not in a room) never do. The card is the meeting's, not the armed one: that is the colour the band flashes.
 
 - [ ] **Step 1: Write the failing tests.** Two new, and the longest-show test widened: a meeting said found alone keeps its number and reads `FOUND: WAITING`, with nothing to play; found by both, the number goes at once and every show about the person names it, number and the meeting's card, for `FOUND_SHOW_MS` and not after, never under NOT NOW nor on a show about nobody, the newest found winning and another meeting still on still showing. The widened test puts a meeting said found and one found by both on the longest show the relay can make, and holds it to the band's buffer.
 
@@ -473,9 +473,9 @@ In `relay/band.js`:
  }
 ````
 
-- [ ] **Step 4: Run** — the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 350`.
+- [ ] **Step 4: Run** the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 350`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**. Expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -822,9 +822,9 @@ In `relay/server.js`:
          const ref = keepClip(r, me, m.mime, m.data, to ? 'to:' + to : 'floor');
 ````
 
-- [ ] **Step 4: Run** — the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 354`.
+- [ ] **Step 4: Run** the file, then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 354`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. A refused found that pushed anyway would not be caught, and needs no guard: `push()` sends a view or a show only when its text changed, and a refusal changes nothing.
+- [ ] **Step 5: Mutation check (P1)**. Expected `ALL MUTATIONS HELD`. A refused found that pushed anyway would not be caught, and needs no guard: `push()` sends a view or a show only when its text changed, and a refusal changes nothing.
 
 ````json
 [
@@ -1120,7 +1120,7 @@ Append to `tests/fixtures/wrist-cases.json`:
 
 Run: `node --test tests/wrist.test.js tests/firmware.test.js 2>&1 | grep -E "^✖|^ℹ (pass|fail)"`
 
-Expected: five of the eight cases red on each twin (`wrist.js: 88 pass, 5 fail`; `firmware.test.js: 96 pass, 5 fail`). The other three — the chooser, a number that is not two digits, and NOT NOW — are guards: they pass before the change and hold it after.
+Expected: five of the eight cases red on each twin (`wrist.js: 88 pass, 5 fail`; `firmware.test.js: 96 pass, 5 fail`). The other three (the chooser, a number that is not two digits, and NOT NOW) are guards: they pass before the change and hold it after.
 
 - a SIDE hold on the resting meeting face says found with a double; SENDING on the meeting face until the relay takes it, then the face rests (`6500 tick: sent`)
 - woken, the meeting face says HOLD SIDE: FOUND for the wake time; the key that answers the call sends nothing; FOUND: WAITING stays as it is (`6100 key1 up: face.small`, `MEET`)
@@ -1341,9 +1341,9 @@ In `firmware/src/band_logic.h`:
    }
 ````
 
-- [ ] **Step 4: Run** — the table (`wrist.js` 93 pass; `firmware.test.js` 101 pass), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 370`.
+- [ ] **Step 4: Run** the table (`wrist.js` 93 pass; `firmware.test.js` 101 pass), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 370`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. Run the C++ half in the background. "The hint asleep too" turns thirteen cases red: every one that shows a meeting face not woken and expects `MEET`.
+- [ ] **Step 5: Mutation check (P1)**. Expected `ALL MUTATIONS HELD`. Run the C++ half in the background. "The hint asleep too" turns thirteen cases red: every one that shows a meeting face not woken and expects `MEET`.
 
 ````json
 [
@@ -1919,9 +1919,9 @@ In `firmware/src/band_logic.h`:
    uint32_t litUntil_ = 0;
 ````
 
-- [ ] **Step 4: Run** — the table (`wrist.js` 97 pass; `firmware.test.js` 105 pass), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 378`.
+- [ ] **Step 4: Run** the table (`wrist.js` 97 pass; `firmware.test.js` 105 pass), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 378`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**. Expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -2184,9 +2184,9 @@ In `firmware/src/band_logic.h`:
    shown = what;
 ````
 
-- [ ] **Step 4: Run** — the file (105 pass), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 378`.
+- [ ] **Step 4: Run** the file (105 pass), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 378`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**. Expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -2497,9 +2497,9 @@ In `app/App.jsx`:
        break;
 ````
 
-- [ ] **Step 4: Run** — the file (5 pass), then `npm test`, which also builds the app. Expected: `ℹ fail 0`, `ℹ tests 383`.
+- [ ] **Step 4: Run** the file (5 pass), then `npm test`, which also builds the app. Expected: `ℹ fail 0`, `ℹ tests 383`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. The screens and App's effect are held by Task 8's browser proof, not by a mutation list.
+- [ ] **Step 5: Mutation check (P1)**. Expected `ALL MUTATIONS HELD`. The screens and App's effect are held by Task 8's browser proof, not by a mutation list.
 
 ````json
 [
@@ -2597,14 +2597,14 @@ EOF
 
 ### Task 8: The browser proof
 
-Three people on one relay in the browser pane: A and B each a phone and a `/band` stand-in, C a phone with no wristband. Run it on `main` once Tasks 1–7 are pushed; it comes before the README because the README says what it saw. When this plan was written it was done on the finished build, and everything below was seen.
+Three people on one relay in the browser pane: A and B each a phone and a `/band` stand-in, C a phone with no wristband. Run it on `main` once Tasks 1-7 are pushed; it comes before the README because the README says what it saw. When this plan was written it was done on the finished build, and everything below was seen.
 
 - **People need origins of their own:** tabs on one origin share `localStorage`. Use `http://localhost:<port>` for A, `http://127.0.0.1:<port>` for B and `http://127.0.0.2:<port>` for C (any 127.x address reaches a relay listening on all addresses).
 - Run the relay on a free port: `npm run build`, then `PORT=<port> node relay/server.js` with Bash `run_in_background`; stop it afterwards by port.
 - Seed each phone's `localStorage['otb:v1']` as CLAUDE.md shows (a night at a test room, the same `show.room` for all three) and reload. Pair A and B: open `/band` on the person's origin, read its letters, open `/pair/<letters>` on the phone, and press YES with `element.click()` once the band shows the number the sheet asks about.
 - **Each band's first press must be a real click** (the pane's `computer` click, by a `ref` from `find`), to unlock its audio; after that a `keydown`/`keyup` of Enter dispatched on `.bandbtn` (FACE) or `.bandside` (SIDE) presses it too, and holding means waiting 1.7 s between the two. A first press on a meeting that calls only answers it.
 - Before the first click install the oscillator spy of the reactions plan's Task 11 Step 6 on each band (`AudioContext.prototype.createOscillator` wrapped to record each note's frequency) and a face sampler (the `.bandface` element's inline style and text every 25 ms). **Keep the band being sampled in front:** a hidden tab runs its timers about once a second. The oscillator records do not depend on it.
-- Record `navigator.vibrate` on each phone by replacing it with a function that pushes its pattern — after the page's last load.
+- Record `navigator.vibrate` on each phone by replacing it with a function that pushes its pattern, after the page's last load.
 
 - [ ] **Step 1: A and B meet.** Both on SAY HI (`button.intent`, then `.cta`); A waves from WHO'S NEAR and B waves back. Expected: both bands `MEET` over the same number; both phones S8 with it.
 - [ ] **Step 2: A wakes the meeting face.** A real click on A's FACE answers the call; a second press wakes it. Expected: `HOLD SIDE: FOUND` over the number.
@@ -2729,11 +2729,11 @@ EOF
 
 ### Task 10: The real bands, with the owner
 
-Nothing here starts without the owner's yes: ask in Chinese before each flash, and before any sound he has not said he is free to hear. Use the console, as for the waves: his real bands, the StickS3 (`COM8`) and the StickC Plus (`COM9`), each paired to a stand-in phone through the always-on relay `https://on-the-beat.fly.dev`; deploy the relay first (the owner logs in to Fly himself), unless he has said a demo is on. The console takes `press face`, `press side`, `hold face` and `hold side`, and says each change in what the relay shows (Task 6).
+Nothing here starts without our yes: ask in Chinese before each flash, and before any sound we have not said we are free to hear. Use the console, as for the waves: our real bands, the StickS3 (`COM8`) and the StickC Plus (`COM9`), each paired to a stand-in phone through the always-on relay `https://on-the-beat.fly.dev`; deploy the relay first (we log in to Fly ourselves), unless we have said a demo is on. The console takes `press face`, `press side`, `hold face` and `hold side`, and says each change in what the relay shows (Task 6).
 
-- [ ] **Step 1: Deploy the relay**, when the owner agrees, and check that https://on-the-beat.fly.dev/ loads the app.
+- [ ] **Step 1: Deploy the relay**, when we agree, and check that https://on-the-beat.fly.dev/ loads the app.
 - [ ] **Step 2: Flash both bands** (P3's directories; `pio run -e m5sticks3 -t upload --upload-port COM8`, `pio run -e m5stickc -t upload --upload-port COM9`).
 - [ ] **Step 3: Match the two bands to each other.** Pair each with a stand-in phone, saying YES only once the band's own console shows the number the phone asks about; both on SAY HI; a wave and a wave back. Expected on both consoles: `the relay shows: meet <n>`, and the jingle.
 - [ ] **Step 4: Found, from both wrists.** `press face` to answer each call. `hold side` on one: its console says `found, from the wrist`, `the relay took the found`, `the relay shows: meet <n> (found: waiting)`, and its face line `FOUND: WAITING`; the other console says nothing new. `hold side` on the other: both consoles say `the relay shows: hi (found <n>)`, both bands play `found` and flash, and both faces lose the number.
-- [ ] **Step 5: Ask the owner** to press the buttons by hand and listen, when he is free: whether `found` sounds right on each buzzer, and whether three flashes of the card read on a wrist. Tune only what he asks for: `found` is one line in each twin's table.
-- [ ] **Step 6: Unpair every stand-in** from his real bands, and tell him in which state each band is left. Then say in README what was seen, in place of "not yet on the real bands".
+- [ ] **Step 5: Ask us** to press the buttons by hand and listen, when we are free: whether `found` sounds right on each buzzer, and whether three flashes of the card read on a wrist. Tune only what we ask for: `found` is one line in each twin's table.
+- [ ] **Step 6: Unpair every stand-in** from our real bands, and tell us in which state each band is left. Then say in README what was seen, in place of "not yet on the real bands".

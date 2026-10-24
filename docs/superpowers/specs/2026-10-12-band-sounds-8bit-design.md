@@ -4,7 +4,7 @@
 
 ## Why
 
-He asked for a set of sounds he can tell apart without looking, in one style,
+We asked for a set of sounds we can tell apart without looking, in one style,
 that sound good: 「做一套更有辨识度的声音……分不清哪个是哪个，风格不统一、不好听」.
 Today's twelve sounds are triangle-wave note lists. Several of them are rising
 runs that sound alike, and nothing ties them together.
@@ -12,23 +12,23 @@ runs that sound alike, and nothing ties them together.
 ## How the direction was chosen (by ear, on the band)
 
 A throwaway firmware (local branch `sound-probe`, never pushed) played
-candidates on a StickC Plus buzzer from a console `play` command. He listened
+candidates on a StickC Plus buzzer from a console `play` command. We listened
 to every candidate on the real band and decided each step by ear.
 
 1. **Style.** Eight-bit beat four instrument imitations (wood block, bells,
    marimba, plucked string) on every event: someone waved, match, found, not
-   sent. For the key press he chose a struck, decaying square wave ("tok") over
+   sent. For the key press we chose a struck, decaying square wave ("tok") over
    a thin 8-bit pulse blip, today's tick, a click and a pop. A struck square
    wave is still an 8-bit voice: a square with a volume envelope.
-2. **Structure.** He kept the families-and-motif structure proposed before the
+2. **Structure.** We kept the families-and-motif structure proposed before the
    style was chosen. Each family of meaning has its own rhythm, and every piece
    of good news grows from one motif.
 3. **Timbre.** 25% pulse waves sounded muffled on this buzzer, and switching
    them to 50% square fixed it 「不闷了，可以」. The likely reason: only the
    fundamental lands where the buzzer is loud. A 25% pulse carries about 70% of
    a square's fundamental, and its extra overtones fall above what the buzzer
-   plays. **Every voice is a 50% square, plus noise and rests.**
-4. **The full set below** was played to him on the band, twice each, and
+   plays. Every voice is a 50% square, plus noise and rests.
+4. **The full set below** was played to us on the band, twice each, and
    approved after the pulse-to-square change.
 
 The buzzer's constraint is measured. Swept a semitone at a time beside a
@@ -61,7 +61,7 @@ Notation: `F7 70` is a square at F7 for 70 ms, at full volume.
 | State | `down` | into NOT NOW | C8 90 1→0.6 · A7 90 0.6→0.35 · F7 240 decay from 0.35, h58 | 420 |
 | | `warn` | out of reach, low battery, away | (A7 50 · ·30) ×2 · A7 50 · ·120 · (A7 50 · ·30) ×2 · A7 50 | 540 |
 
-Changed from what he heard, both to fit the memory bound below:
+Changed from what we heard, both to fit the memory bound below:
 
 - `warn`'s rests are 30 ms (heard: 40) and its gap is 120 ms (heard: 160).
 - Envelopes heard as "fall to x exponentially" are written as half-lives. The
@@ -103,7 +103,7 @@ identical bytes. Nothing in it is floating point, and nothing calls `pow` or
 `exp`.
 
 1. **Lead-in.** 40 ms of silence first. A short sound that starts the speaker
-   cold lost its start in the probe: he heard 18 and 40 ms ticks drop out.
+   cold lost its start in the probe: we heard 18 and 40 ms ticks drop out.
 2. **Segment length.** A segment of `ms` lasts `n = ms × 16` samples.
 3. **Pitch.** At sample `i` the pitch is `hz = hz0 + trunc((hz1 − hz0) × i / n)`,
    truncated toward zero, which a downward slide needs to agree in C++ and JS. The phase step is
@@ -128,7 +128,7 @@ identical bytes. Nothing in it is floating point, and nothing calls `pow` or
 The table holds the buzzer's pitches. The Plus plays them as written. The
 `/band` stand-in in a browser, and a speaker build (the StickS3 environment,
 which still compiles), play every pitch one octave down. On a laptop speaker,
-3–4.7 kHz squares are shrill, and the tune survives the octave.
+3-4.7 kHz squares are shrill, and the tune survives the octave.
 
 Today's two buzzer rules go: `buzzerFactor` (whole octaves up) and `buzzerOwn`
 (the buzzer's own notes for `low`).
@@ -189,10 +189,10 @@ Each new check is mutation-checked: break what it guards, watch it go red.
 
 ## Acceptance on the band
 
-1. Flash one test band (COM9 or COM11 at the time, with his yes; the other two
+1. Flash one test band (COM9 or COM11 at the time, with our yes; the other two
    Plus are not flashed).
-2. Play the twelve with `sound <name>`, twice each, for his ear. `warn` and the
-   decays changed slightly from what he heard.
+2. Play the twelve with `sound <name>`, twice each, for our ear. `warn` and the
+   decays changed slightly from what we heard.
 3. Press a key several times in a row, and watch for a dropped tick.
 4. `show` reports free memory no lower than the wrist-motion build (about 110 KB
    free), and the band reaches the relay.
@@ -202,11 +202,11 @@ Each new check is mutation-checked: break what it guards, watch it go red.
 1. On `sounds-8bit`: engine + table (C++ and JS) + tests, `npm test` green,
    `pio run` for both environments.
 2. The band acceptance above.
-3. Merge to `main` and push (his 「合并并推送」).
+3. Merge to `main` and push (our 「合并并推送」).
 4. Rebase `beat-port` and `wrist-motion` onto the new `main`. Add `waving` and
    `clink` on `wrist-motion`. Flash the two test bands from it.
 5. The live relay serves `/band`, so the stand-in's new sounds go live only with
-   a deploy. Fly runs `wrist-motion`; a redeploy waits for his word.
+   a deploy. Fly runs `wrist-motion`; a redeploy waits for our word.
 
 ## Not in this
 

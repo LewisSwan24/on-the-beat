@@ -1,7 +1,7 @@
 # The phone app under a Content-Security-Policy of its own
 
-Date: 30 Sep 2026. Item 4 of the menu the owner asked for on 29 Sep, taken on
-his 「继续」. The staff page got a full policy in the security review of 29 Sep
+Date: 30 Sep 2026. Item 4 of the menu we asked for on 29 Sep, taken on
+our 「继续」. The staff page got a full policy in the security review of 29 Sep
 (`2026-09-29-staff-security-design.md` §4); the phone app carried only the
 framing rule, because its policy was to be drafted against a real inventory of
 what the app loads, and rolled out only after Safari's reading of
@@ -13,7 +13,7 @@ proof. The rollout gate still stands.
 - **Scripts:** one module bundle (`/assets/main-*.js`) plus the lazy chunks
   (`jsQR`, `styles`), and `/sw.js`, registered only in a production build over
   https. No inline script in the built page, no `eval`, no `new Function`, no
-  worker of its own — checked in the built bundles, not only in `app/`.
+  worker of its own. This was checked in the built bundles as well as in `app/`.
 - **Styles:** one built stylesheet. React sets element styles through the CSSOM,
   which no policy gates; nothing writes a `<style>` at runtime.
 - **Fonts:** two woff2 files in `/assets/` (Chewy, and Material Symbols cut to the
@@ -23,17 +23,17 @@ proof. The rollout gate still stands.
   name from `fonts.gstatic.com` when the policy was written; see `scripts/fonts.mjs`.
 - **Images:** its own icons and manifest. `data:` stays allowed as in the staff
   policy, since Vite may inline a small image into a future build.
-- **Media — the one way the app is wider than the staff page:** a recorded
+- **Media (the one way the app is wider than the staff page):** a recorded
   five seconds loops back from a `blob:` URL the phone made itself
   (`URL.createObjectURL`, Dance and the keep-it sheet), and the floor's clips
   play from `/clip/…` on this origin. Both belong in `media-src`.
 - **Socket:** one WebSocket to the page's own host (`/api/ws`). `ws:` and
   `wss:` are named beside `'self'` for the browsers that do not count a socket
-  to the page's own host as same-origin — the same reason the staff policy
+  to the page's own host as same-origin. That is the same reason the staff policy
   carries them, and the reading Safari gives this is what the real-phone trial
   will check.
 - **The camera needs no allowance here.** `getUserMedia` answers to the
-  browser's permission, not to CSP, and a MediaStream on a `<video>` is not a
+  browser's permission rather than to CSP, and a MediaStream on a `<video>` is not a
   fetched source. The QR scanner draws frames to a canvas, which no directive
   gates.
 
@@ -58,13 +58,13 @@ clips and API answers carry no policy, as before, and `X-Frame-Options: DENY`,
   engine family Safari reads `connect-src` with, so the same page was opened
   in Playwright's WebKit against a local relay: the app rendered, the console
   held nothing at all, and a WebSocket opened from the page's own context
-  joined a venue and got its `view` back — one frame each way under
-  `connect-src 'self' ws: wss:`. This narrows the Safari risk; it does not
-  replace the phone.
+  joined a venue and got its `view` back: one frame each way under
+  `connect-src 'self' ws: wss:`. This narrows the Safari risk, but the phone
+  is still needed.
 - **Not yet on the live machine.** Pushing this does not redeploy Fly. The
   policy goes live when Safari on a real iPhone has been seen to hold
-  `connect-src 'self' ws: wss:` and open its socket — an iPhone has never run
-  the app — and `fly.toml` lets it out (*Rollout switch*, below). Until then
+  `connect-src 'self' ws: wss:` and open its socket (an iPhone has never run
+  the app), and `fly.toml` lets it out (*Rollout switch*, below). Until then
   the live phone app keeps the framing rule only, exactly as README's *What is
   not done* says.
 

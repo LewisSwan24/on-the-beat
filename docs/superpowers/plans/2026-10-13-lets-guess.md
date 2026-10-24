@@ -20,7 +20,7 @@
 - `/api/shows` carries no `quiz`. No phone ever receives `answer` or `fact` for a question before that person locked it.
 - Running one test file that needs `dist/`: `npm run build` first. Room and quiz tests do not need it.
 - Every commit message ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Send `git commit` as its own command (the ECC hook reads any `-n` beside it as `--no-verify`).
-- Deploying to Fly and reflashing the four StickC Plus each wait for his explicit yes.
+- Deploying to Fly and reflashing the four StickC Plus each wait for our explicit yes.
 
 ## Review Focus
 
@@ -1366,4 +1366,4 @@ git commit -m "LET'S GUESS: a test night with tonight's quiz, and the docs" -m "
 git push -u origin lets-guess
 ```
 
-Expected: the branch is on `origin`. It is not merged into `main`, not deployed, and no band is reflashed: each waits for his yes.
+Expected: the branch is on `origin`. It is not merged into `main`, not deployed, and no band is reflashed: each waits for our yes.

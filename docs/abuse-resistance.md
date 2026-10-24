@@ -10,7 +10,7 @@ was red-teamed and hardened. A red/blue pass found and closed:
   a minute. The address is the real client, so one attacker cannot spend the
   whole room's budget. On Fly.io it is `fly-client-ip`, which Fly's proxy sets
   from the connection it accepted, read only because `CLIENT_IP_HEADER` names
-  it; that the proxy also replaces one a client sends was measured on
+  it. The proxy also replaces one a client sends, as measured on
   29 Sep 2026: six sockets that each sent a different `fly-client-ip` still
   shared one budget of twenty. Behind the tunnel it is `cf-connecting-ip`,
   trusted only because the socket is on loopback. An IPv6 client counts as
@@ -23,13 +23,14 @@ was red-teamed and hardened. A red/blue pass found and closed:
   and never a live wristband.
 - **Speaking as someone else's wristband.** Every hello carries the key its id
   is the hash of; a hello whose key does not hash to its id is refused, for a
-  paired, a pending and an unpaired record alike, and a paired record also
-  needs its secret, without which the new socket is closed and the live one is
-  left alone. A socket says hello once, a replaced wristband socket is closed
+  paired, a pending and an unpaired record alike. A paired record also
+  needs its secret; without it the new socket is closed and the live one is
+  left alone. A socket says hello once. A replaced wristband socket is closed
   and nothing more is taken from it, and a hello with no protocol version gets
   letters but is never paired.
 - **A decoy wristband.** The check above: the number appears on the wristband
-  that was reached, so a decoy has to be believed, not just scanned. Numbers
+  that was reached, so scanning a decoy is not enough: its victim has to
+  believe it too. Numbers
   are unique among the pairings in progress, a second pairing of the same
   wristband is refused `busy`, and the letters change after every NO or
   timeout.
@@ -58,7 +59,7 @@ was red-teamed and hardened. A red/blue pass found and closed:
   as the address of exactly one band paired in the same room, so one claimed
   twice, or from another room, counts for nobody. Each person's five comes
   from what their own band heard and nothing else, so a band that lies
-  changes only its own person's list, and nearness only ever removes, so it
+  changes only its own person's list. Nearness only ever removes, so it
   can show nobody a phone could not see already. Until 28 Sep 2026 a pair was
   scored on what both bands said, so a lie moved the other person's five
   too: five made-up people on SAY HI, each with a scripted band saying it
@@ -83,8 +84,8 @@ was red-teamed and hardened. A red/blue pass found and closed:
   the pace the frame budget allows, fill a venue's staff list at a thousand,
   push out a real one and make the relay send that list to staff 633 times
   (measured on 29 Sep 2026). Now a person may send ten reports an hour and
-  a network sixty, counting every one sent, refused ones too; past either
-  the report is refused, unlogged and unpushed, and the phone says to tell
+  a network sixty, counting every one sent, refused ones too. Past either
+  limit the report is refused, unlogged and unpushed, and the phone says to tell
   a member of staff. The log is still capped at a thousand a venue, but
   drops the reports the team has handled first, and a venue's reports go at
   06:00. The counts are in memory: a restart clears them
@@ -171,8 +172,26 @@ was red-teamed and hardened. A red/blue pass found and closed:
   whoever the socket stood for, at once, unless another phone or a live
   wristband of theirs still holds them. The app opens a new socket for each
   venue and each night, so it never did this; a client of one's own could.
-- **MIME confusion.** Every served response — the app, a built asset, a clip,
-  the shows feed — carries `X-Content-Type-Options: nosniff`, so a browser
+- **Notes in a meeting** (21 Oct 2026). The notes the people in a meeting
+  send each other put words on someone else's screen, so the relay keeps
+  them small: at most 60 characters (`NOTE_MAX`), control and direction marks
+  dropped, never empty; one every 1.5 s (`NOTE_GAP_MS`) and 20 a person in a
+  meeting (`NOTE_EACH`). Only the people in that meeting read them, a
+  newcomer reads nothing said before they came, they close once everyone has
+  found everyone, and they are never written to the night file
+  (`tests/talk.test.js`).
+- **Joining someone else's meeting** (19 Oct 2026). A newcomer joins a
+  meeting of three or four only when everyone already in it says yes, and
+  only on the same card. One no keeps them out, and they are not asked
+  about again; only those asked can answer, once each; an ask nobody
+  answers ends after ten minutes (`JOIN_MS`). A fifth is never asked about.
+  An ask ends too when anything makes it stale: the newcomer takes back
+  their yes, hides, leaves the card or meets someone else; the person they
+  came by leaves or blocks someone; a member hides; or staff close the card.
+  A block inside a meeting takes the one who blocked out of it
+  (`tests/group.test.js`).
+- **MIME confusion.** Every served response (the app, a built asset, a clip,
+  the shows feed) carries `X-Content-Type-Options: nosniff`, so a browser
   takes the declared type and never guesses one.
 - **A clip's type as a header** (4 Oct 2026). A clip was kept with whatever
   type its phone sent, so long as it began `video/webm` or `video/mp4`, and
@@ -200,14 +219,14 @@ was red-teamed and hardened. A red/blue pass found and closed:
   what the built app actually loads and one line wider: `media-src 'self'
   blob:`, since a recorded five seconds plays from a blob URL the phone made
   itself and the floor's clips play from `/clip/`. The camera needs no
-  allowance in any policy. Headless Chrome walked the app under it — join a
-  show, a socket round trip, a blob in a `<video>` — with no refusal in the
+  allowance in any policy. Headless Chrome walked the app under it (join a
+  show, a socket round trip, a blob in a `<video>`) with no refusal in the
   console, and headless WebKit, the engine family Safari reads
   `connect-src` with, opened it with an empty console and a socket join
   answered. The live machine still serves the framing rule only, and
   `fly.toml` holds it there (`APP_CSP = "framing-only"`) until Safari's
   reading of `connect-src` has been tried on a real iPhone
-  (*What is not done*).
+  (`docs/not-done.md`).
 - **Other sites' pages driving the socket.** The socket used to open for
   any page's script, so a page a stranger made could send every visitor's
   browser to the relay, to report, join or try a passcode, from the
@@ -219,9 +238,9 @@ was red-teamed and hardened. A red/blue pass found and closed:
   (`tests/origin.test.js`, `tests/server.test.js`).
 - **A clip's address in the wrong hands.** A clip's address used to open it
   for anyone holding it, for its hour, a blocked person included. Now each
-  viewer is sent an address of their own — the clip's 96-bit ref and a ticket
+  viewer is sent an address of their own: the clip's 96-bit ref and a ticket
   the relay makes, from a key it draws when it starts, for that clip and that
-  viewer — and the relay serves it only while that viewer's own view shows the
+  viewer. The relay serves it only while that viewer's own view shows the
   clip: not once either of them has blocked the other, while its owner is NOT
   NOW, or after the viewer has left. A browser must ask again before it plays a
   clip again (`no-cache`, with an ETag), and a refusal is the same 404 as a
@@ -238,9 +257,9 @@ was red-teamed and hardened. A red/blue pass found and closed:
   against these roots, and `tests/relay-roots.test.js` holds each root's
   fingerprint and that the band never opens `https` unchecked. Both real
   bands, flashed with it that day, reached the Fly relay and refused every
-  attempt at badssl.com's self-signed, untrusted-root and wrong-host servers —
-  the last showing a Let's Encrypt certificate that chains to ISRG Root X1 but
-  names another host — while badssl.com itself, the same chain under its own
+  attempt at badssl.com's self-signed, untrusted-root and wrong-host servers
+  (the last shows a Let's Encrypt certificate that chains to ISRG Root X1 but
+  names another host), while badssl.com itself, the same chain under its own
   name, was not refused. The price: a
   relay that moves to another certificate authority needs the bands flashed
   again, and the roots last until 2035 (X1), 2036 (R1, R4) and 2040 (X2). A
@@ -290,18 +309,18 @@ was red-teamed and hardened. A red/blue pass found and closed:
 Each fix is a test in `tests/server.test.js`, `tests/wristband.test.js`,
 `tests/rules.test.js`, `tests/relay-roots.test.js`, `tests/restart.test.js`,
 `tests/push.test.js`, `tests/staff-push.test.js` or the wrist's table of
-cases (`tests/fixtures/wrist-cases.json`), and each was mutation-checked — break the guard and
-exactly its test goes red; where other tests stand on a guard, exactly that
+cases (`tests/fixtures/wrist-cases.json`), and each was mutation-checked: break the guard and
+exactly its test goes red. Where other tests stand on a guard, exactly that
 known set does. A dropped wristband keeps its
 letters through a wifi blip on purpose (so the code under a typing finger does
 not change), which is the one deliberate change to a wristband's own lifetime.
 
 The `/pair/` link used to wait for a tap on the phone, because a hostile code
 anywhere could bind an attacker's wristband to whoever opened it. The check
-replaces that tap for every way in — the in-app scanner and typed letters too,
+replaces that tap for every way in, including the in-app scanner and typed letters,
 which the old guard never covered.
 
-The room model itself — who appears in another person's view — was read end to
-end: before a mutual yes a person is only a per-viewer handle and a coarse band,
+The room model itself (who appears in another person's view) was read end to
+end. Before a mutual yes a person is only a per-viewer handle and a coarse band,
 name and contact arrive only when both keep, an invisible person is absent from
 everyone's lists, and a block cuts both directions and outlives leaving.

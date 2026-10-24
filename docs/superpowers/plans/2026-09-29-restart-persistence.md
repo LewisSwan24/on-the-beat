@@ -8,13 +8,13 @@
 
 **Tech Stack:** Node 24 (`node --test`, `node:fs` sync I/O, `node:crypto` SHA-256), `ws` 8.21, Fly.io Machines and volumes, Debian `setpriv`.
 
-**Spec:** `docs/superpowers/specs/2026-09-29-restart-persistence-design.md` (decided with the owner on 29 Sep 2026, commit `41bf4fa`). Its section *Amended while planning* lists seven changes this plan makes to it; read the spec, then that section, before any task.
+**Spec:** `docs/superpowers/specs/2026-09-29-restart-persistence-design.md` (decided with us on 29 Sep 2026, commit `41bf4fa`). Its section *Amended while planning* lists seven changes this plan makes to it; read the spec, then that section, before any task.
 
 This plan was written before the build, from the code at `41bf4fa`. Where the build finds a block here wrong, the block is corrected in this file in the same commit as the fix, so the plan stays what was built.
 
 ## Global Constraints
 
-- Artefacts are English: code, comments, commit messages, README, test names, log lines. Talk to the owner in Chinese.
+- Artefacts are English: code, comments, commit messages, README, test names, log lines. Talk to us in Chinese.
 - **The file never holds a phone's id, a wristband's secret or a staff token as sent over the socket**, only their SHA-256 (spec §4). Logs about the night carry counts only: never a name, a contact, a handle, a venue or an id.
 - **Nothing kept past the night:** a file whose `at` is another night (`nightOf()` at the venue, 06:00) is removed unread; the file is removed once the night holds nothing; Fly keeps no snapshot (`scheduled_snapshots = false`).
 - **Not written:** clips and clip refs; what bands heard (`samples`, `listening`, `fives`, `marked`); sockets and timers; pairing attempt counters; `clipKey`; a wristband record with neither a person nor `waiting`.
@@ -22,7 +22,7 @@ This plan was written before the build, from the code at `41bf4fa`. Where the bu
 - The file's format is version `1`. `NIGHT_FILE` on Fly is `/data/night.json`; the volume is named `night`, 1 GB, in `syd`.
 - Tests: `node --test`. `npm test` builds first (`vite build`) and runs every `tests/*.test.js`: about 470 tests before this plan. A relay test that uses no `dist/` file can run alone with `node --test tests/<file>`. Use test passcodes only (`test-passcode-1`).
 - **Commit and push to `main` when a task's full suite is green** (the project's standing rule), each message ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Never push anywhere but `origin` (`LewisSwan24/on-the-beat`); `tools/hooks/pre-push` refuses a `cimi2232` remote.
-- **Fly:** exactly one machine. Creating the volume bills (about US$0.15 a month) and needs the owner's explicit yes, asked in Chinese with AskUserQuestion. No deploy or relay restart while he has said a demo is on. He runs `flyctl auth login` himself; flyctl is not on PATH: `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Fly-io.flyctl_Microsoft.Winget.Source_8wekyb3d8bbwe\flyctl.exe`.
+- **Fly:** exactly one machine. Creating the volume bills (about US$0.15 a month) and needs our explicit yes, asked in Chinese with AskUserQuestion. No deploy or relay restart while we have said a demo is on. We run `flyctl auth login` ourselves; flyctl is not on PATH: `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Fly-io.flyctl_Microsoft.Winget.Source_8wekyb3d8bbwe\flyctl.exe`.
 - Git Bash on this machine eats backticks and `\$` inside inline `node -e` and heredocs: write scripts and code with the Write and Edit tools.
 
 ## File structure
@@ -161,7 +161,7 @@ test('the file is readable by its owner only', { skip: process.platform === 'win
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `node --test tests/store.test.js`
-Expected: FAIL — `Cannot find module '…/relay/store.js'`.
+Expected: FAIL, with `Cannot find module '…/relay/store.js'`.
 
 - [ ] **Step 3: Write `relay/store.js`**
 
@@ -321,7 +321,7 @@ test('a room carried across a restart drops every clip, and a dance back sent be
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `node --test tests/room.test.js`
-Expected: FAIL in the two new tests — `room.dump is not a function`; the other 30 pass.
+Expected: FAIL in the two new tests (`room.dump is not a function`); the other 30 pass.
 
 - [ ] **Step 3: Implement in `relay/room.js`**
 
@@ -598,7 +598,7 @@ test('a write that fails is said once, and the relay runs on', async () => {
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `node --test tests/restart.test.js`
-Expected: FAIL — `n.relay.save is not a function` in three tests, no file after a close (`ENOENT`), and the timer test times out (`timed out`).
+Expected: FAIL, with `n.relay.save is not a function` in three tests, no file after a close (`ENOENT`), and the timer test times out (`timed out`).
 
 - [ ] **Step 3: Implement in `relay/server.js`**
 
@@ -866,7 +866,7 @@ test('a restart is logged in counts, never a name, a contact or an id', async ()
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `node --test tests/restart.test.js`
-Expected: the five Task 3 tests pass; the seven new ones FAIL — a restarted relay starts empty: Ben sees Ana again, the match and Ana's card are gone, the old-night and unreadable files are still there, and nothing is logged.
+Expected: the five Task 3 tests pass; the seven new ones FAIL, because a restarted relay starts empty: Ben sees Ana again, the match and Ana's card are gone, the old-night and unreadable files are still there, and nothing is logged.
 
 - [ ] **Step 3: Implement in `relay/server.js`**
 
@@ -1065,7 +1065,7 @@ test('a wristband that was worn when the relay stopped is kept an hour from the 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `node --test tests/restart.test.js`
-Expected: the twelve earlier tests pass; the three new ones FAIL — the wristband shows `waiting`, the token is answered `expired`.
+Expected: the twelve earlier tests pass; the three new ones FAIL: the wristband shows `waiting`, and the token is answered `expired`.
 
 - [ ] **Step 3: Implement in `relay/server.js`**
 
@@ -1148,7 +1148,7 @@ git push origin main
 - Test: `tests/restart.test.js` (append; its import line)
 
 **Interfaces:**
-- Produces: `export const personOf = (me) => …` — the first 32 hex digits of SHA-256 of the id a phone says, the person it stands for inside the relay. Band records carry `secretHash` instead of `secret`; `tokens` is keyed by a token's SHA-256; the file's bands carry `secretHash`.
+- Produces: `export const personOf = (me) => …`, the first 32 hex digits of SHA-256 of the id a phone says, the person it stands for inside the relay. Band records carry `secretHash` instead of `secret`; `tokens` is keyed by a token's SHA-256; the file's bands carry `secretHash`.
 
 - [ ] **Step 1: Write the failing tests for secrets and tokens**
 
@@ -1184,7 +1184,7 @@ test('the night file holds no staff token', async () => {
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `node --test tests/restart.test.js`
-Expected: the two new tests FAIL — `its secret is not`, `its token is not`; the other 15 pass.
+Expected: the two new tests FAIL (`its secret is not`, `its token is not`); the other 15 pass.
 
 - [ ] **Step 3: Hash wristband secrets and staff tokens in `relay/server.js`**
 
@@ -1264,7 +1264,7 @@ Check nothing else reads a band's secret: `grep -n "\.secret\b\|secret:" relay/s
 - [ ] **Step 4: Run them to see them pass**
 
 Run: `node --test tests/restart.test.js tests/wristband.test.js tests/staff.test.js`
-Expected: PASS — every pairing, claim, hello, waiting and token test still green; the two new ones pass.
+Expected: PASS, with every pairing, claim, hello, waiting and token test still green; the two new ones pass.
 
 - [ ] **Step 5: Write the failing test for phone ids**
 
@@ -1295,7 +1295,7 @@ test('the night file holds no phone id as a phone says it: the room holds person
 - [ ] **Step 6: Run it to see it fail**
 
 Run: `node --test tests/restart.test.js`
-Expected: FAIL for the whole file — `The requested module '../relay/server.js' does not provide an export named 'personOf'`.
+Expected: FAIL for the whole file, with `The requested module '../relay/server.js' does not provide an export named 'personOf'`.
 
 - [ ] **Step 7: Hold person ids as hashes**
 
@@ -1324,7 +1324,7 @@ with:
       const me = personOf(said);
 ```
 
-In `tests/server.test.js`, add `personOf` to the server import and change lines 727–728 to:
+In `tests/server.test.js`, add `personOf` to the server import and change lines 727-728 to:
 
 ```js
   assert.ok(!relay.rooms.get(venueKey('orphan-from')).room.has(personOf(ben.me)));
@@ -1730,7 +1730,7 @@ with (the next line, `// join the phone says again who it is …`, stays as it i
 
 - [ ] **Step 8: Check, full suite (P2), commit and push**
 
-Run: `grep -n "memory only\|empties them\|forgets everything" README.md app/lib/net.js relay/room.js` — expected: nothing that says a restart empties the night, apart from the local `npm start` case (*How it is built*).
+Run: `grep -n "memory only\|empties them\|forgets everything" README.md app/lib/net.js relay/room.js`. Expected: nothing that says a restart empties the night, apart from the local `npm start` case (*How it is built*).
 
 ```bash
 git add README.md app/lib/net.js
@@ -1834,9 +1834,9 @@ git push origin main
 - Create (scratchpad only): `live-restart.mjs` (below)
 - Modify: memory files `fly-relay.md`, `work-queue.md` and `MEMORY.md` (`C:\Users\LewisDong\.claude\projects\C--Users-LewisDong-Documents-on-the-beat\memory\`)
 
-- [ ] **Step 1: Ask him**
+- [ ] **Step 1: Ask us**
 
-With AskUserQuestion, in Chinese: create the volume `night` (1 GB in `syd`, about US$0.15 a month, no snapshots) and deploy now? Say that this deploy replaces the machine (flyctl destroys the volume-less one and starts a new one on the volume), so the relay is down for about a minute and starts empty this once, and that he must not have a demo on. Only a clear yes goes on. If `"$F" auth whoami` (with `F` the flyctl path in *Global Constraints*) says he is not logged in, he runs `flyctl auth login` in his own terminal first.
+With AskUserQuestion, in Chinese: create the volume `night` (1 GB in `syd`, about US$0.15 a month, no snapshots) and deploy now? Say that this deploy replaces the machine (flyctl destroys the volume-less one and starts a new one on the volume), so the relay is down for about a minute and starts empty this once, and that we must not have a demo on. Only a clear yes goes on. If `"$F" auth whoami` (with `F` the flyctl path in *Global Constraints*) says we are not logged in, we run `flyctl auth login` in our own terminal first.
 
 - [ ] **Step 2: Create the volume**
 

@@ -4,32 +4,32 @@
   https://on-the-beat.fly.dev, and a restart carries the night on through a
   file on the machine's own volume, but it is still one small machine: more
   people than it holds needs more than one, and one volume means a failed
-  drive takes the relay down until a new volume is made (*Always on*). Clips
+  drive takes the relay down until a new volume is made (*Always on*, `docs/running.md`). Clips
   are carried across a restart as files beside the night's
   (`/data/night-clips/`, one a clip, gone with the clip at its hour, 40 MB
-  at most together); a clip still being written when the machine stops is
+  at most together). A clip still being written when the machine stops is
   lost, and anything left in the folder that no clip uses is cleared at the
   next start. A phone that used a
   tunnel address starts over at the fixed one: a browser keeps the app's
   storage per address.
-  **How many one machine holds** was measured with `scripts/load.mjs` — a
+  How many one machine holds was measured with `scripts/load.mjs`, a
   local-only rig that fills a venue with simulated phones and paired
   wristbands speaking the real protocols (join, arm, pick, wave, like, keep,
-  ping, and a band's heard report every 5 s), never touching Fly. The relay's
+  ping, and a band's heard report every 5 s) and never touches Fly. The relay's
   cost grows with the square of a venue's population, since every push works
   out each person's own view of everyone. On a laptop core (Ryzen 7 5800H,
   1 Oct 2026) a keen room (a wave every 6-14 s a person) took 16% of the core
   at 100 people, 34% at 150 and 78% at 200, and pinned it at 250 (89%, the
-  event loop 725 ms late at p99); a calm room (a wave a minute or two each)
+  event loop 725 ms late at p99). A calm room (a wave a minute or two each)
   is about five times cheaper. Until that day about a third of the relay's
   time went on hashing the same handles again on every push; the room now
   remembers them (the same day before: 59% at 100, 94% at 150).
   On 3 Oct 2026 the gap between a room's pushes began to follow what they
-  cost (above): the same rig at 250 keen people, 30 s measured, went from
+  cost (`docs/how-it-works.md`): the same rig at 250 keen people, 30 s measured, went from
   95% of the core, loop lag p99 352 ms and a wave seen again after ~203 ms
   to 30%, 154 ms and ~380 ms, and was no longer saturated. A room of 100
   pushes as often as before. One run each, on the laptop.
-  **Memory is not the wall for the people alone**: in a real 256 MB Linux
+  Memory is not the wall for the people alone. In a real 256 MB Linux
   cgroup (WSL2) Node picked a 259 MB heap limit by itself and held 250 keen
   people at 127 MB rss and 500 calm ones at 182 MB, none killed. Video is
   another matter, and that run had none: in a 207 MB cgroup a hundred phones
@@ -39,13 +39,13 @@
   crowd) read 232 MB and 209 MB. The cgroup killed none of them, but a Fly VM
   shares its 207 MB with everything on it, so that margin is the thin one.
   `node scripts/load.mjs --cgroup-mem 207M` repeats it, in WSL.
-  **The CPU is, and on Fly it is a
-  quota**: a shared-cpu-1x machine runs at 6.25% of a core (5 ms of every 80)
+  The CPU is, and on Fly it is a
+  quota: a shared-cpu-1x machine runs at 6.25% of a core (5 ms of every 80)
   once its burst balance, 500 s at most, is spent. Held to that in the
   cgroup for a minute or two, the relay still paired every band and dropped
   nobody, but its event loop ran about 0.2 s late at p99 with 50 keen people,
-  about a second late with 100 and two with 150. So **about 100 people a venue
-  on the Fly machine** is still the number to plan the door around, with the
+  about a second late with 100 and two with 150. So about 100 people a venue
+  on the Fly machine is still the number to plan the door around, with the
   quota as its caveat: a keen room of 100 would empty a full balance in about
   an hour on these figures. `docs/show-night.md` carries the numbers, the
   arithmetic, the health checks, band triage and what a restart costs
@@ -53,7 +53,7 @@
   **Every one of those figures is a laptop's, or a laptop's Linux.** Fly's
   vCPU is not that core, the cgroup ran Node 22 where Fly runs 24, and the
   rig's people are not a crowd. The relay says its own load in its log
-  (*Always on*). Its start line on Fly, 1 Oct 2026, read `heap limit 259 MB on
+  (*Always on*, `docs/running.md`). Its start line on Fly, 1 Oct 2026, read `heap limit 259 MB on
   a machine with 207 MB`: the VM gives the process 207 of its 256 MB, so 500
   calm people (182 MB in the cgroup) would be close to the wall there, and
   100 to 250 are not. Whether the quota bites is still unseen: no night with
@@ -112,16 +112,16 @@
   The way back up never landed between -60 and -56, so that a person coming
   back must reach the floor itself is held only by the relay's tests. The
   -56 dBm floor rests on the crowd
-  model's losses for distance and bodies, calibrated on two bands on a desk;
-  a real venue's walls may want another floor, and it is one constant in
+  model's losses for distance and bodies, calibrated on two bands on a desk.
+  A real venue's walls may want another floor, and it is one constant in
   the relay (`MARK_FLOOR`). There is one floor for every venue, and a marker
   is not listed or shown to the venue anywhere. Channels 12 and 13 are
   allowed in Australia and not everywhere: a marker used elsewhere would
   hop 1 to 11. A marker on a laptop's USB may be switched off with it; a
   marker wants a wall charger. Since 30 Sep 2026 the walk has its tool:
   `scripts/venue-walk.py`, which types `near` at the walking band's console
-  every few seconds and draws what it heard — every marker and band, in dBm,
-  against the -56 and -60 lines — so the walk says whether the venue wants
+  every few seconds and draws what it heard (every marker and band, in dBm,
+  against the -56 and -60 lines), so the walk says whether the venue wants
   another floor, and where.
 - **The firmware has run on two wristbands, for one day.** On 25 Sep
   2026 a StickS3 and an M5StickC Plus joined an Android phone's hotspot and
@@ -131,7 +131,7 @@
   face hold went NOT NOW and a side hold came back. With the phone locked for
   over two minutes, SAY HI chosen on the band reached the other person's
   WHO'S NEAR, and the phone woke with it still armed and no toast saying a tap
-  failed — but its socket stayed open all the while. On 4 Oct 2026 the
+  failed. Its socket, though, stayed open all the while. On 4 Oct 2026 the
   phone was truly gone: the StickC Plus, paired through the Fly relay to a
   stand-in on SAY HI, had that phone's tab closed outright, and a second
   person with no band, watching from the same venue, still saw them on SAY
@@ -154,8 +154,8 @@
   https://on-the-beat.fly.dev and the band responded; a second device paired
   the other, and a wave and a wave back between the two put `MEET` on both
   bands. A night's worth of battery, and the Plus's face button, are not
-  tried. CI builds both envs with PlatformIO on every push — the ESP32 image
-  is about 1.2 MB of its 3 MB app partition — and keeps each image to flash.
+  tried. CI builds both envs with PlatformIO on every push and keeps each
+  image to flash. The ESP32 image is about 1.2 MB of its 3 MB app partition.
 - **The band never turns itself, and the StickS3 turns only from a laptop.**
   Landscape faces run on both real bands (28 Sep 2026): the pairing face,
   the check, READY, a card and a marker's face were snapped on both or one
@@ -163,7 +163,7 @@
   either side was the same frame; and the side each was set to came back
   after a restart. A band moved
   to the right wrist needs `turn usb-right`, or on a Plus a press of the power
-  button; the owner wears the StickS3 on his left, the default. A press of
+  button; we wear our StickS3 on the left, the default. A press of
   both buttons at once, or a button in the phone app, would turn a StickS3
   over at a venue, and both were offered and not taken up. The first check
   typed at the StickS3 that night ended as it was answered: the band had
@@ -184,7 +184,7 @@
   the same measure 0.7 s either way as the control. Played at the S3's
   pitches, `ask`, `down`, `low` and `warn` did not rise over the room at
   all; a sweep a semitone at a time found the buzzer loud only from about
-  2.8 to 4.7 kHz. Raised by octaves (above), every one of them came through,
+  2.8 to 4.7 kHz. Raised by octaves (`docs/wristband.md`), every one of them came through,
   most notes 10 to 34 dB over the room, and the ticks as well; still faint
   are `up`'s first two notes, at 2.1 and 2.6 kHz. With the 5V output on and
   USB in, the Plus held 100% for 50 minutes, most of them on the Wi-Fi,
@@ -192,17 +192,15 @@
   wrist, and each colour, and the words whole on a real screen, still need
   someone there. A lit card pulsing on the music's beat is in docs/wristband.md;
   that it has not been heard on the real bands is below.
-- **The beat has not been heard on the real bands.** The tests hold the
-  tracker and its block clock equal to the bit between the twins, and to
-  made-up music: kicks at 90, 120 and 160 BPM, a hi-hat, a held chord,
+- **The beat has been heard from a click track, not from a show.** The tests
+  hold the tracker and its block clock equal to the bit between the twins,
+  and to made-up music: kicks at 90, 120 and 160 BPM, a hi-hat, a held chord,
   noise, made-up speech, random kicks, missed kicks and gaps. The stand-in's
-  `LISTEN` pulsed on a made-up 120 BPM kick in a browser, 500 ms apart, and
-  was steady within a beat of being turned off. On the bands it has only
-  been built. Its gate is owed (the spec's §4.1): round 3 of the spike on the
-  StickC Plus bands (the StickS3 was dropped on 6 Oct 2026) beside the laptop
-  at round 2's volume, and each
-  model's microphone delay, 0 until then, measured there from presses of
-  the face button. It reaches `main` only once that passes. What the made-up
+  `LISTEN` pulsed on a made-up 120 BPM kick in a browser, 500 ms apart. On
+  14 Oct 2026, with a laptop's speakers playing a 120 BPM click track, a
+  StickC Plus's console said `the beat every 500.0 ms (120.0 BPM)`, and the
+  beat joined `main`, the live relay and all four bands that day. A show's
+  own music in a real room is still owed. What the made-up
   music already shows: made-up speech and random kicks still pulse, in short
   bursts, 4 to 24 pulses in each 800 s of them; a held chord flickers by
   about ±3 dB a block, which can count as a rise; and a hi-hat over a quiet
@@ -216,13 +214,15 @@
   turned away. A real camera against a real screen, and Chrome on Android's own
   detector, are the next check.
 - **The staff page has not met a venue.** It has run on a laptop, in two
-  tabs beside a phone in the same browser, and on the owner's own Android
+  tabs beside a phone in the same browser, and on our own Android
   phone. A notification has reached Chrome on that laptop through Google's
   push service: Chrome's own records show the push received and decrypted,
-  and *New report · The Roundhouse, Camden* displayed. On 30 Sep 2026, with
+  and *New report · The Roundhouse, Camden* displayed (a test venue, taken off
+  the list on 19 Oct 2026 with the other made-up shows; the staff page that
+  is live now is Suncorp Stadium's). On 30 Sep 2026, with
   `roundhouse-bruno-mars`'s passcode live on Fly, that phone signed in,
   NOTIFY THIS DEVICE turned notifications on, and the relay's log counted
-  the push `1 sent, 0 gone, 0 failed`. On the owner's home network the
+  the push `1 sent, 0 gone, 0 failed`. On our home network the
   locked screen stayed dark, because Google's last hop to the phone is
   blocked there; with the phone's VPN on and the staff page closed, the next
   report's notification arrived as designed. A venue's own network with no
@@ -236,14 +236,14 @@
   not yet live.** The staff page has run under its policy since 29 Sep 2026.
   The app's (`APP_POLICY` in `relay/server.js`, spec
   `docs/superpowers/specs/2026-09-30-app-csp-design.md`) was drafted on
-  30 Sep against the built app's real inventory — its own scripts, styles,
+  30 Sep against the built app's real inventory: its own scripts, styles,
   fonts (Google's until 1 Oct 2026, its own files since), worker, manifest and
   socket, clips as `blob:` and `/clip/` media, and no camera allowance
-  needed — and headless Chrome ran the whole first-run walk under it with
+  needed. Headless Chrome ran the whole first-run walk under it with
   nothing refused. Headless WebKit,
   the engine family Safari reads `connect-src` with, opened the same page
   under it too, console empty, a socket join answered one frame each way;
-  that narrows the Safari risk but the real-phone gate stands. Pushing it
+  that narrows the Safari risk, but the real-phone check still stands. Pushing it
   does not redeploy Fly, and a deploy no longer waits on it: `fly.toml` holds
   the live phone app to the framing rule only (`APP_CSP = "framing-only"`,
   read by the relay at start) until Safari's reading of
@@ -260,7 +260,7 @@
   own, and a flood of sign-ins there forgets that venue's oldest and no other
   venue's (`tests/staff.test.js`). A fourth, that the staff page asked Google for its font and
   so told Google a staff device's address and browser, was closed on 1 Oct
-  2026: both pages carry their fonts themselves now (*How it is built*).
+  2026: both pages carry their fonts themselves now (`docs/how-it-works.md`).
 - **Waves have run on the real bands from their consoles, not yet by hand.**
   On 26 Sep 2026, through the Fly relay, a stand-in phone paired the StickC
   Plus and a scripted one the StickS3, each saying YES only once the band's
@@ -295,13 +295,16 @@
   nothing; the other's gave both bands `hi (found 96)` and the `found` sound
   in their logs, and both phones one found time. Whether a wearer will hold
   twice, or think the first hold said it, is for someone wearing one to
-  tell. Saying it by bumping two wristbands together, with the
-  motion sensor, is a later change, after a spike shows a fist bump can be
-  told apart from two people dancing to the same beat.
-- **The timings are guesses until worn** — six seconds awake, 1.5 s holds,
+  tell. Since 14 Oct 2026 knocking two bands together on the number says it
+  too. On 12 Oct a band touched to another said found on the first knock,
+  and a minute of dancing with a band on each wrist on `MEET` said nothing;
+  but two bands knocked while worn on two wrists were not recognised, the
+  bodies between them weakening the signal below the -45 dBm a knock needs.
+  Two people dancing side by side is untried.
+- **The timings are guesses until worn**: six seconds awake, 1.5 s holds,
   three to send, ten to wait. They are named constants for that reason.
 - **Recording has run on real phones since 6 Oct 2026, and an iPhone's
-  dance vanished.** He tried one Android phone and two iPhones on the live
+  dance vanished.** We tried one Android phone and two iPhones on the live
   relay: an iPhone sent its five seconds, then its tile disappeared from the
   floor. `/clip/` answered every request with the whole file, and Safari asks
   for `bytes=0-1` first and plays nothing from a server that ignores a range,
@@ -321,17 +324,30 @@
   minutes had gone. Still owed: an iPhone and an Android phone joining from the
   code on the face and seeing the page pop up by themselves, and the SIDE hold
   on NO WI-FI by hand.
-- **UNPAIR on the wrist has run in the tests, not on a real band.** Found at
-  the 14 Oct 2026 user test: only the phone's UNPAIR ended a pairing, and
-  without the phone the way out was a power cycle. Since 15 Oct SIDE steps
-  past OFF to UNPAIR, the face asks `UNPAIR?` / `HOLD SIDE: YES`, and a SIDE
-  hold unpairs: new letters on the band, and its person's phones forget it
-  and say so (`docs/wristband.md`). The firmware and the stand-in share four
-  cases for it and the relay has its test; flashing the four bands, and a
-  wearer finding UNPAIR past OFF by themselves, are still owed.
+- **UNPAIR and LET'S FINISH have run on real bands from their consoles, not
+  yet by hand.** Found at the 14 Oct 2026 user test: only the phone's UNPAIR
+  ended a pairing, and without the phone the way out was a power cycle.
+  Since 15 Oct SIDE steps past OFF to UNPAIR, the face asks `UNPAIR?` /
+  `HOLD SIDE: YES`, and a SIDE hold unpairs: new letters on the band, and its
+  person's phones forget it and say so (`docs/wristband.md`). LET'S FINISH
+  joined the band on 16 Oct. On 18 Oct 2026 all four StickC Plus bands were
+  flashed with both, and on the live relay two of them, paired to stand-in
+  phones and driven from their consoles, went through it: one asked to
+  finish, the other said not yet and then yes, the meeting finished, and a
+  band unpaired from the wrist. Closing and
+  opening a band's console between a step and its hold once lost the ask,
+  which buttons pressed by hand never do; why is not known. A wearer finding
+  FINISH and UNPAIR past OFF by themselves is still owed.
 - **The poster has run in headless Chrome, not on a venue's screen.** Also
   from the 14 Oct test, built 15 Oct: `/poster/<venue>`, in the app's own
   look, with tonight live from the relay (`docs/how-it-works.md`). Checked at
   390 and 1440 wide, the count moving within 20 s of a phone joining. Not
   yet seen on a real wall screen or scanned from across a room, and no
   printable version: a paper copy would need tonight's part left off.
+- **Meetings of three or four have run in the tests, not with people.** Built
+  on 19 Oct 2026: `tests/group.test.js` holds who is asked, who may answer, every way an
+  ask ends, LET'S FINISH taking only one person out, and found across the
+  whole meeting. Nobody has yet stood in a crowd as the third person waiting
+  for two strangers to let them in. The notes between people in a meeting,
+  built on 21 Oct, have run in the tests and between two phones in a
+  browser, not at a show.

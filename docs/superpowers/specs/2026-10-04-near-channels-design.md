@@ -66,7 +66,7 @@ address (`bssid_set`) holds it to one point.
   it. Both envs compile. The scan holds the loop a few hundred ms each time
   it runs, which is only when joining. The relay is unchanged: the
   same-channel rule already does the right thing.
-- Run on the StickC Plus the same day, by its console, on his Y70 hotspot
+- Run on the StickC Plus the same day, by its console, on our Y70 hotspot
   (which the laptop's `netsh wlan show networks mode=bssid` put on channel
   11; it had been on 6 hours before, so a phone hotspot moves): `channel 1`
   and `channel 6` each left it off the Wi-Fi, saying `no Y70 on channel N`

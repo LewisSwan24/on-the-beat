@@ -10,7 +10,7 @@ makes a room with no act, no times and no place, and nobody else sees it in a
 list. To reach the same room, they have to type a name that folds to the same key
 (`app/lib/typed.js` `roomOf`).
 
-He asked for four things after the four-user test:
+We asked for four things after the four-user test:
 
 1. A venue that is not listed still works.
 2. Finding the venue without scrolling or typing (automatic location).
@@ -18,10 +18,10 @@ He asked for four things after the four-user test:
    landed in 175dab6).
 4. A warning when you are in the wrong room.
 
-He chose the data source from three options: **A**, the people on site make the
+We chose the data source from three options: **A**, the people on site make the
 room. The other two were OpenStreetMap names (B) and a ticketing API (C). This is
 not a new card or new product state between people, so it is not held for the
-team: his 「直接做」.
+team: our 「直接做」.
 
 ## Decisions (his picks, 13 Oct 2026)
 
@@ -161,7 +161,7 @@ team: his 「直接做」.
 ## Not in this
 
 - **Voice prompts.** The next design.
-- **Polish items** F5–F7, F9, F10 and F15.
+- **Polish items** F5-F7, F9, F10 and F15.
 - **A wrong-room check from the wristband's beacons** (option 乙). It was
   offered and not picked.
 - **OpenStreetMap or ticketing data** (B, C).

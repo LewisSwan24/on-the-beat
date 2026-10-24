@@ -8,27 +8,27 @@
 
 **Tech Stack:** Node 22+ (`node --test`, `ws`), React and Vite for the app, Web Audio (`AudioWorklet`) for the stand-in's microphone, C++17 on the laptop (MinGW-W64 g++ here, GCC in CI), C++11 on the band (Arduino-ESP32 2.0.17 through PlatformIO `espressif32@^6.9.0`), M5Unified 0.2.22 or later: its microphone's buffer release callback, and `record()` called from inside it, are both in 0.2.22 (built here against 0.2.23).
 
-**Spec:** `docs/superpowers/specs/2026-09-26-wrist-beat-design.md` (decided with the owner section by section on 26 Sep 2026 after a throwaway spike on both real bands; §1 to §6 reviewed and approved by him on 27 Sep 2026, `BEAT: ON` by default included). It was amended on 27 Sep 2026 from this build: four of §2's rules changed on the evidence of made-up music and the spike's offline set, and the microphone's count is held to the band's clock. The spec's opening says each change and why, and marks each *(amended)*. It builds on the reactions spec (`2026-09-25-wrist-reactions-design.md`: the sound switch, NOT NOW's silence, the flashes) and the waves spec's call. Read the beat spec before any task.
+**Spec:** `docs/superpowers/specs/2026-09-26-wrist-beat-design.md` (decided section by section on 26 Sep 2026 after a throwaway spike on both real bands; §1 to §6 reviewed and approved by us on 27 Sep 2026, `BEAT: ON` by default included). It was amended on 27 Sep 2026 from this build: four of §2's rules changed on the evidence of made-up music and the spike's offline set, and the microphone's count is held to the band's clock. The spec's opening says each change and why, and marks each *(amended)*. It builds on the reactions spec (`2026-09-25-wrist-reactions-design.md`: the sound switch, NOT NOW's silence, the flashes) and the waves spec's call. Read the beat spec before any task.
 
-This plan was written from a finished build: every task below was built in a scratch worktree on branch `beat-build`, test first, and committed on its own with `npm test` green at every commit. The code blocks are those commits' diffs, so applying a task's blocks in order reproduces it. Each Step 2 was measured by running the task's tests on its parent's code, and each mutation list was measured at its task's commit. **The owner chose that the build reaches `main` only once the gate passes (spec §4.1, Task 9).** Until then it lives on `beat-build`.
+This plan was written from a finished build: every task below was built in a scratch worktree on branch `beat-build`, test first, and committed on its own with `npm test` green at every commit. The code blocks are those commits' diffs, so applying a task's blocks in order reproduces it. Each Step 2 was measured by running the task's tests on its parent's code, and each mutation list was measured at its task's commit. We chose that the build reaches `main` only once the gate passes (spec §4.1, Task 9). Until then it lives on `beat-build`.
 
 ## Global Constraints
 
-- Artefacts are English: code, comments, commit messages, README, test names. Talk to the owner in Chinese.
+- Artefacts are English: code, comments, commit messages, README, test names. Talk to us in Chinese.
 - **It hears loudness only** (spec §1, *Not in this spec*). Each 8 ms block becomes five levels on the band, and the band keeps only how far they rose, one number a block, for `BEAT_WINDOW_MS`. Nothing of the sound is recorded or sent; no frame carries a level, a tempo or a pulse. The relay carries only the switch, and only to its person's own band.
 - **The pulse only ever makes a lit card easier to see** (spec, *Goal*). It never lights a face that is not lit, says nothing about anyone, and gives way to every reaction. Only a card lit at rest pulses: `hi`, `song` or `dance`, never the meeting number, the letters, the check, the test light, NOT NOW, a black face, a card shown by SIDE, or while a flash is on the face.
 - **Not pulsing is better than pulsing off the beat.** In doubt the card stays steady.
 - **The shape of a beat:** `pulseLight(full, since, period) = full − floor((full / 2) · min(1, since / (2·period/3)))`. A pulse lasts one period; after it the card is its steady light.
 - **Constants**, the same in both twins (`BEAT_CONSTS` and the host binary's `beatconsts`): `BEAT_RATE` 16000, `BEAT_BLOCK` 128, `BEAT_BANDS_HZ` 150, 400, 1200, 3500 (second-order RBJ filters, Q 0.7071; the offset from zero taken out with `dc += 0.001 · (x − dc)`); `BEAT_ONSET` 2.5, `BEAT_ONSET_MIN` 6 dB, `BEAT_WINDOW_MS` 6000, `BEAT_LOOK_MS` 128, `BEAT_SHORTEST_MS` 336, `BEAT_LONGEST_MS` 752, `BEAT_PRIOR_MS` 500, `BEAT_PRIOR_OCT` 0.7, `BEAT_LOCK_CONF` 4, `BEAT_LOCK_CONTRAST` 4.5, `BEAT_LOCK_LOOKS` 6, `BEAT_STEADY` 0.02, `BEAT_PHASE_MS` 2000, `BEAT_NEAR` 0.12, `BEAT_RISE` 0.25, `BEAT_TIGHT_MS` 30, `BEAT_PULL_PHASE` 0.3, `BEAT_PULL_PERIOD` 0.05, `BEAT_CHANGE` 0.05, `BEAT_START` 4 of `BEAT_START_OF` 5, `BEAT_CONFIRM` 2 of `BEAT_OF` 3, `BEAT_HOLD` 4, `BEAT_OTHER_LOOKS` 8, `BEAT_LOSE_MS` 4000, `BEAT_CREEP` 0.125 ms a block, `BEAT_SETTLE` 16 blocks. `MIC_LATENCY_S3_MS` and `MIC_LATENCY_PDM_MS` (`main.cpp`) are 0 until the gate measures them.
 - **Single precision where it counts:** the levels, the onset strength and the tempo's sums are `float` on the band and `Math.fround` in the stand-in; everything else is `double` and a JavaScript number. So the twins agree to the bit, and `tests/firmware.test.js` compares them exactly.
-- **Frames:** the phone says `{ t: 'beat', on }`, `on` true or false, and anything else is dropped; the relay keeps it per person beside `sound`, forgets it on `leave` (not in the grace), and puts `beat` on the same shows as `sound` — the band's own card, the test light and away — never on the letters, the check or waiting. The band reads `beat` from a show when it is there, and the letters turn it back on. `SAID_ORDER` is `['sound', 'beat', 'pair', 'invisible', 'profile', 'pick', 'arm', 'leave']`.
+- **Frames:** the phone says `{ t: 'beat', on }`, `on` true or false, and anything else is dropped; the relay keeps it per person beside `sound`, forgets it on `leave` (not in the grace), and puts `beat` on the same shows as `sound` (the band's own card, the test light and away), never on the letters, the check or waiting. The band reads `beat` from a show when it is there, and the letters turn it back on. `SAID_ORDER` is `['sound', 'beat', 'pair', 'invisible', 'profile', 'pick', 'arm', 'leave']`.
 - **Not in this plan** (spec): a signal from the venue, syncing bands through the relay, the phone listening, pulsing to loudness (the gate's fallback, its own change), and anything that records, stores or sends sound.
 - **The band's compiler takes C++11** and sees `Arduino.h`'s macros first; `firmware/host/as_band.cpp` holds `band_logic.h` (and so `beat_logic.h`) to that on every run. A variable or parameter left unused is an error there (`-Werror`). Array sizes in a class are `enum` constants, not `static constexpr` members, which C++11 would need defined out of line.
 - Repository `LewisSwan24/on-the-beat` (private). Commit after each task on `beat-build`; push the branch, never `main`, until Task 9. Never the team repository `cimi2232/DECO3500`: `tools/hooks/pre-push` refuses it (after a fresh clone, `cp tools/hooks/pre-push .git/hooks/pre-push`).
 - `CLAUDE.md` is not in git and is not edited by this plan. Nothing from `../on-the-beat-research/` or `../on-the-beat-design/` enters the repository.
 - `npm test` builds first (the relay serves `dist/`). Running one test file alone: `npm run build` first, and again after restoring a mutation.
 - Windows host: the Bash tool is Git Bash, and the plan's scripts are Node. Never write JavaScript or Python holding backticks, quotes or `${}` through a Bash heredoc: write it with the editor. A command that holds `git commit` and another program's `-n` (such as `grep -n`) is refused by a hook as `--no-verify`: run them separately. A file the editor refuses to write because it was not read first already exists: read it, and never commit with a message file you have not just written.
-- Flashing a band needs the owner's yes first, every time, and so does playing sound through the laptop. The StickS3 is on `COM8`, the StickC Plus on `COM9`. Stand-in personas paired to his bands are unpaired when a test ends, and each band's state is said.
+- Flashing a band needs our yes first, every time, and so does playing sound through the laptop. The StickS3 is on `COM8`, the StickC Plus on `COM9`. Stand-in personas paired to our bands are unpaired when a test ends, and each band's state is said.
 - Never more than ten background tasks at once. Work directly; this plan needs no fan-out.
 - Commit messages end with the attribution trailer the session's system reminder gives (today: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`).
 
@@ -114,10 +114,10 @@ Not modified, on purpose: `relay/room.js` (no view carries anything of the beat,
 
 | Stage | Tasks | Leaves |
 |---|---|---|
-| A. The beat, in both twins | 1–3 | five levels a block; the tracker; a lit card at rest pulsing in `face()`, listening only when it could pulse; all on the laptop and held to the bit |
-| B. The switch | 4–5 | the relay carrying each person's switch to their own band; the phone's `BEAT: ON` |
-| C. The microphones | 6–7 | the block clock; `main.cpp` opening the microphone, taking turns with the speaker; the stand-in's `LISTEN` |
-| D. Docs and the gate | 8–9 | README; round 3 on the real bands with the owner, and only then `main` |
+| A. The beat, in both twins | 1-3 | five levels a block; the tracker; a lit card at rest pulsing in `face()`, listening only when it could pulse; all on the laptop and held to the bit |
+| B. The switch | 4-5 | the relay carrying each person's switch to their own band; the phone's `BEAT: ON` |
+| C. The microphones | 6-7 | the block clock; `main.cpp` opening the microphone, taking turns with the speaker; the stand-in's `LISTEN` |
+| D. Docs and the gate | 8-9 | README; round 3 on the real bands with us, and only then `main` |
 
 Every task ends green and is committed on its own; each stage ends with P2.
 
@@ -465,9 +465,9 @@ In `firmware/src/band_logic.h`:
  constexpr uint32_t WAKE_MS = 6000;            // a KEY1 press shows the face this long
 ````
 
-- [ ] **Step 4: Run** — `tests/beat.test.js` (`ℹ pass 4`) and `tests/firmware.test.js` (`ℹ pass 108`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 422`. Single precision on the band against the stand-in's: the worst level measured 0.0032% apart.
+- [ ] **Step 4: Run**: `tests/beat.test.js` (`ℹ pass 4`) and `tests/firmware.test.js` (`ℹ pass 108`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 422`. Single precision on the band against the stand-in's: the worst level measured 0.0032% apart.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**: expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -1820,9 +1820,9 @@ In `firmware/src/beat_logic.h`:
  }  // namespace otb
 ````
 
-- [ ] **Step 4: Run** — `tests/beat.test.js` (`ℹ pass 18`) and `tests/firmware.test.js` (`ℹ pass 110`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 438`. The twins' pulses agree to the bit: printed at `%.17g`, 129 of 129.
+- [ ] **Step 4: Run**: `tests/beat.test.js` (`ℹ pass 18`) and `tests/firmware.test.js` (`ℹ pass 110`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 438`. The twins' pulses agree to the bit: printed at `%.17g`, 129 of 129.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. Run it in the background: several are C++.
+- [ ] **Step 5: Mutation check (P1)**: expected `ALL MUTATIONS HELD`. Run it in the background: several are C++.
 
 ````json
 [
@@ -2077,7 +2077,7 @@ EOF
 
 **Interfaces:**
 - Consumes: Task 2's `createTracker` and `BeatTracker`; the wrist's `lit()`, `current()`, `stale()`/`link_.stale()`, `face(now)`, the show frame reader, the letters' reset, and the flashes; the table's steps, `lines()`, `check()` and the host binary's `wrist` runner.
-- Produces: `pulseLight(full, since, period)` in both. On the wrist (both twins): `listening(now)` — the beat switch on, a show that is `lit()` and not `meet`, the link not stale, and not NOT NOW; `hear(levels, now)`, which forgets the beat (the tracker reset, the pulses dropped) whenever the wrist is not listening; `setMicLatency(ms)`; a show's `beat` (true or false) read when present, and the letters turning it back on; `face(now)` pulsing the light of a lit card at rest from the newest pulse due, for one period, before any flash is drawn over it. C++: `Frame::beat` (-1 absent, 0, 1). The host binary's `pulselight <full> <since> <period>`; the `wrist` runner's `<t> hear b0 .. b4` and `<t> latency <ms>`, and `"listening"` in every answer. The table: a step's `listening`, exact when given; a `music` step (`tests/beat-music.js`'s parts) heard block by block from its time, with a keep-alive every second, and its `during` steps put in among the blocks by time.
+- Produces: `pulseLight(full, since, period)` in both. On the wrist (both twins): `listening(now)`: the beat switch on, a show that is `lit()` and not `meet`, the link not stale, and not NOT NOW; `hear(levels, now)`, which forgets the beat (the tracker reset, the pulses dropped) whenever the wrist is not listening; `setMicLatency(ms)`; a show's `beat` (true or false) read when present, and the letters turning it back on; `face(now)` pulsing the light of a lit card at rest from the newest pulse due, for one period, before any flash is drawn over it. C++: `Frame::beat` (-1 absent, 0, 1). The host binary's `pulselight <full> <since> <period>`; the `wrist` runner's `<t> hear b0 .. b4` and `<t> latency <ms>`, and `"listening"` in every answer. The table: a step's `listening`, exact when given; a `music` step (`tests/beat-music.js`'s parts) heard block by block from its time, with a keep-alive every second, and its `during` steps put in among the blocks by time.
 
 - [ ] **Step 1: Write the failing tests.** In `tests/beat.test.js`, the pulse's shape. In `tests/firmware.test.js`, the firmware draws a pulse's light as the stand-in does. Ten cases in the table, each run on both twins: a lit card pulses once locked, half from two thirds of the way on, full again once the music stops; on a low battery it pulses from its half light to a quarter; `BEAT: OFF` does not listen and the card stays lit, and on again it finds the beat afresh; NOT NOW does not listen and forgets the beat; only a lit card listens (not the meeting face, a dark face, away, the test light, waiting, the check or the letters); a card no longer believed does not listen, `STALE_MS` after the relay was lost; a flash is drawn over the pulse, which comes back after it; a card shown by SIDE is not at rest and does not pulse, and back at rest it does; the microphone's delay puts each pulse that far ahead; and the letters turn the beat back on.
 
@@ -2759,9 +2759,9 @@ In `firmware/src/band_logic.h`:
    bool calling_ = false;
 ````
 
-- [ ] **Step 4: Run** — `tests/beat.test.js` (`ℹ pass 19`), `tests/wrist.test.js` (`ℹ pass 107`) and `tests/firmware.test.js` (`ℹ pass 121`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 460`.
+- [ ] **Step 4: Run**: `tests/beat.test.js` (`ℹ pass 19`), `tests/wrist.test.js` (`ℹ pass 107`) and `tests/firmware.test.js` (`ℹ pass 121`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 460`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. Run it in the background.
+- [ ] **Step 5: Mutation check (P1)**: expected `ALL MUTATIONS HELD`. Run it in the background.
 
 ````json
 [
@@ -3227,9 +3227,9 @@ In `relay/server.js`:
          ws.r = null;
 ````
 
-- [ ] **Step 4: Run** — the two files (`ℹ pass 15`, `ℹ pass 56`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 466`.
+- [ ] **Step 4: Run**: the two files (`ℹ pass 15`, `ℹ pass 56`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 466`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**: expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -3518,9 +3518,9 @@ In `app/App.jsx`:
    });
 ````
 
-- [ ] **Step 4: Run** — the two files (`ℹ pass 4`, `ℹ pass 4`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 468`. In the built-in browser (`npm start`, CLAUDE.md's seeding): pair the stand-in `/band`, and the wristband sheet reads TEST THE LIGHT, `SOUND: ON`, `BEAT: ON`, UNPAIR; a tap says `your wristband will stay still.`, sends `{t:'beat',on:false}` and keeps `bandBeat` false in `otb:v1`; How this works has `BEAT_HOW`.
+- [ ] **Step 4: Run**: the two files (`ℹ pass 4`, `ℹ pass 4`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 468`. In the built-in browser (`npm start`, CLAUDE.md's seeding): pair the stand-in `/band`, and the wristband sheet reads TEST THE LIGHT, `SOUND: ON`, `BEAT: ON`, UNPAIR; a tap says `your wristband will stay still.`, sends `{t:'beat',on:false}` and keeps `bandBeat` false in `otb:v1`; How this works has `BEAT_HOW`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**: expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -3594,7 +3594,7 @@ EOF
 - Test: `tests/beat-music.js`, `tests/beat.test.js`, `tests/firmware.test.js`
 
 **Interfaces:**
-- Consumes: Tasks 1–3's `Levels`, `BEAT_BLOCK_MS`, `BeatTracker`, and the wrist's `listening(now)`, `hear()` and `setMicLatency()`; in `main.cpp`, `playSounds()`, `soundDue`, `SOUND_CHANNEL`, `speaker`, `report()`, `help()`, `run()`, `setup()` and `loop()`; M5Unified's `M5.Mic` (`begin`, `end`, `record`, `isEnabled`, `setBufferReleaseCallback`) and `M5.Speaker` (`begin`, `end`, `isPlaying`).
+- Consumes: Tasks 1-3's `Levels`, `BEAT_BLOCK_MS`, `BeatTracker`, and the wrist's `listening(now)`, `hear()` and `setMicLatency()`; in `main.cpp`, `playSounds()`, `soundDue`, `SOUND_CHANNEL`, `speaker`, `report()`, `help()`, `run()`, `setup()` and `loop()`; M5Unified's `M5.Mic` (`begin`, `end`, `record`, `isEnabled`, `setBufferReleaseCallback`) and `M5.Speaker` (`begin`, `end`, `isPlaying`).
 - Produces: `BEAT_CREEP` (0.125), `BEAT_SETTLE` (16), both in `BEAT_CONSTS`; `createBlockClock()` → `{ reset(), at(arrival, lost = 0) }`, `at` returning when the block ended or null while it settles; C++ `class BlockClock { void reset(); bool at(uint32_t arrival, uint32_t lost, uint32_t& t); }`; the host binary's `clock <arrival,lost | reset> ...` → a JSON array of times and nulls; `Wrist::beatPeriod()` (0 before a lock). `tests/beat-music.js`'s `handed(blocks, ppm, from)` → `[{ end, arrival }]`, a microphone handing blocks over two at a time. On the band: the console's `beat`, and a `beat` line in `show`.
 
 - [ ] **Step 1: Write the failing tests.** Four in `tests/beat.test.js`: blocks handed over two at a time are timed a block apart and held to the band's clock at -382, 0 and +382 ppm over ten minutes (each within 1.5 ms of when it truly ended, never after it was handed over, a block apart within 1 ms); blocks the band could not keep are counted over; 16 ms lost uncounted are caught up within 136 blocks, and no block is timed after it was handed over; and the first `BEAT_SETTLE` blocks after the microphone opens are not heard, and `reset` opens it afresh. In `tests/firmware.test.js`, the firmware times the blocks as the stand-in does, over a fast microphone, ten blocks lost and counted, two lost uncounted, and a reopening on a slow one.
@@ -3911,7 +3911,7 @@ In `firmware/src/beat_logic.h`:
  }  // namespace otb
 ````
 
-- [ ] **Step 4: Run** — `tests/beat.test.js` (`ℹ pass 23`) and `tests/firmware.test.js` (`ℹ pass 122`).
+- [ ] **Step 4: Run**: `tests/beat.test.js` (`ℹ pass 23`) and `tests/firmware.test.js` (`ℹ pass 122`).
 
 - [ ] **Step 5: Write the microphone into `main.cpp`.** Each block's release callback (on the microphone's own task) copies the block into a queue of `HEARD_KEPT` (16) with its `millis()` and how many copies before it the queue could not hold, and hands the buffer straight back with `record()`; a buffer it could not hand back is handed back by the loop. `micTick()`, after `playSounds()` in the loop, opens the microphone while the wrist is listening and no sound has the channel (the speaker ended first), shuts it otherwise (the speaker begun again), and runs every queued block through `Levels` and `BlockClock` into `wrist->hear()`. `playSounds()` shuts the microphone before a sound. `setup()` sets the callback while the microphone is shut, makes the queue and sets each model's delay. The console's `beat` and `show` say whether the microphone is open, how many blocks it heard and lost, and the beat's period. In `band_logic.h`, `beatPeriod()` for the console.
 
@@ -4158,7 +4158,7 @@ In `firmware/src/main.cpp`:
 
 - [ ] **Step 7: Run** `npm test`. Expected: `ℹ fail 0`, `ℹ tests 473`.
 
-- [ ] **Step 8: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. Four of the stand-in's go red in more tests than their own, each a real consequence: without the snap, without settling or with a whole block's creep, the first block heard is timed from a pair's first arrival, eight milliseconds late.
+- [ ] **Step 8: Mutation check (P1)**: expected `ALL MUTATIONS HELD`. Four of the stand-in's go red in more tests than their own, each a real consequence: without the snap, without settling or with a whole block's creep, the first block heard is timed from a pair's first arrival, eight milliseconds late.
 
 ````json
 [
@@ -4665,11 +4665,11 @@ In `app/screens/Band.jsx`:
            <span className="tnum" style={{ color: '#fff', minWidth: 36 }}>{battery}%</span>
 ````
 
-- [ ] **Step 4: Run** — the file (`ℹ pass 4`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 477`. `tests/copy.test.js` reads the new comments for the one-button wristband's words: a comment saying "its button" fails it.
+- [ ] **Step 4: Run**: the file (`ℹ pass 4`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 477`. `tests/copy.test.js` reads the new comments for the one-button wristband's words: a comment saying "its button" fails it.
 
 - [ ] **Step 5: See it in the browser.** `npm start`; seed a phone as CLAUDE.md says, with `bandSound: false` so the stand-in makes no sound; pair `/band` by its letters and the check; arm SAY HI; press SIDE and wait for `HI :)` over `BLUE MEANS HELLO`. In `/band`, before pressing `LISTEN`, replace `navigator.mediaDevices.getUserMedia` with one that returns a `MediaStreamDestination` fed by a looped 500 ms buffer of a made-up kick (an 80 Hz sine and a burst of noise, both decaying) and connected to nothing audible. Press `LISTEN` and read the face's `filter: brightness(...)` every 25 ms. Measured: asked with the three shapers off; `LISTEN: ON`; pulses from 4.4 s on, 500 ms apart, 1 falling in a straight line to 0.502 by about 333 ms and held there; `LISTEN` off, and the light is steady at 1 within a beat.
 
-- [ ] **Step 6: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 6: Mutation check (P1)**: expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -4943,17 +4943,17 @@ EOF
 
 ### Task 9: The gate on the real bands, with the owner; then `main`
 
-Nothing here is automated, and every step needs the owner: flashing needs his yes first, the test tracks play through the laptop's speaker, and the bands are his. The gate is the spec's §4.1; if it fails, nothing is merged, and the owner decides between the loudness fallback and stopping.
+Nothing here is automated, and every step needs us: flashing needs our yes first, the test tracks play through the laptop's speaker, and the bands are ours. The gate is the spec's §4.1; if it fails, nothing is merged, and we decide between the loudness fallback and stopping.
 
-The round-3 kit is the spike's, outside every repository: its firmware and scripts in `C:\Users\LewisDong\Documents\on-the-beat-spike` (moved out of Temp on the owner's word, 28 Sep 2026): `spike_run3.py` plays the tracks and records both bands' streams, `gate3.mjs` scores them, and `tracker-build.mjs` gives it this build's tracker from the `beat-build` worktree's `app/lib/beat.js`.
+The round-3 kit is the spike's, outside every repository: its firmware and scripts in `C:\Users\LewisDong\Documents\on-the-beat-spike` (moved out of Temp on our word, 28 Sep 2026): `spike_run3.py` plays the tracks and records both bands' streams, `gate3.mjs` scores them, and `tracker-build.mjs` gives it this build's tracker from the `beat-build` worktree's `app/lib/beat.js`.
 
 **Expect a close result.** Scored on the made-up round 3 (`fake3.jsonl`: both bands hearing the files through the spike's model of a laptop speaker), the spike's tracker and this build's both miss two of the gate's lines: the crowd on the StickS3 locks after 6.1 s (the gate asks 4), and the medley's change to 128 BPM leaves three pulses off the beat on the Plus (the gate allows two). Everything else passes there: silence, speech and the presses pulse nothing; the pop mix, the crowd and the drift pulse 100% of their beats once locked; the own song's pulses fall 58 of 58 within 40 ms across the bands. It is a model of a speaker, not a room: only round 3 decides.
 
 - [ ] **Step 1: Flash the spike to both bands**, after asking: its own `platformio.ini`, a short build directory (`PLATFORMIO_BUILD_DIR=/c/Users/LEWISD~1/AppData/Local/Temp/spikebuild`), `-t upload --upload-port COM8` for the StickS3 and `COM9` for the Plus.
-- [ ] **Step 2: Round 3.** The owner sets the laptop's volume to 60% (round 2's) and puts both bands beside its speaker. `python spike_run3.py run3.jsonl --own 60`; he presses each band's face five times in the first 20 s, and at about +267 s plays a song of his choosing from his phone for 60 s.
-- [ ] **Step 3: Score it.** `TRACKER=tracker-build.mjs node gate3.mjs run3.jsonl`. It passes if, on both bands, the pop mix, the crowd and the drift lock within 4 s and then pulse at least 90% of their beats within 40 ms; the medley's change to 128 BPM relocks within 4 s with at most two pulses off the beat; silence and speech pulse nothing; and in the owner's song, once both are locked, at least 90% of one band's pulses fall within 40 ms of the other's. The half-time section and the breakdown are recorded, not judged. Each band's press delays (`click heard 5/5, delays ..., median N`) are its model's `MIC_LATENCY_*_MS`.
-- [ ] **Step 4: If it fails,** stop: flash the release firmware back (P3 on `main`, `-t upload`), tell the owner which lines failed and by how much, and let him choose between the loudness fallback and stopping. Nothing is merged.
+- [ ] **Step 2: Round 3.** We set the laptop's volume to 60% (round 2's) and puts both bands beside its speaker. `python spike_run3.py run3.jsonl --own 60`; we press each band's face five times in the first 20 s, and at about +267 s plays a song of our choosing from our phone for 60 s.
+- [ ] **Step 3: Score it.** `TRACKER=tracker-build.mjs node gate3.mjs run3.jsonl`. It passes if, on both bands, the pop mix, the crowd and the drift lock within 4 s and then pulse at least 90% of their beats within 40 ms; the medley's change to 128 BPM relocks within 4 s with at most two pulses off the beat; silence and speech pulse nothing; and in our song, once both are locked, at least 90% of one band's pulses fall within 40 ms of the other's. The half-time section and the breakdown are recorded, not judged. Each band's press delays (`click heard 5/5, delays ..., median N`) are its model's `MIC_LATENCY_*_MS`.
+- [ ] **Step 4: If it fails,** stop: flash the release firmware back (P3 on `main`, `-t upload`), tell us which lines failed and by how much, and let us choose between the loudness fallback and stopping. Nothing is merged.
 - [ ] **Step 5: If it passes,** set `MIC_LATENCY_S3_MS` and `MIC_LATENCY_PDM_MS` in `main.cpp` to the measured medians, rewrite README's *The beat has not been heard on the real bands* with what round 3 showed, and commit both on `beat-build` (`npm test` green).
-- [ ] **Step 6: The build on the bands** (spec §4.6), after asking: flash `beat-build` to both (P3, `-t upload`). Pair each to a stand-in phone with a card armed and SOUND off unless the owner is listening. With music playing, read `face` on each console every 25 ms: the light at its peak within 40 ms of each beat. `BEAT: OFF` on the phone and nothing pulses, and `beat` says the microphone is shut. A reaction during the music (TEST THE LIGHT, a wave) plays, and the pulse comes back after it. `show` on the Plus with Wi-Fi, TLS and the microphone on: its free heap and the least it has been; and, plugged in with the battery full, its `power` line with a card lit and the switch on, against the same with it off (the spec's *Battery* risk). Listen for a click at each turn from the speaker to the microphone, and watch the Plus's pulse, which its backlight's eleven levels make fall in steps. Record each in README.
-- [ ] **Step 7: Bring the build onto `main`** task by task: `git cherry-pick` each `beat-build` commit in order onto `main`, `npm test` after each, then P2 on `main` (`git push origin main`), which CI builds for both boards. Deploy the relay to Fly (the owner logs in himself; not while he has said a demo is on).
+- [ ] **Step 6: The build on the bands** (spec §4.6), after asking: flash `beat-build` to both (P3, `-t upload`). Pair each to a stand-in phone with a card armed and SOUND off unless we are listening. With music playing, read `face` on each console every 25 ms: the light at its peak within 40 ms of each beat. `BEAT: OFF` on the phone and nothing pulses, and `beat` says the microphone is shut. A reaction during the music (TEST THE LIGHT, a wave) plays, and the pulse comes back after it. `show` on the Plus with Wi-Fi, TLS and the microphone on: its free heap and the least it has been; and, plugged in with the battery full, its `power` line with a card lit and the switch on, against the same with it off (the spec's *Battery* risk). Listen for a click at each turn from the speaker to the microphone, and watch the Plus's pulse, which its backlight's eleven levels make fall in steps. Record each in README.
+- [ ] **Step 7: Bring the build onto `main`** task by task: `git cherry-pick` each `beat-build` commit in order onto `main`, `npm test` after each, then P2 on `main` (`git push origin main`), which CI builds for both boards. Deploy the relay to Fly (we log in ourselves; not while we have said a demo is on).
 - [ ] **Step 8: Leave the bands as found** (test personas memory): on the release firmware from `main`, unpaired from every stand-in, and say what state each band is left in.

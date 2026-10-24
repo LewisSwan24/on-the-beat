@@ -13,7 +13,7 @@ do not test against the live relay in ways that could reach other people's
 nights (floods, pairing-code guessing, other people's rooms); a local relay
 (`npm start`) runs the same code.
 
-Useful in a report: what you did, what you saw, and which part it touches —
+Useful in a report: what you did, what you saw, and which part it touches:
 `relay/`, `app/`, the staff page, or `firmware/`.
 
 ## What is covered

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Talk to him in Chinese; code, comments, commits, README and test names are English.
+- Talk to us in Chinese; code, comments, commits, README and test names are English.
 - **Dependencies.** No new one: the relay depends on `ws` alone, and push is `node:crypto` plus Node's global `fetch`.
 - **Endpoints taken:**
   - the scheme `https:`, no port, no user name or password, at most 2,000 characters;
@@ -35,7 +35,7 @@
   - Body: `<n> open — tap to see them`, `1 open — tap to see it`, or `Tap to see the list`.
   - Tag `otb-reports`, with `renotify` on.
   - Never a person, a tag, a place or the reporter's words.
-- **Passcodes.** Tests use only `test-passcode-1` and `test-passcode-2`, and browser checks only `browser-test-passcode`. Never his passcode.
+- **Passcodes.** Tests use only `test-passcode-1` and `test-passcode-2`, and browser checks only `browser-test-passcode`. Never our passcode.
 - **Git.** Commit and push to `main` when `npm test` is green. Never `cimi2232/DECO3500`.
 
 ## Procedures
@@ -83,7 +83,7 @@ ws.onopen = () => {
 **P5 — The staff page in Chrome over CDP.**
 - The in-app browser pane cannot register a service worker, so this drives Chrome with a throwaway profile over its debugging protocol.
 - `node <scratch>/cdp-push.mjs headless` checks the page. `node <scratch>/cdp-push.mjs headful` gets a real push through Google.
-- **Headful puts a Chrome window and a Windows notification on his screen: tell him first.**
+- **Headful puts a Chrome window and a Windows notification on our screen: tell us first.**
 
 ```js
 // Chrome with a throwaway profile, driven over CDP: signs in to the local staff page, reads the notification
@@ -731,7 +731,7 @@ git push origin main
 ### Task 3: The relay holds its keys and gives the page the public one
 
 **Files:**
-- Modify: `relay/server.js` — the imports, `createRelay`'s doc and parameters, the pusher, `signIn()`, the relay object and the command line
+- Modify: `relay/server.js` (the imports, `createRelay`'s doc and parameters, the pusher, `signIn()`, the relay object and the command line)
 - Modify: `tests/staff.test.js`
 - Modify: `tests/restart.test.js`
 
@@ -893,7 +893,7 @@ git push origin main
 ### Task 4: Taking a subscription, and signing out at the relay
 
 **Files:**
-- Modify: `relay/server.js` — `PUSH_SUBS_MAX`, `subscribed()`, `pushFrom()`, `signOutFrom()`, the staff dispatch, and the `pushedTo` hook
+- Modify: `relay/server.js` (`PUSH_SUBS_MAX`, `subscribed()`, `pushFrom()`, `signOutFrom()`, the staff dispatch, and the `pushedTo` hook)
 - Create: `tests/staff-push.test.js`
 
 **Interfaces:**
@@ -1195,7 +1195,7 @@ git push origin main
 ### Task 5: Sending on a report, at most once a window
 
 **Files:**
-- Modify: `relay/server.js` — `PUSH_EVERY_MS`, the `pushEveryMs` parameter, `alerts`, `alertStaff()`, `pushAll()`, `openAt()`, `case 'report'` and `close()`
+- Modify: `relay/server.js` (`PUSH_EVERY_MS`, the `pushEveryMs` parameter, `alerts`, `alertStaff()`, `pushAll()`, `openAt()`, `case 'report'` and `close()`)
 - Modify: `tests/staff-push.test.js`
 
 **Interfaces:**
@@ -1417,7 +1417,7 @@ git push origin main
 ### Task 6: Subscriptions across a restart
 
 **Files:**
-- Modify: `relay/server.js` — `tokenFrom()` in the night's restore
+- Modify: `relay/server.js` (`tokenFrom()` in the night's restore)
 - Modify: `tests/staff-push.test.js`
 
 **Interfaces:**
@@ -1713,11 +1713,11 @@ git push origin main
 **Files:**
 - Create: `app/staff/notify.js`
 - Create: `tests/staff-notify.test.js`
-- Modify: `app/staff/list.js` — `REFUSED['signed out']`
-- Modify: `tests/staff-page.test.js` — the list of refusals
-- Modify: `app/staff/Staff.jsx` — the whole file below
+- Modify: `app/staff/list.js` (`REFUSED['signed out']`)
+- Modify: `tests/staff-page.test.js` (the list of refusals)
+- Modify: `app/staff/Staff.jsx` (the whole file below)
 - Modify: `app/staff/staff.css`
-- Modify: `app/staff/main.jsx` — its comment
+- Modify: `app/staff/main.jsx` (its comment)
 
 **Interfaces:**
 - Consumes: the sign-in answer's `push` (Task 3); `{t:'push'}` answers and `{t:'signout'}` (Task 4); `/staff-sw.js` (Task 7).
@@ -2277,7 +2277,7 @@ Expected: `ALL MUTATIONS HELD`, 18 lines of `OK   mutation: …`.
 
 A mutation that turns more tests red than it names gets a look. Where a test genuinely stands on that guard, add that test to its `expect` and say so in the commit message of Task 11.
 
-- [ ] **Step 3: Tell him, then run the real push (P3, then P5 headful).** First say in chat, in Chinese, that a Chrome window with a throwaway profile, and one Windows notification, are about to appear on his screen for about a minute.
+- [ ] **Step 3: Tell us, then run the real push (P3, then P5 headful).** First say in chat, in Chinese, that a Chrome window with a throwaway profile, and one Windows notification, are about to appear on our screen for about a minute.
 
 Expected output from P5:
 - `line after tap: Notifications on for this device.`;
@@ -2509,7 +2509,7 @@ git push origin main
 
 ### Task 12: Deploy to Fly, check it live, and record
 
-- [ ] **Step 1: Check that no demo has been announced.** This conversation and memory `fly-relay` say none. If he has said one is on, stop and ask.
+- [ ] **Step 1: Check that no demo has been announced.** This conversation and memory `fly-relay` say none. If we have said one is on, stop and ask.
 
 - [ ] **Step 2: Deploy.** Run in the background, with the flyctl path from memory `fly-relay`:
 
@@ -2534,9 +2534,9 @@ curl -sI https://on-the-beat.fly.dev/staff-sw.js | grep -i content-type
 - `/data` lists `push-keys.json` as `-rw-------` owned by `node`.
 
 - [ ] **Step 4: Record.**
-  - Memory `staff-reports`: the notifications, the spec and plan paths, the commits and the proof; still owed by him is his own phone, and `STAFF_CODES` before any of it can run on Fly.
+  - Memory `staff-reports`: the notifications, the spec and plan paths, the commits and the proof; still owed by us is our own phone, and `STAFF_CODES` before any of it can run on Fly.
   - Memory `work-queue`: item 3 done, item 4 next. Item 4's scope now includes a passcode change not ending sign-ins before 06:00, and the push keys file.
   - Memory `fly-relay`: the keys file on the volume, and the deploy.
   - `MEMORY.md`: update the three lines to match.
   - `<scratch>/progress.md`: replace it for item 4.
-- [ ] **Step 5: Report to him in Chinese.** Say what landed and what was proven; the Chrome push on the laptop is proven, a phone is not. List what is owed by him: his Android phone and an iPhone, if there is one, and `npm run staff-code` with `STAFF_CODES` first.
+- [ ] **Step 5: Report to us in Chinese.** Say what landed and what was proven; the Chrome push on the laptop is proven, a phone is not. List what is owed by us: our Android phone and an iPhone, if there is one, and `npm run staff-code` with `STAFF_CODES` first.

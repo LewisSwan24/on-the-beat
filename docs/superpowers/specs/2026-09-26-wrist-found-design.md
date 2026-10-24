@@ -1,12 +1,12 @@
 # Found each other: a meeting ends when both say so
 
-Date: 26 Sep 2026. Decided with the owner section by section the same day.
+Date: 26 Sep 2026. We decided it section by section the same day.
 It builds on the waves spec (`2026-09-25-wrist-waves-design.md`) and the
 reactions spec (`2026-09-25-wrist-reactions-design.md`): the meeting number,
 its call, the side hold, and the sounds and flashes both twins keep.
 
-The owner asked how the wristband carries on after `MEET`, once two people
-have actually met. Of the ways offered he chose a side hold on the band,
+We asked how the wristband carries on after `MEET`, once two people
+have actually met. Of the ways offered we chose a side hold on the band,
 counted only when both say so, and took bumping two bands together (the
 band's motion sensor) as a separate change for later.
 
@@ -29,8 +29,8 @@ Checked on 26 Sep 2026, in the code:
 
 ## Goal
 
-**When two people have found each other, either can say so from the wrist
-or the phone, and once both have, their numbers are put away together.**
+When two people have found each other, either can say so from the wrist
+or the phone, and once both have, their numbers are put away together.
 Both wristbands play the same short *found* sound and flash, both phones
 say *you found each other at 21:14*, and Tonight counts the meeting as met.
 
@@ -94,7 +94,7 @@ on purpose" gains a line.
   minutes, not yet found by both), as S8 does. Today it goes as soon as
   `ON MY WAY` is pressed.
 - **Said on your side:** `found on your side. they won't know unless they
-  say so too.` — the words Keep uses for the same thing.
+  say so too.`, the words Keep uses for the same thing.
 - **Both:** `you found each other at 21:14`. The phone buzzes then only when
   no live wristband of theirs plays it instead, as for a wave.
 - **Tonight:** a meeting found by both reads `met <name>` at the time it was
@@ -111,8 +111,8 @@ on purpose" gains a line.
   match can say it; saying it again keeps the first time; a match that is
   gone (a block) refuses it, reading exactly as any meeting that is over.
 - **`viewFor()` gives each person** their own `found` (whether they said it)
-  and, only once both have, `foundAt` (the later of the two times). **One
-  person's found never appears in the other's view.** This is a promise
+  and, only once both have, `foundAt` (the later of the two times). One
+  person's found never appears in the other's view. This is a promise
   test, in `tests/room.test.js`, beside keep's.
 - **What the band is shown** (`relay/band.js` `bandShow()`):
   - the meeting face while the match is under `MEET_MS` old and has no
@@ -178,7 +178,7 @@ on purpose" gains a line.
    test goes red.
 7. **On the real bands**, driven from the console: the two bands matched to
    each other, a side hold on one shows `FOUND: WAITING`, a side hold on the
-   other plays the reaction on both and puts both numbers away. The owner's
+   other plays the reaction on both and puts both numbers away. Our
    own presses and ears are owed afterwards, as for the waves.
 
 ## Also to change when this is built

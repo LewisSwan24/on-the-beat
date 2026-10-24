@@ -1,4 +1,4 @@
-# Show night — the operator's runbook
+# Show night: the operator's runbook
 
 One page for the night itself: what to carry, what to set before doors, how to
 read the room while it runs, and what to do when something misbehaves. It
@@ -12,7 +12,7 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
 
 - Every wristband going out, each with its USB-C cable, plus two spares.
 - One band per marker area you want named (`near the bar`, `by the stage`,
-  `out the back`) — markers are bands told `marker bar|stage|back` — and a
+  `out the back`; markers are bands told `marker bar|stage|back`), and a
   **wall charger** for each: a marker on a laptop's USB switches off with the
   laptop.
 - A laptop with this repository (the bands' console needs it: `pio device
@@ -32,7 +32,7 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
      certificate the way a band does. A note is not a failure; a fail names
      its check. With no laptop to hand, open `https://on-the-beat.fly.dev/`
      and `/staff` by hand.
-   - `flyctl machine list -a on-the-beat` shows exactly **one** machine,
+   - `flyctl machine list -a on-the-beat` shows exactly one machine,
      started. (flyctl may not be on PATH; on this laptop it lives under
      `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Fly-io.flyctl_*`.)
    - A band on USB says `relay https://on-the-beat.fly.dev (on it)` in its
@@ -42,9 +42,9 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
      line from its last start: the heap limit and the memory it has. Not a
      pass or a fail, a number to know (*Reading the relay's own load*).
 2. **Staff page**: the venue's passcode line must already be in the relay's
-   `STAFF_CODES` secret and deployed — `npm run staff-code` makes the line,
+   `STAFF_CODES` secret and deployed. `npm run staff-code` makes the line, and
    `flyctl secrets import --stage` + `flyctl deploy --ha=false --remote-only`
-   sets it, between nights, never during one. A venue with no entry has no
+   sets it, between nights and never during one. A venue with no entry has no
    staff page. Each team member signs in at `/staff` and taps **NOTIFY THIS
    DEVICE** (on an iPhone: add to Home Screen first).
 3. **Every band joins the venue's Wi-Fi** (console `ssid`/`pass`, or from a
@@ -53,8 +53,8 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
    the band's `channel` pin, so pin the channel after it, not before. A band hears only bands on its own Wi-Fi
    channel, so access points spread over several channels split the bands
    into groups that never hear each other, and each keeps everyone in the
-   other groups listed: on three channels WHO'S NEAR stops shortening the
-   list for about two thirds of the room. Nobody is hidden by it; near just
+   other groups listed. On three channels WHO'S NEAR stops shortening the
+   list for about two thirds of the room. Nobody is hidden by it, but near
    stops working. So:
    - **Ask the venue, days before, for a network for the bands on one
      channel**: an SSID of their own on one channel, an access point of
@@ -74,7 +74,7 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
    reason to close it. FIRST SONG? wants a headliner whose opener staff can
    name when it starts; with nobody to name it, close it. SAY HI suits every
    room. At least one card stays open; the page will not close the last.
-   What closing does is under *During the night — closing a card*.
+   What closing does is under *During the night: closing a card*.
 5. **No deploys after this point.** A deploy restarts the one machine
    (~5-60 s of downtime). It carries the night on, but nothing should ship
    mid-show: hold every `flyctl deploy` and `machine restart` until the room
@@ -82,7 +82,7 @@ a rehearsal, and `docs/rehearsal-night.md` is its run-sheet.
 
 ## Changing tonight's shows
 
-The shows — doors and set times, quiet corners to meet at, the set list — are
+The shows (doors and set times, quiet corners to meet at, the set list) are
 `relay/shows.json`, and they ship inside the image. To change them without a
 deploy, put a file of the same shape at `/data/shows.json` on the volume:
 fly.toml points the relay's `SHOWS` at it. The relay reads the shows only as it
@@ -157,7 +157,7 @@ it; the note is harmless.
 
 The relay is one Node process on one small machine, and its cost grows with
 the square of a venue's population: every push works out each person's own
-view of everyone. Measured with `node scripts/load.mjs` — simulated phones
+view of everyone. Measured with `node scripts/load.mjs`: simulated phones
 and paired bands speaking the real protocols (join, arm, pick, wave every
 6-14 s, like, keep, ping; a band's heard report every 5 s), run locally,
 never against Fly. A *keen* room is everyone waving every 6-14 s, a *calm*
@@ -186,8 +186,8 @@ every one afresh on every push:
 About a third of the relay's time at 150 keen people was that hashing (a
 `node --prof` profile, 1 Oct). The cost is still the square of the
 population, so the memo moved the laptop core's ceiling from about 150 keen
-people to about 200 and not past it: at 250 both pin the core, only the new
-one answers sooner (a wave seen again after 0.3 s, not 0.8 s). A calm room is
+people to about 200 and no further. At 250 both pin the core, and the new
+one only answers sooner (a wave seen again after 0.3 s, not 0.8 s). A calm room is
 about five times cheaper than a keen one. Past a ceiling the night keeps
 running, only slower: the one time anybody was dropped was the 69 at 500
 calm, before the memo.
@@ -201,7 +201,7 @@ room costs more CPU, never more memory.
 
 ### In 256 MB of memory
 
-This section used to say that memory was the harder wall — 223 MB at 100 keen
+This section used to say that memory was the harder wall: 223 MB at 100 keen
 people, 441 MB at 500 calm ones. Those were the laptop's rss, where V8 on a
 16 GB machine lets its young generation grow to 64 MB a half; with that capped
 as a small machine's would be, 100 keen people held 82-86 MB and 150 held
@@ -225,9 +225,9 @@ Fly machine itself has since said how much it really gives: its start line on
 machine is 207 MB to the process, and V8's limit sits above it just as in the
 cgroup. Against 207 MB, 100 or 150 keen people (100-106 MB rss) and 250 keen
 (127 MB) leave plenty; 500 calm people, at 182 MB in the cgroup, would leave
-about 25 MB and have not been tried on Fly. By these runs, **at the 100 or so
-people a venue is planned for, memory is not what limits it; the CPU is** —
-with one thing those runs left out, which is video.
+about 25 MB and have not been tried on Fly. By these runs, at the 100 or so
+people a venue is planned for, memory is not what limits it; the CPU is.
+Those runs left out one thing, which is video.
 
 **Clips are memory too.** The runs above sent none, and the relay keeps every
 clip on the floor, up to an hour, in memory. The rig can post them
@@ -255,8 +255,8 @@ bigger, not another look during the show. `ALL_CLIPS_MAX` in `relay/server.js`.
 ### The Fly machine's CPU is a quota
 
 A `shared-cpu-1x` machine is not a core. Fly's documentation (docs.fly.io,
-*CPU performance*, read 1 Oct 2026) gives it a baseline of 6.25% of one — 5
-ms of every 80 — and lets it run above that while a *burst balance* lasts: 5
+*CPU performance*, read 1 Oct 2026) gives it a baseline of 6.25% of one (5
+ms of every 80) and lets it run above that while a *burst balance* lasts: 5
 s on a new machine, 500 s at most, filled by time spent under the baseline
 and spent by time over it. A machine whose balance is empty is held to the
 baseline, and `fly_instance_cpu_throttle` is Fly's metric for that time. A
@@ -288,16 +288,16 @@ stalls), hence the ranges. A held relay also takes its people in slowly: the
 rig joins them in half a second, and 100 took about 30 s to be on, which a
 real queue at the door would spread out. So a venue the quota holds is slow,
 not broken, and slower the bigger and keener it is. In the relay's own lines
-it reads as **`cpu` stuck at about 6% beside a loop lag of seconds**: a relay
+it reads as `cpu` stuck at about 6% beside a loop lag of seconds. A relay
 that has run out of *core* reads 90-110% beside its lag, and one that has run
 out of *quota* cannot spend more than the baseline, so it reads low and late
 at once.
 
 ### So
 
-Plan the door around **about 100 people a venue on the Fly machine**. At that
+Plan the door around about 100 people a venue on the Fly machine. At that
 size nobody was dropped on any measure here, and a keen 100 stays quick until
-the burst balance is gone — about an hour on the figures above — then runs
+the burst balance is gone (about an hour on the figures above), then runs
 about a second late for as long as the room stays that keen. A calm 100 or a
 keen 50 does not run out in a night. The answer for a bigger or keener room is
 a machine with a performance CPU for that night (`[[vm]]` in `fly.toml`; a
@@ -325,15 +325,15 @@ in what share of periods the CPU quota held the relay. Its cpu and rss come
 from the relay's own `load:` lines, since Windows cannot sample a process in
 WSL. `scripts/cgroup-host.mjs` is the code, and `OTB_WSL=1 npm test` runs
 the tests that need the real distro. **Starting a stopped WSL distro starts
-whatever it starts with it** (on this laptop, the owner's own gateway), so
+whatever it starts with it** (on this laptop, our own gateway), so
 `wsl.exe --terminate Ubuntu` when the runs are done. Node in the cgroup reads
 its limit: 207M gave `heap limit 259 MB`, as on Fly. The cgroup counts the
 relay's own memory and the page cache it makes, where `rss` (the load line)
 also counts file pages Node shares with others, so read both.
 
 Every figure above is a laptop's, or a laptop's Linux; the relay now says its
-own, in its log, so the Fly machine's can stand beside them — the next
-section.
+own, in its log, so the Fly machine's can stand beside them (the next
+section).
 
 ## Reading the relay's own load
 
@@ -351,7 +351,7 @@ this line (1 Oct 2026, Node 24.21) printed
 heap limit as the cgroup, and a VM that gives the process 207 MB of its 256.
 Then one a minute (five
 seconds in the rig), but only while someone is on it (a phone, a worn
-wristband or a staff device — an empty relay says nothing). A room of 100 keen
+wristband or a staff device; an empty relay says nothing). A room of 100 keen
 people in that cgroup, and the same room with its CPU held to Fly's baseline:
 
     load: 100 phones, 10 bands, 0 staff in 1 venue | cpu 26% | loop lag p99 35 ms, max 47 ms | rss 99 MB, heap 14 of 259 MB, buffers 4 MB, clips 0.0 MB
@@ -407,7 +407,7 @@ lines and the timer off; the relay reads it at start, so it is a restart.
   area, press it, and check the face says `MARKER` over its area. A marker
   names an area only when a band hears it at -56 dBm or louder, so a marker
   behind a fridge names nobody; expect only 12-35% of people to carry an
-  area at all, and that is by design — unnamed beats named wrong. The day
+  area at all, and that is by design: unnamed beats named wrong. The day
   before, make the placement a number: walk the room once with
   `scripts/venue-walk.py` (PlatformIO's python) on a carried band, typing
   each spot's name as you reach it; the page it writes draws every marker's
@@ -417,35 +417,35 @@ lines and the timer off; the relay reads it at start, so it is a restart.
 - **Hand out bands at the door** and pair each with its person's phone: the
   phone types the four letters the band shows; the band then shows a
   two-digit check; the phone says YES **only once its own screen shows the
-  same number** (a FACE hold on the band refuses a check it does not show —
+  same number** (a FACE hold on the band refuses a check it does not show;
   that is the defence against a stolen code). The whole flow must finish
   within 60 s or the letters die and the band shows new ones. A pair that
   worked shows `MEET` on the band when the two people match later.
 - **The crowd demo** (`node scripts/crowd.mjs [venue] [how many]`) is for
   showing the app before doors, with one phone: every one of them is named
   `demo`, they wave back and keep, and they never dance. Do not run it during
-  a real show — a match with one cannot pass for a real person, but it still
+  a real show. A match with one cannot pass for a real person, but it still
   wastes the room's attention.
 
-## During the night — reading a band
+## During the night: reading a band
 
 The console `show` is read-only and always safe. The face says the rest:
 
 | The band says | What it means | What to do |
 | --- | --- | --- |
 | `NO SIGNAL` on a press | Wi-Fi or relay out of reach for 10 s; the console says which | Walk it toward the access point; it retries every 15 s and comes back by itself. A band out of reach for 10 s stops believing its old show, so after it returns, look again before trusting the face. |
-| `OPEN YOUR PHONE` | The relay restarted, or the phone left and came back; the band waits for its person | The phone claims it back with no letters (the secret is kept) — open the app once, in range. |
-| Four letters | Unpaired, waiting | Pair from the phone (above). A band alone — no phone — for an hour is forgotten and shows new letters; that is by design. |
+| `OPEN YOUR PHONE` | The relay restarted, or the phone left and came back; the band waits for its person | The phone claims it back with no letters (the secret is kept): open the app once, in range. |
+| Four letters | Unpaired, waiting | Pair from the phone (above). A band alone (no phone) for an hour is forgotten and shows new letters; that is by design. |
 | Dark face, blue light | NOT NOW: the person went invisible from the wrist | A side hold brings them back. Invisible is instant and stays until they undo it. |
-| `MEET nn` | A match, and its number | Nothing to fix — this is the night working. |
+| `MEET nn` | A match, and its number | Nothing to fix: this is the night working. |
 | Low battery on `show` | Charge it on USB | It charges while worn; the Plus also says its mA draw. |
 
-Phones: a locked screen is not a leaving — the relay keeps a phone for two
+Phones: a locked screen is not a leaving: the relay keeps a phone for two
 minutes of silence, and a paired band holds its person for an hour. If a
 list looks stale, reopening the app reconnects it; usually it reconnects by
 itself first.
 
-## During the night — closing a card
+## During the night: closing a card
 
 Closing a card mid-show is allowed and quick, and it is felt: *Tonight's
 cards* on the staff page, **CLOSE**, then **CLOSE IT**.
@@ -469,7 +469,7 @@ cards* on the staff page, **CLOSE**, then **CLOSE IT**.
 Closed cards last the night, a restart included, and go at 06:00 with the
 rest of what staff said.
 
-## During the night — naming the first song
+## During the night: naming the first song
 
 When the headliner's first song starts: *First song* on the staff page, tap
 the track (or type it), **NAME IT**, then **SAY IT**.
@@ -488,7 +488,7 @@ The answer lasts the night, a restart included, and goes at 06:00.
 ## If the relay must restart mid-show
 
 `flyctl machine restart -a on-the-beat` (or a deploy, which *Before doors*
-ruled out): ~5-60 s down, then **the night carries on** — people keep their
+ruled out): ~5-60 s down, then the night carries on: people keep their
 rooms, cards, handles, blocks and matches; staff stay signed in with
 tonight's reports; a wristband goes straight back to its person; the clips
 on LET'S DANCE! come back from `/data/night-clips/`. Lost: a clip sent in
@@ -504,7 +504,7 @@ sign-in.
 
 ## After
 
-- The night ends by itself at **06:00 venue time**: reports go, every card
+- The night ends by itself at 06:00 venue time: reports go, every card
   is open again, staff pages sign out, and the night file is removed once it holds nothing.
 - Collect bands and markers. `marker off` on a marker's console turns it back
   into a wristband (it restarts as one). Charge everything: nobody has run a

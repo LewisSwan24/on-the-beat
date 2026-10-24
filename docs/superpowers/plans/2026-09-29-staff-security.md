@@ -12,9 +12,9 @@
 
 ## Global Constraints
 
-- Talk to the owner in Chinese; code, comments, commits, README and test names are English. No pronoun for the owner in an artefact: say "the owner".
+- Talk to us in Chinese; code, comments, commits, README and test names are English. No pronoun for us in an artefact: say "the owner".
 - **Dependencies.** No new one.
-- **Test passcodes only:** `test-passcode-1` and `test-passcode-2` in tests, `browser-test-passcode` in browser checks. Never the owner's passcode, and never ask for it.
+- **Test passcodes only:** `test-passcode-1` and `test-passcode-2` in tests, `browser-test-passcode` in browser checks. Never our passcode, and never ask for it.
 - **A sign-in's entry.** A token record is `{ key, night, entry, push? }`. `entry` is `entryPrint(<the venue's entry>)`: the first 32 hex digits of the SHA-256 of `'staff-entry|' + entry`. At a restart a record whose `entry` is missing or is not its venue's current print is not carried on, and its subscription goes with it. The log line for them is exactly `night: N staff sign-ins ended: their venue's passcode changed`, printed only when N is more than 0.
 - **Address.** `addressKey`: an IPv6 address is its /64 written `g1:g2:g3:g4::/64` (lower-case, no leading zeros, zone dropped); an IPv4-mapped IPv6 address is the IPv4 address; anything else is unchanged. Every per-address count uses it.
 - **Passcode checks.** At most `CHECKS_AT_ONCE = 8` run at once. A ninth attempt is answered `{ok:false, why:'too many tries'}` before anything is counted.
@@ -1649,7 +1649,7 @@ git push origin main
 **Files:**
 - Modify: memory `staff-reports.md`, `work-queue.md`, `fly-relay.md`, `MEMORY.md`; the scratchpad `progress.md`
 
-No demo is announced (memory `fly-relay`: deploy any time, except while the owner has said one is on). If `flyctl` says it is not logged in, stop: the owner runs `flyctl auth login` in their own terminal, and no token is ever handled here.
+No demo is announced (memory `fly-relay`: deploy any time, except while we have said one is on). If `flyctl` says it is not logged in, stop: we run `flyctl auth login` in our own terminal, and no token is ever handled here.
 
 - [ ] **Step 1: Deploy**
 
@@ -1670,12 +1670,12 @@ Expected: the app has `DENY`, `frame-ancestors 'none'`, `no-referrer`, `max-age=
 
 - [ ] **Step 3: The real bands**
 
-The one guard no test here can prove is that the bands send `file://` (the library's source says they do, `WebSocketsClient.cpp:32`, and `main.cpp` never overrides it). If both bands are on and on the Y70 hotspot, read each console for about 40 s the way memory `wristband-sticks3` says (pyserial in PlatformIO's Python, DTR and RTS low; StickS3 on `COM8`, StickC Plus on `COM9`), and look for the relay socket opening and the relay's show arriving, as after every earlier deploy. If either band does not reach the relay, take the Origin check out first: revert `verifyClient` in a commit, deploy, and only then look further. If the bands are off or away, say so: the check has not been made, and the owner turns them on and looks the next time they are on.
+The one guard no test here can prove is that the bands send `file://` (the library's source says they do, `WebSocketsClient.cpp:32`, and `main.cpp` never overrides it). If both bands are on and on the Y70 hotspot, read each console for about 40 s the way memory `wristband-sticks3` says (pyserial in PlatformIO's Python, DTR and RTS low; StickS3 on `COM8`, StickC Plus on `COM9`), and look for the relay socket opening and the relay's show arriving, as after every earlier deploy. If either band does not reach the relay, take the Origin check out first: revert `verifyClient` in a commit, deploy, and only then look further. If the bands are off or away, say so: the check has not been made, and we turn them on and look the next time they are on.
 
 - [ ] **Step 4: Write it down**
 
 Memory, read each file first and edit it, never a second file for the same fact:
-- `staff-reports.md`: the review is done and deployed (date, the seven findings in a line each, the two measurements), what is still owed by the owner.
+- `staff-reports.md`: the review is done and deployed (date, the seven findings in a line each, the two measurements), what is still owed by us.
 - `work-queue.md`: item 4 done; the queue 「2134」 is finished; what is left.
 - `fly-relay.md`: the deploy line, and the last bullet ("Not measured: that Fly's proxy replaces a client-sent `fly-client-ip`") replaced by the measurement.
 - `MEMORY.md`: the one-line hooks for those three.

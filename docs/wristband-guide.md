@@ -23,11 +23,11 @@ Held landscape: the screen, **FACE** (the big button beside it), **SIDE** (on th
 4. **Not yours?** NO, or no answer within a minute, and it shows new letters.
 5. **A number you did not ask for.** someone typed your letters. hold FACE for a second and a half on it: it is turned away and new letters come up.
 
-After the first pairing on a phone, the phone offers a one-minute practice with the real buttons. Nobody can see you while you practise; when it ends, your card and NOT NOW are put back as they were.
+After the first pairing on a phone, the phone offers a one-minute practice with the real buttons; SKIP PRACTICE at the top leaves it at once. Nobody can see you while you practise. When it ends, your card and NOT NOW are put back as they were.
 
 ## 3. Every screen, and what each button does there
 
-Almost everywhere: FACE wakes it, and FACE held is NOT NOW. The tables are grouped by what is going on; "—" means that button does nothing there.
+Almost everywhere: FACE wakes it, and FACE held is NOT NOW. The tables are grouped by what is going on, and "nothing" in a cell means that button does nothing there.
 
 ### Your card
 
@@ -35,21 +35,21 @@ Almost everywhere: FACE wakes it, and FACE held is NOT NOW. The tables are group
 |---|---|---|---|---|
 | `READY` / `SIDE TO CHANGE` | wakes it for six seconds | NOT NOW: dark at once | shows your card; each press after steps HI, SONG, DANCE, GUESS, OFF, FINISH, UNPAIR (FINISH only while a meeting is yours to finish); three seconds after the last it sends | as a press |
 | `your card` / `SIDE: NEXT` | wakes it | NOT NOW | the next card | sends this one now |
-| `your card` / `SENDING` | — | NOT NOW | — | — |
-| `SET` / `CHANGED` / `NOT SENT` / `ASKED` | wakes it | NOT NOW | starts a new choice | — |
-| `NOT NOW` / `SIDE TO CHANGE` | shows NOT NOW and its battery | — | shows the card it comes back on, then steps | comes back, on the card you had |
-| `your score` / `RIGHT` | wakes it | NOT NOW | as on READY: shows your card, then steps | — |
-| `your card` / `HOLD SIDE TO SHOW` | — | — | the next card | comes back on this card |
+| `your card` / `SENDING` | nothing | NOT NOW | nothing | nothing |
+| `SET` / `CHANGED` / `NOT SENT` / `ASKED` | wakes it | NOT NOW | starts a new choice | nothing |
+| `NOT NOW` / `SIDE TO CHANGE` | shows NOT NOW and its battery | nothing | shows the card it comes back on, then steps | comes back, on the card you had |
+| `your score` / `RIGHT` | wakes it | NOT NOW | as on READY: shows your card, then steps | nothing |
+| `your card` / `HOLD SIDE TO SHOW` | nothing | nothing | the next card | comes back on this card |
 
 ### Meeting someone
 
 | the wristband shows | FACE | FACE held | SIDE | SIDE held |
 |---|---|---|---|---|
-| `a number` / `MEET` | stops the blinking, and nothing else | NOT NOW | stops the blinking, and nothing else | — |
-| `a number` / `HOLD SIDE: FOUND` | — | NOT NOW | opens the chooser | we found each other |
-| `a number` / `FOUND: WAITING` | — | NOT NOW | — | — |
-| `SOMEONE WAVED` / `HOLD SIDE: WAVE BACK` / `WAITING - HOLD SIDE` | — | NOT NOW | — | waves back to the newest; so does raising your wrist and waving |
-| `WAVE BACK` / `SENDING` | — | NOT NOW | — | — |
+| `a number` / `MEET` | stops the blinking, and nothing else | NOT NOW | stops the blinking, and nothing else | nothing |
+| `a number` / `HOLD SIDE: FOUND` | nothing | NOT NOW | opens the chooser | we found each other |
+| `a number` / `FOUND: WAITING` | nothing | NOT NOW | nothing | nothing |
+| `SOMEONE WAVED` / `HOLD SIDE: WAVE BACK` / `WAITING - HOLD SIDE` | nothing | NOT NOW | nothing | waves back to the newest; so does raising your wrist and waving |
+| `WAVE BACK` / `SENDING` | nothing | NOT NOW | nothing | nothing |
 | `FINISH` / `FINISH?` / `HOLD SIDE: YES` | calls it off | NOT NOW | FINISH: UNPAIR next. FINISH?: calls it off | FINISH: asks FINISH? at once. FINISH?: asks your match to finish the meeting: SENDING, then ASKED |
 | `FINISH?` / `SIDE: YES FACE: NO` | wakes it | not yet: your match is told, and it does not go NOT NOW | only wakes it | yes: the meeting is finished for you both, and the card you met on goes off (back to `READY`) |
 
@@ -57,11 +57,11 @@ Almost everywhere: FACE wakes it, and FACE held is NOT NOW. The tables are group
 
 | the wristband shows | FACE | FACE held | SIDE | SIDE held |
 |---|---|---|---|---|
-| `NO WI-FI` / `HOLD SIDE: SET UP` | wakes it | — | — | Wi-Fi setup |
+| `NO WI-FI` / `HOLD SIDE: SET UP` | wakes it | nothing | nothing | Wi-Fi setup |
 | `OTB-` / `its setup code` | leaves setup, nothing changed | the same | the same | the same |
-| `SAVED` / `JOINING` | nothing: it starts again by itself | — | — | — |
-| `four letters` / `PAIR ON YOUR PHONE` | says PAIR ON YOUR PHONE | — | says PAIR ON YOUR PHONE | — |
-| `a number` / `ON YOUR PHONE?` | says PAIR ON YOUR PHONE | turns the check away | says PAIR ON YOUR PHONE | — |
+| `SAVED` / `JOINING` | nothing: it starts again by itself | nothing | nothing | nothing |
+| `four letters` / `PAIR ON YOUR PHONE` | says PAIR ON YOUR PHONE | nothing | says PAIR ON YOUR PHONE | nothing |
+| `a number` / `ON YOUR PHONE?` | says PAIR ON YOUR PHONE | turns the check away | says PAIR ON YOUR PHONE | nothing |
 | `UNPAIR` / `SIDE: NEXT` | wakes it | NOT NOW | the first card again | asks UNPAIR? |
 | `UNPAIR?` / `HOLD SIDE: YES` | calls it off | NOT NOW | calls it off | unpairs: new letters on the band, and your phone is told |
 
@@ -69,12 +69,12 @@ Almost everywhere: FACE wakes it, and FACE held is NOT NOW. The tables are group
 
 | the wristband shows | FACE | FACE held | SIDE | SIDE held |
 |---|---|---|---|---|
-| `NO SIGNAL` / `NO RELAY` | wakes it | — | — | nothing: it is not the Wi-Fi. wait. |
-| `OPEN YOUR PHONE` / `OR SWITCH ME OFF` | — | — | — | — |
-| `OPEN YOUR PHONE` / `TO COME BACK` | — | — | — | — |
-| `KEEP HOLDING` | — | a hold under way: at the end of the bar FACE alone goes NOT NOW, FACE and SIDE together turn it off. let go early and nothing happens | — | — |
-| `POWER OFF` / `POWER BUTTON: ON` | it is turning off | — | — | — |
-| `UNPLUG` / `TO TURN IT OFF` | — | on its cable it charges and stays on: unplug it, then hold FACE and SIDE again | — | — |
+| `NO SIGNAL` / `NO RELAY` | wakes it | nothing | nothing | nothing: it is not the Wi-Fi. wait. |
+| `OPEN YOUR PHONE` / `OR SWITCH ME OFF` | nothing | nothing | nothing | nothing |
+| `OPEN YOUR PHONE` / `TO COME BACK` | nothing | nothing | nothing | nothing |
+| `KEEP HOLDING` | nothing | a hold under way: at the end of the bar FACE alone goes NOT NOW, FACE and SIDE together turn it off. let go early and nothing happens | nothing | nothing |
+| `POWER OFF` / `POWER BUTTON: ON` | it is turning off | nothing | nothing | nothing |
+| `UNPLUG` / `TO TURN IT OFF` | nothing | on its cable it charges and stays on: unplug it, then hold FACE and SIDE again | nothing | nothing |
 | `MARKER` / `its area` | lights it. a marker is left in the room, not worn | the same | the same | the same |
 
 On any screen, FACE and SIDE held together for three seconds turns it off. POWER turns it on.

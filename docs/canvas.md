@@ -1,11 +1,12 @@
 # Where this differs from the canvas, on purpose
 
-- **It asks for a first name**, once, after the venue. The canvas never asks,
+- **It asks for a first name**, once, on the same page as the four promises,
+  where I'M IN waits for it. The canvas never asks,
   but someone has to be named when two people both say yes. A contact is
   asked for only the first time you keep someone, and only shared if they
   keep you too.
 - **A contact both kept can be saved to the phone's own contacts.** The
-  canvas shows it and stops there. The owner chose on 3 Oct 2026 a SAVE TO
+  canvas shows it and stops there. On 3 Oct 2026 we chose a SAVE TO
   CONTACTS button wherever a contact both people kept is shown: on S11, in
   the AFTER list and under *kept from other nights*. The card (vCard 3.0,
   `app/lib/vcard.js`) is made on the phone from what it already holds and
@@ -13,10 +14,10 @@
   otherwise; nothing is sent. A number goes in as a number, an email or a
   web address as itself, and a handle in the note with where they met.
 - **FIRST SONG? gets its answer.** The canvas asks for a pick and never says
-  what opened. The owner chose on 3 Oct 2026 that the venue's staff name it:
+  what opened. We chose on 3 Oct 2026 that the venue's staff name it:
   the staff page has a *First song* panel with the night's setlist as chips,
-  *NAME IT*, and *TAKE BACK* for a mistake. *NAME IT* asks once first —
-  *SAY IT* or *NOT YET* — because a wristband that called it has sounded
+  *NAME IT*, and *TAKE BACK* for a mistake. *NAME IT* asks once first
+  (*SAY IT* or *NOT YET*), because a wristband that called it has sounded
   before a take back can reach it; changing the track asks again. Every phone at the venue then
   shows `THE OPENER WAS` above its own pick, *You called it.* or *Not this
   time.*, and how many here called it, never who; the wall marks a matching
@@ -27,27 +28,27 @@
   signed-in staff page can name it; a restart keeps it, and 06:00 takes it
   back with the night.
 - **The venue can tell everyone something, and move the times.** The canvas's
-  times are the show's as listed, and nothing reaches every phone at once. The
-  owner chose on 3 Oct 2026 that a signed-in staff page can send a notice to
-  every phone at its venue and move the night's times (see "The staff page").
+  times are the show's as listed, and nothing reaches every phone at once. We
+  chose on 3 Oct 2026 that a signed-in staff page can send a notice to
+  every phone at its venue and move the night's times (`docs/staff-page.md`).
   A notice is the venue's own words, the same for everyone, and says nothing
   about anyone in the room.
 - **Venue distances are gone.** The canvas shows "40 m" beside each show;
   that needs the phone's location, and promise 1 says nobody sees where you
   are. The list shows doors times instead.
 - **A phone without a wristband is a whole way in.** The canvas draws every
-  person with a band. The owner chose on 5 Oct 2026, after a walk through as
+  person with a band. We chose on 5 Oct 2026, after a walk through as
   a user, that a phone alone gets what a band would have given it: the
   meeting number on its match screens, with *no wristband? hold this screen
   up*, and *Look for a wristband or phone showing* on every phone, since
-  nobody is told who wears one; the armed SAY HI reads *Find blue screens &
-  wristbands*; a wave is a toast and a dot until it is seen. How this works
+  nobody is told who wears one. The armed SAY HI reads *Find blue screens &
+  wristbands*, and a wave is a toast and a dot until it is seen. How this works
   also says what the four cards do and that a match needs both.
-- **A fourth card, LET'S GUESS!** The canvas has three. The owner chose on
+- **A fourth card, LET'S GUESS!** The canvas has three. We chose on
   13 Oct 2026, from the team's v3 flow, a quiz card: answer tonight's
   questions alone, then team up with someone else who finished; the
   questions come with the show, and the relay keeps the answers.
-- **LET'S DANCE! takes a pose.** The canvas records five seconds. The owner
+- **LET'S DANCE! takes a pose.** The canvas records five seconds. We
   chose on 14 Oct 2026, from the team's v3 selfie, to let the same card post
   one posed photo instead, with a prompt to strike; it shares the clip's
   place on the floor and in the store.
@@ -59,13 +60,13 @@
   revision 6 draws. `SCAN IT INSTEAD` needs something to scan, and the code
   also lets a phone's own camera open the app.
 - **A second button, and other timings.** Revision 6 gives the wristband a
-  single button — a 3 s wake, and a 1 s hold for NOT NOW — and no second
-  action. The owner chose on 24 Sep 2026: the side button (KEY2,
+  single button (a 3 s wake, and a 1 s hold for NOT NOW) and no second
+  action. We chose on 24 Sep 2026 that the side button (KEY2,
   M5Unified's `BtnB` on every supported board, as a StickS3 and a StickC Plus
   bore out; on a StickC Plus the power button only turns the face over and,
-  held, turns the band off — *Off and on*)
-  changes the armed card, so the phone can stay in a pocket; a press wakes the
-  face for six seconds, long enough to read a preview; NOT NOW is a hold of
+  held, turns the band off; see *Off and on*)
+  changes the armed card, so the phone can stay in a pocket. A press wakes the
+  face for six seconds, long enough to read a preview. NOT NOW is a hold of
   1.5 s, longer than a bump in a crowd. Every timing is a named constant, in
   `band_logic.h` and `app/lib/wrist.js`, because they are guesses until worn.
 - **A connected wristband keeps its person in the room for up to an hour**
@@ -74,31 +75,31 @@
   Without it a decoy code would pair silently, and with `set` a wrongly paired
   wristband could make someone visible.
 - **The check can be turned away on the wrist.** Revision 6 has no check,
-  and its wristband takes no action while it pairs. The owner chose on 28 Sep
+  and its wristband takes no action while it pairs. We chose on 28 Sep
   2026 that holding the face button on the build's check number turns that
   check away, so someone who read the letters off a wrist and typed them
   first holds its check only until its person holds the button, not for a
   minute.
 - **The wristband flashes and chirps.** Revision 6 §8 rules out vibration or
-  light patterns that pretend to carry a message. The owner chose on 25 Sep
+  light patterns that pretend to carry a message. We chose on 25 Sep
   2026 that the band flashes and sounds, and none of it pretends: each
   reaction answers something the wearer just did, or says one fact about the
   band. The two about another person are the meeting call, for a number the
   band already shows, and a wave's call.
 - **A lit card pulses on the beat.** Revision 6 §8 rules out light patterns
-  that pretend to carry a message, and says nothing about music. The owner
+  that pretend to carry a message, and says nothing about music. We
   chose on 25 Sep 2026 that a lit card pulses with what everyone in the room
   can hear, and on 27 Sep that it is on by default, with `BEAT: ON` on the
   phone to keep it still. The pulse carries no message: it says nothing
   about the wearer or anyone else, and is off whenever the card is.
 - **The wristband says that someone waved.** Revision 6 §8 keeps names,
   photos and other people's picks off the wristband, and it showed nothing
-  about anyone else but the meeting number. The owner chose on 25 Sep 2026
+  about anyone else but the meeting number. We chose on 25 Sep 2026
   that it also says that someone waved at its person and how many wait, and
   can wave back to the newest. Still no name, no photo, no pick and no area.
 - **A meeting ends when both say they found each other.** Revision 6 shows
   `MEET` and the number for as long as the meeting lasts, and S11 has no way
-  to say a meeting happened. The owner chose on 26 Sep 2026 a side hold on the
+  to say a meeting happened. We chose on 26 Sep 2026 a side hold on the
   band, or `WE FOUND EACH OTHER` on S11, counted only when both say it: the
   meeting face gains `FOUND: WAITING`, both bands a *found* reaction, and
   Tonight's `met` counts meetings found, not matches.
@@ -106,26 +107,51 @@
   lists the people whose wristband yours can hear. On a crowded floor that is
   nearly everyone, so the list is the five heard most strongly, which is also
   S5's own limit of five. People without a band cannot be heard, which says
-  nothing about where they are, so they are listed as before; the owner chose
+  nothing about where they are, so they are listed as before. We chose
   that on 26 Sep 2026.
 - **A marker names an area only when it is heard clearly.** Revision 6 takes
   the loudest marker. Far from every marker the loudest is still some marker,
   heard faintly across the room, so it names a band only at -56 dBm or
-  louder, and otherwise the person stays `in this room`: the owner chose on
+  louder, and otherwise the person stays `in this room`. We chose on
   27 Sep 2026 that it is better not to say than to say it wrong. A third
   marker, `somewhere out the back`, which the prompt's list of bands already
   has, is allowed; revision 6 names only the bar and the stage.
 - **A staff page** at `/staff`, which the canvas does not have: someone has
-  to read the reports the canvas says go to the venue team. The owner chose
-  on 28 Sep 2026 a page per venue, signed in with a passcode only he sets.
+  to read the reports the canvas says go to the venue team. On 28 Sep 2026
+  we chose a page per venue, signed in with a passcode only we set.
 - **Report asks for a few words**, optional and at most 200 characters. The
-  canvas's Report is one tap. The owner chose on 28 Sep 2026 to ask, since
+  canvas's Report is one tap. We chose on 28 Sep 2026 to ask, since
   "someone was reported near the bar" alone gives staff little to act on.
 - **The band is landscape.** Revision 6 draws a portrait band with a strap
-  stub above and below. The owner's watch clip holds a Stick across the
-  forearm, long side along the arm, and he chose on 28 Sep 2026 that both
+  stub above and below. Our watch clip holds a Stick across the
+  forearm, long side along the arm, and we chose on 28 Sep 2026 that both
   bands go landscape: every face is laid out at 240 x 135, sized from the
   canvas's band turned, with the pairing code on the left and its letters
   beside it. Which side is up is held, not worked out (see the firmware
   section). The browser stand-in at `/band` stays portrait, as the canvas
   draws it.
+- **A meeting can be three or four people.** The canvas meets two. Someone
+  who says yes both ways, on the same card, with a person already in a
+  meeting joins it only when everyone already in it says yes; they all share
+  one number and one spot, and a meeting is full at four (`GROUP_MAX`).
+- **The people in a meeting can say where they are.** Between `MEET` and
+  found, the canvas leaves them a number and nothing else. Since 21 Oct 2026,
+  after the trade show, they can send each other short notes, a ready line
+  or a few words of their own, and HOLD IT UP shows the number full screen to
+  hold above a crowd. Only the meeting sees the notes, and they close once
+  everyone has found everyone.
+- **LET'S FINISH ends a meeting kindly.** The canvas has no way out of a
+  meeting but a block. LET'S FINISH asks the other side, who gets a
+  thank-you and can say not yet; once it is finished, the card you met on
+  goes off. In a meeting of three or four it takes only you out. It is on
+  the wristband too.
+- **A poster for the venue's wall**, at `/poster/<venue>`, which the canvas
+  does not have: what this is, how to play, a code into the app, and tonight
+  live from the relay. It came out of the 14 Oct 2026 user test.
+- **A shorter way in.** Since 21 Oct 2026, after the trade show, someone
+  coming back the same night skips the start screen, and the wristband
+  practice can be left at once with SKIP PRACTICE.
+- **The wristband feels for two moves.** Revision 6's band has buttons only.
+  On `SOMEONE WAVED`, raising the wrist and waving waves back; on the meeting
+  number, knocking two bands together says you found each other
+  (*The wristband*, `docs/wristband.md`).

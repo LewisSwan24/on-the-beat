@@ -20,14 +20,14 @@ names the venue's time zone (an IANA name); without it the relay uses its own
 machine's.
 
 **CI.** Every push to `main` and every pull request (`.github/workflows/ci.yml`):
-actionlint over the workflows; `npm test` on Node 22 and on Node 24, the
-Dockerfile's; `npm audit` over the relay's runtime dependencies, failing on
+actionlint over the workflows; `npm test` on Node 22 and on Node 24 (the
+Dockerfile's); `npm audit` over the relay's runtime dependencies, failing on
 high or critical; `npm run image-check`, then the real Dockerfile built and
-its relay started as Fly starts it — `/data` root-owned, the relay checked to
-run as `node` with `/data` handed to it — and `npm run preflight` against it;
+its relay started as Fly starts it (`/data` root-owned, the relay checked to
+run as `node` with `/data` handed to it) and `npm run preflight` against it;
 and the wristband's firmware for both envs with PlatformIO. Each run keeps the
 firmware as a download: each env's `firmware.bin`, and one image each that
-flashes whole at `0x0`, bootloader and partition table included —
+flashes whole at `0x0`, bootloader and partition table included:
 `otb-wristband-full.bin` for the M5StickC Plus, `otb-wristband-s3-full.bin`
 for the StickS3. Nothing in CI deploys.
 
@@ -81,8 +81,8 @@ see `npm ci` itself, the base image, `setpriv` or the volume's ownership.
   The clips on the floor come back too, each kept as a file in
   `/data/night-clips/` while it is within its hour; a pairing waiting for YES
   does not. A match's id carries a mark of its room's own (`m3-1a2b3c4d`),
-  carried with the night, so a relay that did lose its night — no file, a
-  new volume — never hands out an id a phone already holds for someone else.
+  carried with the night, so a relay that did lose its night (no file, a
+  new volume) never hands out an id a phone already holds for someone else.
   The file never holds a phone's id, a wristband's secret or a staff token,
   only their SHA-256; a file from another night is removed unread, and the
   file goes once the night holds nothing. The log says `night: carried on
@@ -91,7 +91,7 @@ see `npm ci` itself, the base image, `setpriv` or the volume's ownership.
   `flyctl volumes create night -r syd -s 1 --scheduled-snapshots=false`
   (1 GB, about US$0.15 a month). No snapshots: nothing of a night is kept
   past it on Fly's side. A volume is tied to one host: if that drive fails,
-  the machine cannot start anywhere else — make a new volume the same way and
+  the machine cannot start anywhere else. Make a new volume the same way and
   deploy, and the night starts empty; staff devices turn their notifications
   on again at their next sign-in.
 - **Only what the image is built from reaches the builder.** `.dockerignore`
@@ -112,8 +112,8 @@ see `npm ci` itself, the base image, `setpriv` or the volume's ownership.
 - **The relay says its own load.** Its log (`flyctl logs -a on-the-beat`)
   carries `load:` lines: one at start, with the ceiling V8 puts on the
   process's heap and the memory the machine has, and one a minute while
-  anyone is on it — phones, worn wristbands and staff devices counted and
-  never named, then cpu, how late the event loop ran, rss and heap. An empty
+  anyone is on it: phones, worn wristbands and staff devices (counted,
+  never named), then cpu, how late the event loop ran, rss and heap. An empty
   relay says nothing. `LOAD_EVERY_MS` sets the minute (0 turns it off);
   `docs/show-night.md` says how to read the lines, and `scripts/load.mjs`
   reads the same ones from the relay it starts.
@@ -122,7 +122,7 @@ see `npm ci` itself, the base image, `setpriv` or the volume's ownership.
 puts a few demo people in a venue: they show blue, pick tracks, wave back at
 anyone who waves, like every pick and keep every match. Every one of them has
 `demo` in their name, so a match with one cannot pass for a real person. They
-never dance — a clip from them would be made up. Nothing in the app starts
+never dance, because a clip from them would be made up. Nothing in the app starts
 them.
 
 **Running a real show night.** `docs/show-night.md` is the operator's
@@ -138,12 +138,12 @@ relay's certificate the way a wristband does. It exits 1 if anything fails
 every item in *What is not done* that waits on a hand, an ear, an eye or a
 real phone, in the order the day runs, each with its pass line and the bullet
 that records it. `node scripts/load.mjs` re-measures how many people one
-machine holds — a local-only rig of simulated phones and paired bands on the
+machine holds. It is a local-only rig of simulated phones and paired bands on the
 real protocols, never pointed at Fly (*What is not done* has the numbers).
 `scripts/venue-walk.py` makes the venue walk data instead of impressions:
 run with PlatformIO's python (the one that has pyserial), it types `near`
 at the walking band's console every few seconds, records what each listen
-heard — markers and other bands, in dBm — beside a line the walker types at
+heard (markers and other bands, in dBm) beside a line the walker types at
 each spot, and draws every source's curve on one page against the two
 loudnesses that name an area (-56 dBm) and hold a name (-60). `--fake` runs
 the whole pipeline with generated listens and no band.

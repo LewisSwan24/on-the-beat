@@ -1,12 +1,12 @@
 # The night survives a restart
 
-Date: 29 Sep 2026. Item 2 of the owner's queue of 28 Sep (「2134」), decided
-with him question by question the same day: keep everything but the clips
+Date: 29 Sep 2026. Item 2 of our queue of 28 Sep (「2134」), decided
+question by question the same day: keep everything but the clips
 (「除视频外全部」), in one file on a Fly volume written within a second of a
 change (「A · volume + 一秒内写盘」), then the design in two rounds, both
 approved as presented.
 
-Amended 4 Oct 2026, on the owner's pick to keep clips too: each clip's video is
+Amended 4 Oct 2026, on our pick to keep clips too: each clip's video is
 now a file of its own in a folder beside the night's (`night-clips/`), written
 as it comes and removed as it goes, and the night file carries the refs
 (`clips` per room, `clip` on each person, `danceClips` in the room). What is
@@ -88,7 +88,7 @@ One JSON file, `NIGHT_FILE` (on Fly `/data/night.json`), version 1:
 - **Not written:** clips and every clip ref, what bands heard (`samples`,
   `listening`, `fives`, `marked`), sockets, grace timers, pairing attempt
   counters (`tries`), `clipKey`, and any wristband record with neither a
-  person nor `waiting` — so no letters and no pairing waiting for YES.
+  person nor `waiting`, so no letters and no pairing waiting for YES.
 - `live` marks a wristband whose socket was open when the file was written;
   it is written as a flag, not a time, so a worn band does not change the file
   every second.
@@ -100,8 +100,8 @@ One JSON file, `NIGHT_FILE` (on Fly `/data/night.json`), version 1:
   `at` set to now: to `NIGHT_FILE.tmp` (mode 0600), fsynced, then renamed over
   `NIGHT_FILE`. So `at` is when the night last changed, an idle relay writes
   nothing, and a write cut short leaves the last whole file.
-- **When the night holds nothing** — no room, no wristband record §1 would
-  write, no staff sign-in — the file is removed instead of written. `gone`
+- **When the night holds nothing** (no room, no wristband record §1 would
+  write, no staff sign-in), the file is removed instead of written. `gone`
   alone keeps no file: with no room there is nobody to claim a forgotten band.
 - **A write that fails** (`EACCES`, `ENOSPC`, …) is logged once, by its code,
   and tried again the next second; the relay runs on in memory. Success after
@@ -161,7 +161,7 @@ venue's reports). From this spec on, the relay holds each only as its SHA-256,
 in memory as in the file:
 
 - **Person ids.** `join` validates `me` as now, then uses
-  `personOf(me)` — the first 32 hex digits of its SHA-256 — as the person
+  `personOf(me)` (the first 32 hex digits of its SHA-256) as the person
   everywhere inside the relay: the room, the band's `person`, `heard`,
   `sound`, tickets and tags. The phone's own id never leaves the phone except
   in its `join`. Handles and tags are worked out from the new ids, so they
@@ -210,14 +210,14 @@ Fly's side; the volume is encrypted at rest, Fly's default.
 
 ## §6. Fly: the volume and the switch
 
-With his OK, once, between nights and not during a demo:
+With our OK, once, between nights and not during a demo:
 
 1. `flyctl volumes create night -r syd -s 1 --scheduled-snapshots=false`
    (1 GB, US$0.15 a month; the flag's syntax checked with `--help` first).
 2. `flyctl deploy --ha=false --remote-only`. Read in flyctl's source on
    29 Sep: when fly.toml gains `[mounts]`, deploy destroys the machine that has
    no volume and launches its replacement on the unattached volume named
-   `night` in its region — no error, and a group with mounts is never given a
+   `night` in its region, with no error, and a group with mounts is never given a
    second machine. With no such volume it stops before touching anything.
 3. `flyctl machine list` shows one machine, `flyctl volumes list` one volume
    attached to it, `flyctl volumes show` no scheduled snapshots, and the log
@@ -233,9 +233,9 @@ create a new volume in `syd` and deploy, and the night starts empty
 
 Test first, as every round here.
 
-- **`tests/room.test.js`.** A room with every kind of state — cards and NOT
+- **`tests/room.test.js`.** A room with every kind of state (cards and NOT
   NOW, a profile and a pick, a block, waves, likes, a match kept and found by
-  both, a report handled, someone who left — through `dump()`, `JSON`, and
+  both, a report handled, someone who left) goes through `dump()`, `JSON`, and
   `createRoom({ restore })`: every person's `viewFor()` and `wavesAt()` are
   equal, and so are `staffReports()` with one `tagOf`; the next match and the
   next report take the next ids; a returning person's rev goes on from their
@@ -272,7 +272,7 @@ Test first, as every round here.
 - **Live**, after the switch, in a throwaway venue: a Node script as two
   phones and a stand-in wristband (its own key, never a real band) blocks,
   matches and pairs; `flyctl machine restart`; then the block holds, the match
-  is there and the stand-in's hello is paired at once. Nothing touches his
+  is there and the stand-in's hello is paired at once. Nothing touches our
   bands.
 
 ## Also to change when this is built

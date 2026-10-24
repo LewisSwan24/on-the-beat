@@ -21,10 +21,10 @@
 
 ## Review Focus
 
-1. A phone that closes mid-practice: the person must reappear on lists within `PRACTICE_MS` plus one sweep — pinned in Task 2 by a clock test through `relay.expire()`.
-2. A stale handle: someone shown the person before practice began waves or likes with the old handle — refused, no match. Pinned in Task 1.
+1. A phone that closes mid-practice: the person must reappear on lists within `PRACTICE_MS` plus one sweep. Pinned in Task 2 by a clock test through `relay.expire()`.
+2. A stale handle: someone shown the person before practice began waves or likes with the old handle: refused, no match. Pinned in Task 1.
 3. Practice across a relay restart: not in the dump, and a phone still on the practice screen says it again on join (`net.say`). Pinned in Task 1 (dump) and Task 5 (`net.say`, browser).
-4. The band out of reach during practice: steps 2–4 must not wait for ever — they offer GOT IT. Pinned in Task 3 (`bandLive`) and Task 6 (browser).
+4. The band out of reach during practice: steps 2-4 must not wait for ever; they offer GOT IT. Pinned in Task 3 (`bandLive`) and Task 6 (browser).
 5. A person who leaves practice by the back gesture or by pairing again: the card and NOT NOW they had are put back and practice is ended. Pinned in Task 5 (one `endPractice` path for every exit) and Task 6 (browser).
 
 ---
@@ -94,7 +94,7 @@ Add `PRACTICE_MS` to the test file's import from `../relay/room.js`.
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `node --test tests/room.test.js 2>&1 | grep -E "^✖|ℹ (pass|fail)"`
-Expected: FAIL — `room.setPractice is not a function` / `PRACTICE_MS` undefined.
+Expected: FAIL (`room.setPractice is not a function` / `PRACTICE_MS` undefined).
 
 - [ ] **Step 3: Implement**
 
@@ -155,9 +155,9 @@ Add `setPractice, sweepPractice,` to the returned object after `setInvisible`. I
 Run: `node --test tests/room.test.js 2>&1 | grep -E "^✖|ℹ (pass|fail)"`
 Expected: `ℹ fail 0`.
 
-- [ ] **Step 5: Mutation-check** — one at a time, each must turn exactly its test red, then restore: drop `&& !practises(b)` from `shows`; drop `|| practises(id)` from `seen`; make `practises` return `practising.has(id)`; make `sweepPractice` return `false`.
+- [ ] **Step 5: Mutation-check.** One at a time, each must turn exactly its test red, then restore: drop `&& !practises(b)` from `shows`; drop `|| practises(id)` from `seen`; make `practises` return `practising.has(id)`; make `sweepPractice` return `false`.
 
-- [ ] **Step 6: Commit** — `git add relay/room.js tests/room.test.js` then `git commit` ("Relay: a practising person is on nobody's list, for five minutes from when it was last said").
+- [ ] **Step 6: Commit.** `git add relay/room.js tests/room.test.js` then `git commit` ("Relay: a practising person is on nobody's list, for five minutes from when it was last said").
 
 ### Task 2: The `practice` message and its sweep
 
@@ -169,7 +169,7 @@ Expected: `ℹ fail 0`.
 - Consumes: `room.setPractice`, `room.sweepPractice`, `PRACTICE_MS` (Task 1).
 - Produces: phone message `{ t: 'practice', on: boolean }`; a non-boolean `on` is dropped.
 
-- [ ] **Step 1: Write the failing tests** — `tests/practice.test.js`:
+- [ ] **Step 1: Write the failing tests** in `tests/practice.test.js`:
 
 ```js
 // ON THE BEAT — the wristband guide's practice on the relay: private while it runs, and over by itself.
@@ -230,9 +230,9 @@ test('a malformed practice is dropped', async () => {
 
 If `cleanup` or `relay.expire` differ in name in the harness, use the ones `tests/wristband.test.js` uses (it calls `relay.expire(...)` and gets `cleanup` from `helpers`).
 
-- [ ] **Step 2: Run to see it fail** — `npm run build >/dev/null && node --test tests/practice.test.js 2>&1 | grep -E "^✖|ℹ (pass|fail)"`. Expected: the first two time out (`timed out; last view`).
+- [ ] **Step 2: Run to see it fail.** `npm run build >/dev/null && node --test tests/practice.test.js 2>&1 | grep -E "^✖|ℹ (pass|fail)"`. Expected: the first two time out (`timed out; last view`).
 
-- [ ] **Step 3: Implement** — in the phone `switch` of `relay/server.js`, beside `case 'sound':`
+- [ ] **Step 3: Implement.** In the phone `switch` of `relay/server.js`, beside `case 'sound':`
 
 ```js
       case 'practice':
@@ -248,8 +248,8 @@ and in `expire(at)`, inside the `for (const r of [...rooms.values()])` loop, fir
       if (r.room.sweepPractice(at)) push(r);
 ```
 
-- [ ] **Step 4: Run to see it pass** — same command; `ℹ fail 0`.
-- [ ] **Step 5: Mutation-check** — remove the `typeof` guard (malformed test red); remove the sweep line (second test red). Restore.
+- [ ] **Step 4: Run to see it pass.** Same command; `ℹ fail 0`.
+- [ ] **Step 5: Mutation-check.** Remove the `typeof` guard (malformed test red); remove the sweep line (second test red). Restore.
 - [ ] **Step 6: Commit** (`relay/server.js tests/practice.test.js`): "Relay: the practice message, and practice swept after five minutes".
 
 ### Task 3: Guide logic and words
@@ -265,10 +265,10 @@ and in `expire(at)`, inside the `for (const r of [...rooms.values()])` loop, fir
   - `stepDone(step, before, view) → boolean`; `before = { armed, invisible, rev }`
   - `bandLive(view) → boolean` (`view.me.wristband.live && !off`)
   - `snapshot(view) → { armed, invisible, rev }`
-  - `GUIDE_SOUNDS` — `[{ sound, says }]`, one per key of `SOUNDS`, in `SOUNDS` order
+  - `GUIDE_SOUNDS`: `[{ sound, says }]`, one per key of `SOUNDS`, in `SOUNDS` order
   - `GUIDE.practice`, `GUIDE.start`, `GUIDE.pair`, `GUIDE.screens`, `GUIDE.sounds`, `GUIDE.lights`, `GUIDE.meeting`, `GUIDE.trouble`, `GUIDE.parts` in `app/copy.js`
 
-- [ ] **Step 1: Write the failing tests** — `tests/guide.test.js`:
+- [ ] **Step 1: Write the failing tests** in `tests/guide.test.js`:
 
 ```js
 // ON THE BEAT — the wristband guide: its practice checks, and its page held to what the band really does.
@@ -349,7 +349,7 @@ test('the words in docs/wristband-guide.md name every screen the page does', () 
 });
 ```
 
-- [ ] **Step 2: Run to see it fail** — `node --test tests/guide.test.js 2>&1 | grep -E "^✖|ℹ (pass|fail)"`. Expected: cannot find `app/lib/guide.js`.
+- [ ] **Step 2: Run to see it fail.** `node --test tests/guide.test.js 2>&1 | grep -E "^✖|ℹ (pass|fail)"`. Expected: cannot find `app/lib/guide.js`.
 
 - [ ] **Step 3: Implement `app/lib/guide.js`**
 
@@ -493,16 +493,16 @@ export const GUIDE = {
 };
 ```
 
-- [ ] **Step 5: Run the tests; fill the button table from what the test names** — `node --test tests/guide.test.js 2>&1 | grep -E "^✖|missing|ℹ (pass|fail)"`. If `every word the band can show` names words, open `app/lib/wrist.js` at each word's line, read what FACE and SIDE do on that face, and add a row (or the word into an existing row's `face`). Repeat until it passes. The docs test fails until Task 7; run with `--test-name-pattern` excluding it meanwhile: `node --test --test-name-pattern="^(?!the words in docs)" tests/guide.test.js`.
+- [ ] **Step 5: Run the tests; fill the button table from what the test names.** `node --test tests/guide.test.js 2>&1 | grep -E "^✖|missing|ℹ (pass|fail)"`. If `every word the band can show` names words, open `app/lib/wrist.js` at each word's line, read what FACE and SIDE do on that face, and add a row (or the word into an existing row's `face`). Repeat until it passes. The docs test fails until Task 7; run with `--test-name-pattern` excluding it meanwhile: `node --test --test-name-pattern="^(?!the words in docs)" tests/guide.test.js`.
 
-- [ ] **Step 6: Mutation-check** — drop one key from `GUIDE.sounds` (sound test red); drop the `me.by !== 'band'` check (step test red); drop a `screens` row (table test red). Restore.
+- [ ] **Step 6: Mutation-check.** Drop one key from `GUIDE.sounds` (sound test red); drop the `me.by !== 'band'` check (step test red); drop a `screens` row (table test red). Restore.
 
 - [ ] **Step 7: Commit** (`app/lib/guide.js app/copy.js tests/guide.test.js`): "Wristband guide: the step checks, and every word the page says".
 
 ### Task 4: `follow()` keeps the phone on the practice screen
 
 **Files:**
-- Modify: `app/lib/follow.js` (`follow`, ~line 66–92)
+- Modify: `app/lib/follow.js` (`follow`, ~line 66-92)
 - Test: `tests/follow.test.js`
 
 **Interfaces:**
@@ -528,8 +528,8 @@ test('practice: on the guide the phone follows the state but stays put, and says
 });
 ```
 
-- [ ] **Step 2: Run to see it fail** — `node --test tests/follow.test.js 2>&1 | grep -E "^✖|ℹ (pass|fail)"`.
-- [ ] **Step 3: Implement** — in `follow()`, just before `return out;` at the end:
+- [ ] **Step 2: Run to see it fail.** `node --test tests/follow.test.js 2>&1 | grep -E "^✖|ℹ (pass|fail)"`.
+- [ ] **Step 3: Implement.** In `follow()`, just before `return out;` at the end:
 
 ```js
   // Practising (the wristband guide): the state is followed, but the phone stays on the guide, which says each step
@@ -550,7 +550,7 @@ test('practice: on the guide the phone follows the state but stays put, and says
 - Consumes: `GUIDE`, `GUIDE_SOUNDS`, `PRACTICE_STEPS`, `stepDone`, `snapshot`, `bandLive` (Task 3); `follow()` on `guide` (Task 4); `{t:'practice'}` (Task 2); `createSpeaker()` from `app/lib/speaker.js`; `HUE` from `app/copy.js`; `Back`, `Cta`, `Ghost`, `Icon` from `app/ui.jsx`.
 - Produces: screens `'guide'` and `'band-guide'`; `store` field `guideSeen: boolean`.
 
-- [ ] **Step 1: `store.js`** — beside `bandSound`:
+- [ ] **Step 1: `store.js`.** Beside `bandSound`:
 
 ```js
     guideSeen: s.guideSeen === true,   // the wristband guide's practice, once run or put off: kept for good
@@ -703,7 +703,7 @@ export function BandGuide({ onBack, onPractise }) {
 }
 ```
 
-- [ ] **Step 3: Styles** — append to `app/styles.css`:
+- [ ] **Step 3: Styles.** Append to `app/styles.css`:
 
 ```css
 /* The wristband guide */
@@ -732,7 +732,7 @@ export function BandGuide({ onBack, onPractise }) {
 
 Import: `import { BandGuide, Practice } from './screens/Guide.jsx';`
 
-Ending the practice, beside `backOn` — one path for every exit:
+Ending the practice, beside `backOn`, one path for every exit:
 
 ```js
   // The wristband guide's practice (spec §1): what it opened on, put back on every way out, then practice ended.
@@ -781,13 +781,13 @@ Routes, beside `case 'quiet':`:
     case 'band-guide': body = <BandGuide onBack={back} onPractise={bandId ? startPractice : null} />; break;
 ```
 
-`bandSheet` rows — first row:
+`bandSheet` rows, first row:
 
 ```js
       { icon: 'watch', label: GUIDE.page.open, sub: GUIDE.page.sub, fg: '#fff', onTap: () => { setSheet(null); go('band-guide'); } },
 ```
 
-`howSheet` rows — after the `BAND_OFF.how` row:
+`howSheet` rows, after the `BAND_OFF.how` row:
 
 ```js
       { icon: 'touch_app', label: GUIDE.page.how, fg: '#fff', onTap: () => { setSheet(null); go('band-guide'); } },
@@ -797,8 +797,8 @@ Import `GUIDE` from `./copy.js`. On the pair screen (`case 'pair'`), pass `onGui
 
 A system back gesture: `back()` from `guide` must go through `endPractice`. In `back`, first line: `if (screen === 'guide') { endPractice(); return; }`.
 
-- [ ] **Step 5: Build** — `npm run build 2>&1 | tail -3`. Expected: built, no errors.
-- [ ] **Step 6: Run the whole suite** — `npm test > /tmp/full.log 2>&1; grep -E "^ℹ (tests|pass|fail)" /tmp/full.log`. Expected: `fail 0` (the docs test of Task 3 is still red until Task 7 — if so, do Task 7 before committing this one, and commit both together).
+- [ ] **Step 5: Build.** `npm run build 2>&1 | tail -3`. Expected: built, no errors.
+- [ ] **Step 6: Run the whole suite.** `npm test > /tmp/full.log 2>&1; grep -E "^ℹ (tests|pass|fail)" /tmp/full.log`. Expected: `fail 0` (the docs test of Task 3 is still red until Task 7; if so, do Task 7 before committing this one, and commit both together).
 - [ ] **Step 7: Commit** (`app/screens/Guide.jsx app/App.jsx app/lib/store.js app/styles.css app/screens/Band.jsx`): "Wristband guide: the practice after a first pairing, and the page to look things up".
 
 ### Task 6: Proven in a browser
@@ -808,9 +808,9 @@ A system back gesture: `back()` from `guide` must go through `endPractice`. In `
 - [ ] **Step 1:** `npm start` in the background (Bash `run_in_background`), then a headless Edge rig as in `on-the-beat-proposals/e2e-2026-10-13/tools/` (hub.mjs, t.mjs), two phones (Rae, Ben) and one `/band` stand-in, at 375×812.
 - [ ] **Step 2:** Rae onboards and pairs the stand-in for the first time → lands on `guide` (screenshot). Ben arms SAY HI.
 - [ ] **Step 3:** Step 1 IT LIT UP. Step 2: a card change from Rae's phone carousel does **not** tick (screenshot); SIDE presses on the stand-in do (screenshot). During it Ben's WHO'S NEAR is empty while Rae's stand-in is blue (screenshot of both).
-- [ ] **Step 4:** Steps 3–4 from the stand-in (FACE hold, SIDE hold); step 4 comes back on the card Rae had (N3). Step 5 GOT IT. DONE: Rae home on the card she opened on; Ben sees Rae again (screenshot).
+- [ ] **Step 4:** Steps 3-4 from the stand-in (FACE hold, SIDE hold); step 4 comes back on the card Rae had (N3). Step 5 GOT IT. DONE: Rae home on the card she opened on; Ben sees Rae again (screenshot).
 - [ ] **Step 5:** Stand-in closed mid-step 2: GOT IT offered (screenshot). *later* puts the card back.
-- [ ] **Step 6:** Reference page from the wristband sheet: each chip jumps; the button table scrolls in its own box at 375 px with no page-wide sideways scroll (`document.documentElement.scrollWidth <= innerWidth`); each ▶ plays (`speaker.play` returns true after a tap — check with a `javascript_tool` probe on the AudioContext state); each trouble row opens.
+- [ ] **Step 6:** Reference page from the wristband sheet: each chip jumps; the button table scrolls in its own box at 375 px with no page-wide sideways scroll (`document.documentElement.scrollWidth <= innerWidth`); each ▶ plays (`speaker.play` returns true after a tap; check with a `javascript_tool` probe on the AudioContext state); each trouble row opens.
 - [ ] **Step 7:** Stop the relay by port; note the screenshots in a short `findings.md` there.
 
 ### Task 7: The guide in `docs/`
@@ -828,4 +828,4 @@ A system back gesture: `back()` from `guide` must go through `endPractice`. In `
 
 - [ ] §3.1 followed word for word by someone new to it, from POWER to four letters.
 - [ ] Every row of the button table pressed once on the band it describes; where band and page disagree, the page is changed.
-- [ ] The practice run on the Plus: steps 2–4 tick from its real buttons.
+- [ ] The practice run on the Plus: steps 2-4 tick from its real buttons.

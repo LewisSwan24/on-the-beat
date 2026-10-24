@@ -8,13 +8,13 @@
 
 **Tech Stack:** Node 22+ (`node --test`, `ws`), C++17 on the laptop (MinGW-W64 g++ here, GCC in CI), C++11 on the band (Arduino-ESP32 2.0.17 through PlatformIO `espressif32@^6.9.0`, ESP-IDF 4.4's `esp_now.h` and `esp_wifi.h`), M5Unified 0.2.22 or later.
 
-**Spec:** `docs/superpowers/specs/2026-09-26-wrist-near-design.md` (decided with the owner section by section on 26 Sep 2026, after a spike on both real bands and a model of a crowd: §1 on the air, §2 the relay's five, §3 privacy and abuse, §4 who does what, §5 tests and proof). It narrows the SAY HI list of `docs/superpowers/specs/2026-09-25-wrist-waves-design.md`, whose plan is done. Read the near spec before any task.
+**Spec:** `docs/superpowers/specs/2026-09-26-wrist-near-design.md` (decided with us section by section on 26 Sep 2026, after a spike on both real bands and a model of a crowd: §1 on the air, §2 the relay's five, §3 privacy and abuse, §4 who does what, §5 tests and proof). It narrows the SAY HI list of `docs/superpowers/specs/2026-09-25-wrist-waves-design.md`, whose plan is done. Read the near spec before any task.
 
 This plan was written from a finished build: every task below was built in a scratch worktree (branch `near-build`), test first, and committed on its own with `npm test` green at every commit. The code blocks are those commits' diffs, so applying a task's blocks in order reproduces it. Each Step 2 was measured by running the task's tests on its parent's code, and each mutation list was measured at its task's commit.
 
 ## Global Constraints
 
-- Artefacts are English: code, comments, commit messages, README, test names. Talk to the owner in Chinese.
+- Artefacts are English: code, comments, commit messages, README, test names. Talk to us in Chinese.
 - **Never a number, never a map** (promise 1, spec §3). No RSSI, score or rank ever reaches a phone or a band; what bands heard lives 30 s in the relay's memory and nowhere else. The list is not sorted by nearness, and every row still says `in this room`.
 - **Nearness only removes.** It can never show anyone a phone could not see already (another room, blocked, NOT NOW). People with no band, anyone waved with either way, and anyone matched tonight are always listed and take no place in the five.
 - **Hidden only on evidence.** From a viewer whose band reported in the last `HEARD_MS`, a person is hidden only if their band also reported in the last `HEARD_MS`, on the same channel, the viewer's five has been worked out, and they are not in it. A band just switched on, gone quiet or on another channel hides nobody and is hidden from nobody.
@@ -28,7 +28,7 @@ This plan was written from a finished build: every task below was built in a scr
 - `CLAUDE.md` is not in git and is not edited by this plan. Nothing from `../on-the-beat-research/` or `../on-the-beat-design/` enters the repository.
 - `npm test` builds first (the relay serves `dist/`). Running one test file alone: `npm run build` first, and again after restoring a mutation.
 - Windows host: the Bash tool is Git Bash, and the plan's scripts are Node. Never write JavaScript holding backticks or `${}` through a Bash heredoc: write it with the editor. A command that holds `git commit` and another program's `-n` (such as `grep -n`) is refused by a hook as `--no-verify`: run them separately.
-- Flashing a band needs the owner's yes first, every time. The StickS3 is on `COM8`, the StickC Plus on `COM9`. Stand-in personas paired to his bands are unpaired when a test ends, and each band's state is said.
+- Flashing a band needs our yes first, every time. The StickS3 is on `COM8`, the StickC Plus on `COM9`. Stand-in personas paired to our bands are unpaired when a test ends, and each band's state is said.
 - Never more than ten background tasks at once. Work directly; this plan needs no fan-out.
 - Commit messages end with the attribution trailer the session's system reminder gives (today: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`).
 
@@ -109,9 +109,9 @@ Not modified, on purpose: everything in `app/`, `relay/band.js`, `app/lib/wrist.
 
 | Stage | Tasks | Leaves |
 |---|---|---|
-| A. The relay | 1–3 | the room's five and its hiding rule; the hello's `air`, the `heard` frame and the tick; the crowd model through the real room |
-| B. The band | 4–5 | the listen and the report in `band_logic.h`, held on the laptop and against the relay; the radio, the random address and the console in `main.cpp` |
-| C. Docs and proof | 6–7 | README and the spec's corrected line; the real bands, with the owner |
+| A. The relay | 1-3 | the room's five and its hiding rule; the hello's `air`, the `heard` frame and the tick; the crowd model through the real room |
+| B. The band | 4-5 | the listen and the report in `band_logic.h`, held on the laptop and against the relay; the radio, the random address and the console in `main.cpp` |
+| C. Docs and proof | 6-7 | README and the spec's corrected line; the real bands, with us |
 
 Every task ends green and is committed on its own; each stage ends with P2.
 
@@ -466,9 +466,9 @@ In `relay/room.js`:
      has: (id) => people.has(id),
 ````
 
-- [ ] **Step 4: Run** — the file (`ℹ pass 12`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 395`.
+- [ ] **Step 4: Run** the file (`ℹ pass 12`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 395`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 5: Mutation check (P1)**. Expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -634,7 +634,7 @@ EOF
 - Consumes: Task 1's `room.heard()` and `room.nearTick()`; `handleBand()`, the hello's checks, `push(r)` (which sends a view only when its text changed) and `refuseBand(ws)` in `relay/server.js`; `wristband()` and `pairBand()` in `tests/relay-harness.js`.
 - Produces: `export const HEARD_GAP_MS = 5000`. The hello's `air` kept as `b.air` (`null` without one), a malformed one refused as `bad band`. `{ t: 'heard', ch, near }` from a band, handed to the room as people. `tickNear()` every `NEAR_TICK_MS`, pushing a room only when `nearTick()` says a five changed, and returned from `createRelay()` beside `tickBands` so tests can drive it. The harness's `wristband(battery, { air })` says `air` in its hello.
 
-- [ ] **Step 1: Write the failing tests.** Four in `tests/wristband.test.js`, on a floor of banded people (`nearFloor()`: each band with its own `air`, paired, on SAY HI with a pick): the hello's `air` (upper case, eleven or thirteen digits, not hex, a number, empty — each refused); a report narrowing SAY HI to five only at the tick, pushing nothing by itself and nothing to a phone whose list did not change, and never a number in a view; a report dropped whole for every way of being wrong, then one taken, one too soon refused, and sixteen taken exactly `HEARD_GAP_MS` after; and an air on a band in another room, on a band paired to nobody, or on two bands, counting for nobody.
+- [ ] **Step 1: Write the failing tests.** Four in `tests/wristband.test.js`, on a floor of banded people (`nearFloor()`: each band with its own `air`, paired, on SAY HI with a pick): the hello's `air` (each of these refused: upper case, eleven or thirteen digits, not hex, a number, empty); a report narrowing SAY HI to five only at the tick, pushing nothing by itself and nothing to a phone whose list did not change, and never a number in a view; a report dropped whole for every way of being wrong, then one taken, one too soon refused, and sixteen taken exactly `HEARD_GAP_MS` after; and an air on a band in another room, on a band paired to nobody, or on two bands, counting for nobody.
 
 In `tests/relay-harness.js`:
 
@@ -928,9 +928,9 @@ In `relay/server.js`:
          wss.close(() => server.close(() => done()));
 ````
 
-- [ ] **Step 4: Run** — the file (`ℹ pass 48`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 399`.
+- [ ] **Step 4: Run** the file (`ℹ pass 48`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 399`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. Two things are not in the list, on purpose. The `return` after `heardFromBand()` only saves work: without it the frame falls through to `push(r)`, which sends nothing, because no view changed. And the air filter is one condition, `o.key === b.key`: a band has its room's key only while it is paired there, and the room already ignores its own person and anyone not in it, so the extra conditions a first draft had (`o !== b`, `o.air`, `o.person`, `r.room.has(o.person)`) could not be told apart by any test.
+- [ ] **Step 5: Mutation check (P1)**. Expected `ALL MUTATIONS HELD`. Two things are not in the list, on purpose. The `return` after `heardFromBand()` only saves work: without it the frame falls through to `push(r)`, which sends nothing, because no view changed. And the air filter is one condition, `o.key === b.key`: a band has its room's key only while it is paired there, and the room already ignores its own person and anyone not in it, so the extra conditions a first draft had (`o !== b`, `o.air`, `o.person`, `r.room.has(o.person)`) could not be told apart by any test.
 
 ````json
 [
@@ -1228,11 +1228,11 @@ new file mode 100644
 
 - [ ] **Step 2: Run it.** `node --test tests/near-crowd.test.js 2>&1 | grep -E "^✖|^ℹ (pass|fail)|within"`
 
-Expected: it passes on Tasks 1–2 as they are, about 3 s: `within 10 m: the five 99.8%, five at random 33.3%; churn 2.1% a listen`. It is a proof, not a new rule: its mutations below are what show it can fail. Measured before the thresholds were set: sorted not at all, the five were 31.6% within 10 m; replaced whole each tick, they churned 14.8%.
+Expected: it passes on Tasks 1-2 as they are, about 3 s: `within 10 m: the five 99.8%, five at random 33.3%; churn 2.1% a listen`. It is a proof and adds no rule. Its mutations below show that it can fail. Measured before the thresholds were set: sorted not at all, the five were 31.6% within 10 m; replaced whole each tick, they churned 14.8%.
 
 - [ ] **Step 3: Run** `npm test`. Expected: `ℹ fail 0`, `ℹ tests 400`.
 
-- [ ] **Step 4: Mutation check (P1)** — expected `ALL MUTATIONS HELD`:
+- [ ] **Step 4: Mutation check (P1)**. Expected `ALL MUTATIONS HELD`:
 
 ````json
 [
@@ -1688,9 +1688,9 @@ In `firmware/src/band_logic.h`:
    Link link_;
 ````
 
-- [ ] **Step 4: Run** — the file (`ℹ pass 106` of 106; the host binary says `ok: 525 checks`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 401`.
+- [ ] **Step 4: Run** the file (`ℹ pass 106` of 106; the host binary says `ok: 525 checks`), then `npm test`. Expected: `ℹ fail 0`, `ℹ tests 401`.
 
-- [ ] **Step 5: Mutation check (P1)** — expected `ALL MUTATIONS HELD`. Run it in the background: fifteen C++ mutations take about twenty minutes. One guard is held but not listed: saying `"air":""` whenever the band has none turns 96 of the file's 106 tests red, since every hello then carries an air the relay refuses and the stand-in's hellos do not; its first failure is the host check that `helloFrame(id, key, 62)` is exactly the old hello. And a mutation must still use `air`: deleting the line that writes it leaves the parameter unused, which `-Werror` makes a compile error, and all 106 go red for the wrong reason.
+- [ ] **Step 5: Mutation check (P1)**. Expected `ALL MUTATIONS HELD`. Run it in the background: fifteen C++ mutations take about twenty minutes. One guard is held but not listed: saying `"air":""` whenever the band has none turns 96 of the file's 106 tests red, since every hello then carries an air the relay refuses and the stand-in's hellos do not; its first failure is the host check that `helloFrame(id, key, 62)` is exactly the old hello. And a mutation must still use `air`: deleting the line that writes it leaves the parameter unused, which `-Werror` makes a compile error, and all 106 go red for the wrong reason.
 
 ````json
 [
@@ -2425,9 +2425,9 @@ EOF
 
 ### Task 7: The real bands, with the owner
 
-Nothing here is automated, and every step needs the owner: flashing needs his yes first, and a band he wears is his. Deploy the relay first if the bands are to use `https://on-the-beat.fly.dev` (Fly memory: he logs in himself; deploy any time except while he has said a demo is on), or run `npm start` and `npm run tunnel` and give both bands the tunnel's address with `relay`.
+Nothing here is automated, and every step needs us: flashing needs our yes first, and a band we wear is ours. Deploy the relay first if the bands are to use `https://on-the-beat.fly.dev` (Fly memory: we log in ourselves; deploy any time except while we have said a demo is on), or run `npm start` and `npm run tunnel` and give both bands the tunnel's address with `relay`.
 
-- [ ] **Step 1: Flash both** (P3's directories, `-t upload`, `--upload-port COM8` for the StickS3 and `COM9` for the Plus), after asking. On each console, `show` must say `near    not now: not paired`, and `on the air as <12 hex>` — not the chip's own address, and a new one after a reset.
+- [ ] **Step 1: Flash both** (P3's directories, `-t upload`, `--upload-port COM8` for the StickS3 and `COM9` for the Plus), after asking. On each console, `show` must say `near    not now: not paired`, and `on the air as <12 hex>`: not the chip's own address, and a new one after a reset.
 - [ ] **Step 2: Pair each to a stand-in phone** in the built-in browser, both on SAY HI in one room. Within twenty seconds `near` on each console says `beaconing and listening`, and its last listen names the other band's address at some dBm; the relay's log shows no refused hello.
 - [ ] **Step 3: Both lists.** Each stand-in lists the other person. Then `near listen` on both consoles; within `HEARD_MS` plus one tick (about 35 s), neither lists the other. `near on` on one: within one listen and one tick (about 15 s), both list each other again.
 - [ ] **Step 4: Gone quiet hides nobody.** `near off` on one band; 35 s later both lists still show both people.

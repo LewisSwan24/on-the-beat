@@ -1,8 +1,8 @@
 # The staff page under review: what was found, and what closes it
 
-Date: 29 Sep 2026. Item 4 of the owner's queue of 28 Sep (「2134」), a red/blue
+Date: 29 Sep 2026. Item 4 of our queue of 28 Sep (「2134」), a red/blue
 review of the staff page, its sign-ins and passcodes, the night file, the push
-keys and the push host allowlist. Two decisions were the owner's, and the design was
+keys and the push host allowlist. Two decisions were ours, and the design was
 approved in three sections as presented:
 
 - **Report limits: moderate** (「適度（推奨）」): 10 an hour a person, 60 an hour
@@ -57,7 +57,7 @@ resistance*.
 
 | # | Weight | Finding | Closed by |
 |---|---|---|---|
-| 1 | Medium-high | A token is not tied to the passcode it was made with. Staff spec §6 says changing a passcode means a restart, which signs everyone out; since the night survives a restart (restart spec, 29 Sep) that is no longer true, and the owner has no way to sign everyone out. The old sign-ins keep their push subscriptions too. | §1 |
+| 1 | Medium-high | A token is not tied to the passcode it was made with. Staff spec §6 says changing a passcode means a restart, which signs everyone out; since the night survives a restart (restart spec, 29 Sep) that is no longer true, and we have no way to sign everyone out. The old sign-ins keep their push subscriptions too. | §1 |
 | 2 | Medium | `report` has no limit by person, by network or by venue. | §3 |
 | 3 | Medium | Guessing a passcode is bounded per socket and per address, but an IPv6 attacker changes address inside a /64 for free, nothing bounds how many checks run at once, and eight characters are allowed. | §2 |
 | 4 | Low-medium | No security header at all beyond `nosniff`: no frame protection, no CSP, no HSTS, no referrer policy. A staff sign-in is now kept in `localStorage`, on the origin the phone app shares. | §4 |
@@ -127,8 +127,8 @@ resistance*.
 ## §3. The report channel
 
 - **Limits.** Before `room.report()`, a `report` from a joined phone is counted
-  against two rolling hours: **10 for the person** (the room and the person's
-  id, so one person at one venue) and **60 for the network** (`addressKey`). Both
+  against two rolling hours: 10 for the person (the room and the person's
+  id, so one person at one venue) and 60 for the network (`addressKey`). Both
   count every report sent, accepted or not, so someone who keeps sending while
   refused is not let back in until an hour after they stop. Past either, the
   report is not taken and the socket is sent `{t:'error', why:'report refused'}`;
@@ -260,7 +260,7 @@ resistance*.
   first suspect if either does not, and it is taken out in a redeploy before
   anything else is looked at. A test here holds that `file://` is allowed;
   only the bands can show that they send it.
-- **Owed by the owner, as before:** `STAFF_CODES`, and a real phone.
+- **Owed by us, as before:** `STAFF_CODES`, and a real phone.
 
 ## Also to change when this is built
 

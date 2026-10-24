@@ -1,8 +1,8 @@
 # The wristband, sideways: landscape faces that turn themselves
 
-Date: 28 Sep 2026. Decided with the owner question by question the same day,
-first of the four he lined up after the staff page. It follows the watch
-clip he bought: M5Stack's Stick Watch Accessory Kit (A173), which holds a
+Date: 28 Sep 2026. Decided question by question the same day, the first
+of the four we lined up after the staff page. It follows the watch clip we
+bought: M5Stack's Stick Watch Accessory Kit (A173), which holds a
 Stick across the forearm with its long side along the arm.
 
 ## What is true today
@@ -35,8 +35,8 @@ said "with no setting": that part was measured and dropped (§2).
 
 - **Portrait.** Neither band draws portrait any more; there is no setting to
   go back.
-- **Turning to portrait**, as a phone does when held upright. The owner chose
-  on 28 Sep 2026 to turn only between the two landscape directions: the clip
+- **Turning to portrait**, as a phone does when held upright. We chose on
+  28 Sep 2026 to turn only between the two landscape directions: the clip
   holds the band landscape.
 - **The browser stand-in** (`/band`, `app/screens/Band.jsx`) stays portrait,
   as the canvas draws it.
@@ -45,8 +45,8 @@ said "with no setting": that part was measured and dropped (§2).
 ## Where this departs from the canvas, on purpose
 
 - **The band is landscape.** Revision 6 draws a portrait band, 135 × 240, with
-  a strap stub above and below. The owner's clip holds it the other way, and
-  he chose on 28 Sep 2026 that both bands, the StickS3 and the StickC Plus,
+  a strap stub above and below. Our clip holds it the other way, and
+  we chose on 28 Sep 2026 that both bands, the StickS3 and the StickC Plus,
   go landscape and turn themselves.
 
 ## §1. The faces at 240 × 135 (`firmware/src/main.cpp`)
@@ -76,21 +76,21 @@ side, 0.35 g held 500 ms. That was built (28 Sep 2026; those commits were
 later squashed into one a day) and
 worn, and it cannot work for a watch:
 
-- Read with the owner wearing the StickS3 in the clip on his left wrist,
-  socket toward the elbow, looking at it as he looks at a watch, the face
+- Read with one of us wearing the StickS3 in the clip on the left wrist,
+  socket toward the elbow, looking at it as at a watch, the face
   lay nearly flat (z +0.75 to +0.95 g); gravity in the face's plane ran
   mostly along the arm (x -0.5 to -0.7 g), and across the short side only
-  -0.1 to -0.3 g, the opposite way to a face held upright in front of him.
+  -0.1 to -0.3 g, the opposite way to a face held upright in front of the wearer.
 - A face seen from above has no "down" that gravity can find: which edge is
   nearer the eyes is not in the reading. The left and right wrists are
   mirror images, and the one reading that tells them apart is that small
   roll across the short side. So switching wrists never turned the face,
   and a lower tilt would have turned it the wrong way.
 
-The owner then chose (28 Sep 2026) to hold the side and turn it by hand:
+We then chose (28 Sep 2026) to hold the side and turn it by hand:
 
 - **The side is held.** Two sides: the USB-C socket to the left of the
-  words, or to their right. The default is USB-left: his left wrist, socket
+  words, or to their right. The default is USB-left: our left wrist, socket
   toward the elbow. It is kept in `Preferences` as `turn`.
 - **On the StickC Plus, a short press of the power button** (on the side;
   M5Unified reads it from the AXP192 as `M5.BtnPWR`) turns the face over and
@@ -99,8 +99,8 @@ The owner then chose (28 Sep 2026) to hold the side and turn it by hand:
 - **On the StickS3 only `turn` does.** Tried on 28 Sep 2026: a short press of
   its power button powers the band off or restarts it, from its power chip,
   before the firmware sees anything. Offered a press of both buttons at
-  once, or a button in the phone app, the owner chose to switch the StickS3
-  from the laptop: he wears it on his left wrist, the default.
+  once, or a button in the phone app, we chose to switch the StickS3
+  from the laptop: we wear it on the left wrist, the default.
 - A face that turns is drawn again at once.
 - **The accelerometer is not read.**
 
@@ -127,7 +127,7 @@ The owner then chose (28 Sep 2026) to hold the side and turn it by hand:
   with its hint, the check number, and a marker's face; each made an image
   and looked at, and the pairing QR decoded from its image by jsQR, the
   scanner the app itself uses.
-- **On the wrist**, after the owner says yes to flashing both: worn in the
+- **On the wrist**, once we say yes to flashing both: worn in the
   clip on the left wrist it reads the right way up; on the Plus a press of
   the power button turns it over, and again turns it back, and on the
   StickS3 `turn` does; the side it was left on holds through a restart;
@@ -144,6 +144,6 @@ The owner then chose (28 Sep 2026) to hold the side and turn it by hand:
 ## Risks
 
 - **A knock on the Plus's power button** turns the face over; another press
-  turns it back. The owner chose a single press over a double one.
-- **The StickS3 cannot be turned over at a venue** without a laptop. He
-  wears it on the left wrist, the default.
+  turns it back. We chose a single press over a double one.
+- **The StickS3 cannot be turned over at a venue** without a laptop. We
+  wear it on the left wrist, the default.

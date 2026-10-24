@@ -772,7 +772,7 @@ export async function locationGranted() {
   - When `near.length && !sel && !q`, set `sel` to `near[0]` once (a `useEffect` on `near[0]?.room`).
   - Above the search field: `<Cta plain onClick={onFind} disabled={finding}>{finding ? WHERE.finding : WHERE.find}</Cta>` when `!here`.
   - In each row, the right-hand label: `s.away != null ? distanceLabel(s.away) : s.typed ? 'here' : s.made ? WHERE.made : s.doors ? 'doors ' + s.doors : ''`.
-  - Replace the `missing` card's USE WHAT I TYPED with `WHERE.notHere`, opening an in-screen form (`making` state): the venue name (prefilled `q`), the act (optional), then — when `near.length` — `WHERE.oneOfThese` and those rows as buttons that `setSel`, then `<Cta onClick={() => onMake(name, act)}>{WHERE.make}</Cta>`.
+  - Replace the `missing` card's USE WHAT I TYPED with `WHERE.notHere`, opening an in-screen form (`making` state): the venue name (prefilled `q`), the act (optional), then (when `near.length`) `WHERE.oneOfThese` and those rows as buttons that `setSel`, then `<Cta onClick={() => onMake(name, act)}>{WHERE.make}</Cta>`.
   - Show NOT HERE? ADD IT also at the end of the list when nothing is selected, not only when a search finds nothing.
 
 - [ ] **Step 4: App wiring** (`app/App.jsx`):

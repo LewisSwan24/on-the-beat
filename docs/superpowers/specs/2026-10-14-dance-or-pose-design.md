@@ -5,7 +5,7 @@
 ## Why
 
 The team's v3 flow has a selfie activity: two people strike a pose for the
-camera. The owner chose to fold it into LET'S DANCE! instead of adding a
+camera. We chose to fold it into LET'S DANCE! instead of adding a
 fifth card (「并进 DANCE 卡」): on the floor, a person may put either five
 seconds of dancing or one posed photo, and a dance back may be either. Many
 people will not dance on camera at a gig; a pose is a smaller ask. A photo is
@@ -123,4 +123,4 @@ back straight to one person, a dance back each way is a match.
 - Stripping metadata from uploaded files: a photo taken here is drawn from
   the camera onto a canvas and carries none; a hand-made upload is the
   sender's own bytes, kept an hour.
-- Deploying to Fly: waits for his yes, as always.
+- Deploying to Fly: waits for our yes, as always.

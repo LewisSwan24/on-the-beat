@@ -1,15 +1,15 @@
 # Waves on the wristband: told on the wrist, answered on the wrist
 
-Date: 25 Sep 2026. Decided with the owner section by section the same day,
-then reviewed against the code and settled with him again ("The owner's
+Date: 25 Sep 2026. We decided it section by section the same day, then
+reviewed it against the code and settled it again ("The owner's
 decisions after review"). It builds on the reactions spec
 (`2026-09-25-wrist-reactions-design.md`): its sounds, flashes, calls, sound
 switch and NOT NOW silence. Build it after that one.
 
-Approved by the owner on 25 Sep 2026.
+We approved it on 25 Sep 2026.
 
-The owner said that quick finding, matching and staying in step between two
-or more wristbands matters a great deal. His flow: a WAVE sent on a phone
+We said that quick finding, matching and staying in step between two
+or more wristbands matters a great deal. Our flow: a WAVE sent on a phone
 reaches the other person's wristband; once they answer, both wristbands
 and both phones show the meeting.
 
@@ -44,7 +44,7 @@ Phase A deferred "waving back from the wrist", because the band showed
 nothing about other people except the meeting number. This spec is that
 phase.
 
-Decisions made while writing this down are marked **(new)** for the owner's
+Decisions made while writing this down are marked **(new)** for our
 review.
 
 ## Goal
@@ -79,7 +79,7 @@ got wrong:
 - a call that blinked until a key would tell a waver watching the wrist that
   their wave had been seen.
 
-The owner then chose:
+We then chose:
 
 1. **A short call that ends by itself.** *hello* and three blue flashes,
    whatever the keys do. How long it lasts never says whether it was seen.
@@ -110,7 +110,7 @@ A second review against the code added one more, also marked **(new)**:
 
 Revision 6 §8 keeps names, photos and other people's picks off the
 wristband, and `relay/band.js` promises that the band shows nothing about
-anyone else except the meeting number. The owner chose on 25 Sep 2026 that
+anyone else except the meeting number. We chose on 25 Sep 2026 that
 a band also says that someone waved at its person, and how many are
 waiting. It still shows no name, no photo, no pick and no area. The
 `relay/band.js` promise and README's "Where this differs from the canvas,
@@ -276,7 +276,7 @@ on purpose" say so.
   waiting.
   - The object is the same size however many wait, so no show outgrows the
     band's 480 bytes (`firmware/src/main.cpp`) **(new: the review measured
-    nine waves at 527–668 bytes, which the band drops whole)**.
+    nine waves at 527-668 bytes, which the band drops whole)**.
   - `wavesAt()` and the phone's rows come out of the same room, so the band
     and the phone are always told the same thing.
   - Shows are sent only when their text changes, so each change in the
@@ -322,7 +322,7 @@ on purpose" say so.
   unless a wave call is playing. Either way the number moves up to it. A
   show that differs from the last only in `waves` causes no other reaction.
 - **Two new modes.**
-  - The wave face (§1.3–4).
+  - The wave face (§1.3-4).
   - The wave back (§1.5), which is answered like a sent choice:
     `{ t: 'wave', ok: true }` rests; `ok: false` shows CHANGED for
     `changed` and NOT SENT otherwise; CONFIRM_MS shows NOT SENT and drops
@@ -437,8 +437,8 @@ on purpose" say so.
 - **In a browser:** two `/band` stand-ins and two phones. A waves, B's
   stand-in calls, B opens the wave face and waves back on it, and both show
   the meeting.
-- **On the real bands, with the owner.** Two real people, no stand-in: his
-  phone and his second phone or tablet, each paired to one of the StickS3
+- **On the real bands, with us.** Two real people, no stand-in: our
+  phone and our second phone or tablet, each paired to one of the StickS3
   and the StickC Plus.
   - A waves on the phone. B's band chirps and flashes blue three times.
   - B presses FACE, sees SOMEONE WAVED, and holds SIDE. Both bands show the
@@ -459,7 +459,7 @@ on purpose" say so.
 ## Risks
 
 - **The wave back from the band is blind.** It answers the newest waiting,
-  with no name, no photo, no pick and no area. The owner chose it so the
+  with no name, no photo, no pick and no area. We chose it so the
   phone can stay in the pocket. Names come only with the match, and
   blocking stays one tap away on the phone.
 - **A band says yes for its person, with or without their phone**

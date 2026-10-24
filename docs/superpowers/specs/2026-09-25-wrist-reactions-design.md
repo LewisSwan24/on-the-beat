@@ -1,27 +1,27 @@
 # Wristband reactions: sound and light for the wearer (A and B)
 
-Date: 25 Sep 2026. Decided with the owner section by section the same day,
+Date: 25 Sep 2026. We decided it section by section the same day,
 after phase A's test on real bands (`2026-09-24-wrist-controls-design.md`,
 Task 26) showed how little the wristband says back. A press changed small
 words, and a face hold on an unpaired band went dark and did nothing, which
 read as "only the phone controls the band".
 
-Approved by the owner on 25 Sep 2026.
+We approved it on 25 Sep 2026.
 
-The owner asked for more reactions on the band, sound and colour among them,
+We asked for more reactions on the band, sound and colour among them,
 and chose three kinds: **A**, confirming what the wearer does; **B**, calling
 them when something comes for them; **C**, flashing on the music's beat. This
 spec is A and B. C is a second phase with its own spec.
 
 The sound style was chosen by ear on the real StickS3. A throwaway test
-played three styles: beep, chirp and chime. The owner picked the chirp,
+played three styles: beep, chirp and chime. We picked the chirp,
 short game-like notes on a triangle wave. The chime was too quiet.
 
 After the approval, a reviewer read this spec against the code and found
 where two rules meet in one moment. The fixes are in the text.
 
-Decisions made while writing this down are marked **(new)** for the owner's
-review. What the owner added afterwards is marked **owner's addition**.
+Decisions made while writing this down are marked **(new)** for our
+review. What we added afterwards is marked **owner's addition**.
 
 ## Goal
 
@@ -37,8 +37,8 @@ The wristband answers the person wearing it, in sound and in light:
 Every result, call and warning also shows in light, so the sound can be
 switched off on the phone.
 
-**One principle decides open cases: the wristband is quiet unless its wearer
-did something on it, or something came for them.** A change the wearer
+One principle decides open cases: the wristband is quiet unless its wearer
+did something on it, or something came for them. A change the wearer
 makes to their card or NOT NOW on the phone makes no sound, and NOT NOW
 makes none at all.
 
@@ -46,7 +46,7 @@ makes none at all.
 
 - **C, the beat.** A second phase, with its own spec:
   `2026-09-26-wrist-beat-design.md`.
-- **A wave on the band.** The owner wants a wave sent from a phone to reach
+- **A wave on the band.** We want a wave sent from a phone to reach
   the other person's band, and to be answered there. That is the next spec,
   designed right after this one and built on its call. Here the meeting
   number stays the only thing about anyone else the band shows or reacts to
@@ -59,7 +59,7 @@ makes none at all.
 ## Where this departs from the canvas, on purpose
 
 Revision 6 §8 rules out vibration or light patterns that pretend to carry a
-message. The owner chose on 25 Sep 2026 that the band flashes and sounds.
+message. We chose on 25 Sep 2026 that the band flashes and sounds.
 None of it pretends:
 
 - each reaction answers something the wearer just did, or says one fact
@@ -75,15 +75,15 @@ README's "Where this differs from the canvas, on purpose" gains this.
 
 | When | Sound | Light |
 |---|---|---|
-| a key goes down | tick | — |
-| a SIDE hold sends the choice at once | double | — |
+| a key goes down | tick | nothing |
+| a SIDE hold sends the choice at once | double | nothing |
 | a FACE hold puts the wearer in NOT NOW | down | dark, as today |
 | SET, leaving NOT NOW included | up | the card's colour, twice; white for OFF |
 | CHANGED | fall | red, three times |
 | NOT SENT | low | orange, twice |
 | the check number appears | ask | white, twice |
 | paired, and TEST THE LIGHT | up | the white face both already show |
-| the check ends without YES (NO, or time out) | fall | — |
+| the check ends without YES (NO, or time out) | fall | nothing |
 | a meeting number appears | jingle | blinks until answered (§2 rule 4) |
 | a warning | warn | orange, twice |
 
@@ -125,7 +125,7 @@ a sound, these are the notes heard there.
 
 *down* is gentle by its notes, not by its volume **(new: the chime was too
 quiet at the same volume)**. The new notes are starting points, tuned by
-ear on the band with the owner. Each twin keeps them in one table, so a
+ear on the band by us. Each twin keeps them in one table, so a
 change is one line. The longest sounds, *jingle* and *warn*, last 0.6 s.
 
 ### The flashes
@@ -416,7 +416,7 @@ as in phase A.
     `drawWords()`'s, in up to three fonts and wrapped. Today `drawMeet()`
     draws the check's ON YOUR PHONE? in FreeSansBold9pt7b with no fitting.
     By the font's widths that line is about 166 px on a 135 px face, so it
-    may already be clipped; the owner looks on the band. PAIR ON YOUR PHONE
+    may already be clipped; we look on the band. PAIR ON YOUR PHONE
     is about 204 px and needs the fitting.
 - **The StickC Plus** plays through its buzzer. M5Unified's buzzer mode
   takes the same samples as the speaker (`tone()` goes through the same
@@ -519,7 +519,7 @@ after it has been tapped, so the stand-in is silent until its first tap.
   - every row of §1 seen, and every sound asked of Web Audio (a spy on it);
   - the switch both ways;
   - a meeting between two stand-ins.
-- **On the real bands, with the owner:**
+- **On the real bands, with us:**
   - every row heard and seen once;
   - the switch both ways;
   - a meeting between the StickS3 and the StickC Plus;
@@ -530,9 +530,9 @@ after it has been tapped, so the stand-in is silent until its first tap.
 
 ## Settled with the owner: leaving NOT NOW
 
-On 25 Sep he held the face button again to leave NOT NOW. Leaving takes a
-SIDE hold, by his choice on 24 Sep, because being shown needs a deliberate
-choice of card. Asked while reviewing this spec, he put it down to his own
+On 25 Sep we held the face button again to leave NOT NOW. Leaving takes a
+SIDE hold, by our choice on 24 Sep, because being shown needs a deliberate
+choice of card. Asked while reviewing this spec, we put it down to our own
 slip, not the design: **leaving NOT NOW stays exactly as it is.**
 
 If other wearers make the same slip in testing, the change is one line:

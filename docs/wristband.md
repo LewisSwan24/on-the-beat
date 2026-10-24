@@ -5,7 +5,7 @@
 Revision 6 of the canvas puts a wristband beside the phone: an M5StickC Plus
 or a StickS3 on a strap that lights in the colour of the card you armed, so the
 phone can go back in a pocket. Its firmware is in `firmware/` (below), and
-**`/band` is a stand-in** that speaks exactly the same messages — open it in a
+`/band` is a stand-in that speaks exactly the same messages. Open it in a
 second browser, or on a second phone strapped to a wrist, when there is no
 wristband to hand.
 It has two buttons, so from the wrist alone, with the phone in a pocket, a
@@ -13,7 +13,7 @@ person can change which card is armed, come back from NOT NOW, and see whether
 that was taken.
 
 - **Pairing.** A wristband nobody has claimed shows four letters from
-  `ABCDEFGHJKMNPQRSTUVWXYZ` — no I, L or O — under a QR code of an address:
+  `ABCDEFGHJKMNPQRSTUVWXYZ` (no I, L or O) under a QR code of an address:
   its own origin and `/pair/` and those letters. There are three ways in, and
   all three end in the same four letters:
   - type them, once, after the name, or later from the watch chip on the home
@@ -21,16 +21,16 @@ that was taken.
   - `SCAN IT INSTEAD` on that screen: the app's own scanner reads the code;
   - someone who has not opened the app yet points the phone's own camera at
     the wristband. The address opens the app on the pair screen with the
-    letters already in — after onboarding, for someone new.
+    letters already in (after onboarding, for someone new).
 
   **All three end with a check.** The relay does not pair on the letters: the
   wristband that was reached shows a two-digit number with `ON YOUR PHONE?`
   over it, and the phone asks *Does your wristband show 27?* in a sheet that
   stays over any screen and comes back after a reconnect. `YES` pairs, and the
   wristband flashes white once. `NO`, or no answer within a minute, drops it and
-  the wristband shows new letters. A check its person did not ask for —
-  someone read the letters off the wrist and typed them first — is turned
-  away on the wrist: holding the face button for 1.5 s on the number drops it
+  the wristband shows new letters. A check its person did not ask for
+  (someone read the letters off the wrist and typed them first) is turned
+  away on the wrist. Holding the face button for 1.5 s on the number drops it
   at once, the wristband shows new letters, and the phone that typed is told
   the wristband said no. A second phone trying the same wristband meanwhile is
   told someone else is pairing it, and, if it is theirs, to hold its face
@@ -49,21 +49,20 @@ that was taken.
   jsQR.
 - **What it shows** is decided by the relay, in `relay/band.js`, from the same
   `viewFor()` its person's phone is sent, so it can never show more than the
-  phone could: its person's colour and card words while a card is armed, the
-  two-digit meeting number for fifteen minutes after a match or until both say
-  they found each other (the same number on both wrists), and nothing at all
-  under NOT NOW. While its person shows
-  SAY HI it is also told that someone waved and how many wait: the newest
-  one's handle, a count and a number, the same size however many wait. Never a
-  name, never anyone else's pick, never a contact. At 15% battery it dims
-  itself.
+  phone could. That is its person's colour and card words while a card is
+  armed, the two-digit meeting number for fifteen minutes after a match or
+  until both say they found each other (the same number on both wrists), and
+  nothing at all under NOT NOW. While its person shows SAY HI it is also told
+  that someone waved and how many wait: the newest one's handle, a count and a
+  number, the same size however many wait. It is never sent a name, anyone
+  else's pick or a contact. At 15% battery it dims itself.
 - **Its two buttons.** The face button (KEY1): a press wakes it for six
-  seconds; held for 1.5 s it is NOT NOW — dark at once — and the phone
+  seconds. Held for 1.5 s it is NOT NOW (dark at once) and the phone
   follows to the invisible screen, except on a check number, where the same
   hold turns the check away. The side button (KEY2): a press shows
-  the card that is armed; each press after moves a preview — HI, SONG,
-  DANCE, GUESS, OFF, FINISH, UNPAIR — and 3 s after the last one the choice goes to
-  the relay, which decides; the face says `SET`, `CHANGED` or `NOT SENT`.
+  the card that is armed, and each press after moves a preview through HI, SONG,
+  DANCE, GUESS, OFF, FINISH and UNPAIR. The choice goes to the relay 3 s after
+  the last press. The relay decides, and the face says `SET`, `CHANGED` or `NOT SENT`.
   UNPAIR is never sent on its own: the face asks `UNPAIR?` over
   `HOLD SIDE: YES`, a SIDE hold there sends it, and a press of either button
   or six seconds of nothing calls it off. The relay unpairs the band, which
@@ -74,16 +73,16 @@ that was taken.
   number, and the face says `ASKED` once the relay has passed it on, or
   `NOT SENT`. The other person's band then shows `FINISH?` over
   `SIDE: YES FACE: NO` on a flat green field, with the check's two notes and
-  two green flashes: SIDE held says yes, FACE held says not yet — instead of
-  NOT NOW — and a press of either only wakes it; the phone can answer too,
+  two green flashes. SIDE held says yes, FACE held says not yet (instead of
+  NOT NOW), and a press of either only wakes it. The phone can answer too,
   and the relay's next show replaces the face. A finished meeting chirps up
   and flashes green on both bands, and puts away the card it was met on
   for whoever is still on it, back to `READY` (a card chosen since stays);
   a not yet falls on the asker's. From
   `READY` the first press is still the first card, never FINISH or UNPAIR.
   Coming back from NOT NOW takes holding the side button, and comes back on
-  the card its person had before, while the venue still has it open; from
-  the phone's TURN BACK ON too. With none, it is the first open card. The pair screen
+  the card its person had before, while the venue still has it open. The
+  phone's TURN BACK ON does the same. With no such card, it is the first open card. The pair screen
   says to *press* its face button, not to hold it.
 - **It answers in sound and light**, and is quiet unless its wearer did
   something on it or something came for them. Every key ticks as it goes
@@ -148,18 +147,30 @@ that was taken.
   the phone does, whatever its case, accents or punctuation. This has run in
   the band's logic, JS and C++ alike, and in both firmware builds, not yet on
   a real band.
+- **Two moves, felt by the accelerometer.** It is read, about a hundred
+  times a second, only while a face asks for it. On `SOMEONE WAVED`, raising
+  the wrist and waving waves back to the newest, as a SIDE hold does: the
+  face shows `WAVING` for 2 s, and a key in that time stops it. On the
+  meeting number, two bands knocked together say found for both people,
+  with the `clink` sound: a knock counts only if the other band's arrives
+  within 30 ms and is heard at -45 dBm or louder, so only from a band right
+  beside it. Every threshold was measured on two StickC Plus bands on
+  9 Oct 2026 (`motion` in `band_logic.h`). A band touched to another said
+  found on the first knock. Two bands knocked while worn on two wrists were
+  not recognised, since the bodies between them weaken the signal, and
+  dancing with either face up set off nothing.
 - **Who is near comes from the wristbands.** While a band is on the relay,
   paired and not in NOT NOW, it beacons four bytes by ESP-NOW twice a second,
   under an address it makes up at every boot, and for one second in every ten
   it listens for the others and tells the relay whom it heard and how
   strongly. The relay scores how near each band is to each other band in the
   room by the median of what its own band heard in the last 30 s, and every
-  five seconds works out each band's five heard most strongly; one of the five stays while it is
+  five seconds works out each band's five heard most strongly. One of the five stays while it is
   among the ten strongest, so the list does not churn as people turn round.
   With a band, SAY HI then lists those five, everyone without a band as
   before, and anyone waved with either way or matched. Nobody else is taken
-  off without evidence — both bands heard from in the last 30 s, on the same
-  Wi-Fi channel — so a band just switched on or gone quiet, a band on another
+  off without evidence (both bands heard from in the last 30 s, on the same
+  Wi-Fi channel), so a band just switched on or gone quiet, a band on another
   channel, and the stand-in at `/band`, which has no radio, hide nobody and
   are hidden from nobody. No strength, score or order reaches a phone or a
   band: the list is only shorter, the rows are in the same order, and a row's
@@ -176,7 +187,7 @@ that was taken.
   is dark; a press shows `MARKER` over `NEAR THE BAR`, `BY THE STAGE` or `OUT
   THE BACK`. A band's listen keeps the markers it heard beside the bands, the
   strongest reading of each, and its report says them. For each person the
-  relay takes the median of each marker's readings in the last 30 s; the
+  relay takes the median of each marker's readings in the last 30 s. The
   loudest names the person's area on every row that shows them if it is -56
   dBm or louder, and an area holds while its marker is -60 or louder and no
   other is 4 dB louder. Anyone else is `in this room`: no band, a band gone
@@ -184,7 +195,7 @@ that was taken.
   floor with a marker at each end, the wrong marker was named for at most
   0.21% of the people named, nine in ten of them were within 10 m of their
   marker, and an area changed at no more than 3.6% of listens
-  (`tests/markers-crowd.test.js`); the price is that most people stay `in
+  (`tests/markers-crowd.test.js`). The price is that most people stay `in
   this room`, 12 to 35% named, since unnamed is better than named wrong.
 - **The sound can be switched off, on the phone.** The wristband sheet has
   `SOUND: ON` under TEST THE LIGHT; off, the band only lights up. The switch is
@@ -192,14 +203,14 @@ that was taken.
   every reconnect, and the relay carries it on the shows to that person's
   band and to no other. A band nobody has claimed chirps as it is, and a
   claimed band has the switch in its first show.
-- **A lit card pulses on the beat.** While a card is lit at rest — `HI :)`,
+- **A lit card pulses on the beat.** While a card is lit at rest (`HI :)`,
   `FIRST SONG?` or `LET'S DANCE!`, never a meeting number, the letters, the
-  check, the test light or NOT NOW — the band listens to the room, and once
+  check, the test light or NOT NOW), the band listens to the room, and once
   it has the beat the card's light is full on each beat and falls in a
   straight line to half over the first two thirds of it. The colour never
   goes dark, and every reaction goes first. It finds the beat in whatever
   part of the sound carries it, since laptop speakers and a venue's echo
-  both lose the kick: each block's five levels, how far each rose, a tempo
+  both lose the kick. It uses each block's five levels, how far each rose, a tempo
   read every 128 ms by autocorrelation between 80 and 178 BPM, weighted
   towards 120, and a grid that pulses once four of its last five beats were
   heard. In doubt the card stays steady: a song that stops goes quiet within
@@ -218,12 +229,12 @@ that was taken.
   and the face of one waiting for its owner after a restart, light for two
   minutes and then only the backlight goes off; a press lights them again.
   A press on the letters or on the check puts `PAIR ON YOUR PHONE` on the
-  face for 3 s, and does nothing else there; the one thing more is holding
+  face for 3 s, and does nothing else there. The only other action is holding
   the face button on the check, which turns it away.
 - **Who a wristband is.** It makes a random key at every boot and keeps it
-  only in RAM; its id is the first half of the key's SHA-256, and every hello
-  proves the id with the key. Knowing an id — every phone that ever paired it
-  was told it — is not enough to speak as it, and switching it off and on makes
+  only in RAM. Its id is the first half of the key's SHA-256, and every hello
+  proves the id with the key. Knowing an id (every phone that ever paired it
+  was told it) is not enough to speak as it, and switching it off and on makes
   a new wristband with new letters.
 - **The relay decides, and a late message can only hide.** Every change to the
   armed card or to NOT NOW, from a phone or a wrist, moves a revision. A choice
@@ -234,7 +245,7 @@ that was taken.
   waking in a pocket cannot undo a card chosen on the wrist, and a tap stuck in
   a dead socket cannot show someone who has since gone NOT NOW. The phone
   follows every view (`app/lib/follow.js`) and says when the wrist changed
-  something — *Armed from your wristband: SAY HI*, with `NOT YOU? UNPAIR` — or
+  something (*Armed from your wristband: SAY HI*, with `NOT YOU? UNPAIR`), or
   when its own tap did not land. Offline it queues only what hides: NOT NOW,
   and a card turned off.
 - **A wristband keeps its person in the room** for up to an hour after a phone
@@ -256,18 +267,18 @@ that was taken.
   its own record of the night stays on Tonight. Someone who joined after
   06:00 is not touched. Those who left before 06:00 are forgotten with them,
   so a room kept open past six, in memory and in the night's file, holds
-  nothing of last night. A wristband out of reach at 06:00 is let go as well:
-  back on, it waits for its owner's phone and then shows letters, as one the
-  relay has no record of does; and one away when its room went, worn again
+  nothing of last night. A wristband out of reach at 06:00 is let go as well.
+  Back on, it waits for its owner's phone and then shows letters, as one the
+  relay has no record of does. One away when its room went, worn again
   before six, goes back to letters at six.
 - **After a relay restart** the wristband comes back with its secret and goes
   straight back to its person: the relay carried its record across (*Always
-  on*). A relay that comes back without its night — no file, or one another
-  build cannot read — does not know the secret, and the wristband waits for
-  its owner — `OPEN YOUR PHONE` / `OR SWITCH ME OFF`, no letters — until the
+  on*). A relay that comes back without its night (no file, or one another
+  build cannot read) does not know the secret. The wristband then waits for
+  its owner, showing `OPEN YOUR PHONE` / `OR SWITCH ME OFF` and no letters, until the
   phone's claim with the same secret pairs it again; a hold meanwhile is
-  applied then. Whichever is back first, the secret decides. Nobody by the hour
-  or by 06:00, and it shows new letters. A paired wristband away for an hour is
+  applied then. Whichever is back first, the secret decides. If nobody has
+  claimed it by the hour or by 06:00, it shows new letters. A paired wristband away for an hour is
   forgotten, and only then, told so by the relay, does the phone say *Your
   wristband restarted or went away. Pair it again.* Before that, away for two
   minutes, its chip says `OFFLINE` and offers `PAIR AGAIN`.
@@ -294,12 +305,12 @@ pio device monitor      # its console: ssid, pass, channel, relay, show, forget,
 pio run -e m5sticks3 -t upload    # the same, for a StickS3
 ```
 
-Tell it the venue's Wi-Fi from a phone ("Its Wi-Fi, from a phone", below), or the Wi-Fi and the relay at the console — `relay` takes
-`https://on-the-beat.fly.dev`, or the address `npm run tunnel` prints — or
+Tell it the venue's Wi-Fi from a phone ("Its Wi-Fi, from a phone", below), or the Wi-Fi and the relay at the console (`relay` takes
+`https://on-the-beat.fly.dev`, or the address `npm run tunnel` prints), or
 copy `src/secrets.example.h` to `src/secrets.h`, which git ignores, to build
 them in. What is typed is kept across restarts, which matters: a quick
 tunnel's address changes every run. A `https` relay's certificate is checked
-against the roots in `src/relay_roots.h`, which cover both of those; a relay
+against the roots in `src/relay_roots.h`, which cover both of those. A relay
 of one's own needs its root built in as `OTB_RELAY_CA` in `secrets.h`.
 Off the Wi-Fi, it asks the radio to join again every 15 s. The console says
 what the band is doing: the Wi-Fi coming and going and the reason the radio
@@ -307,17 +318,17 @@ gave, each hello and whether it carries its secret (never the secret), each
 choice sent from the wrist, each refusal, and each change in what the relay
 shows.
 The console can also press the buttons, so a real band is tested without a
-hand on it: `press face` or `press side` is a press, let go after 120 ms;
+hand on it. `press face` or `press side` is a press, let go after 120 ms.
 `hold face` or `hold side` is let go 200 ms after the hold counts, and `hold
 both` holds the two together for as long as turning the band off takes. Each is
 down through the same edges as the button itself, so the band cannot tell
-them apart; `off` turns the band off at once, as the hold would. `face` says what the screen shows: its words, field and light,
+them apart. `off` turns the band off at once, as the hold would. `face` says what the screen shows: its words, field and light,
 the pairing letters included. `sound found`, or any of the band's sounds by
 name, plays it, to hear the speaker without a room around the band. `near`
 says whether it is beaconing and listening, the address it is on the air
-under, and what its last listen heard; `near off` stops both, to test a band
-gone quiet, `near listen` stops only the beacon, so two bands both told it
-hear nobody and say so, and `near on` starts both again; the markers the last
+under, and what its last listen heard. `near off` stops both, to test a band
+gone quiet; `near listen` stops only the beacon, so two bands both told it
+hear nobody and say so; and `near on` starts both again. The markers the last
 listen heard are listed under the bands. `marker bar`, `marker stage` or
 `marker back` makes the band a marker and restarts it as one. A marker's
 console takes only `show` (its area, its address on the air this boot, the
@@ -327,19 +338,19 @@ screen shows (the words, the backlight, and how many pixels are lit),
 `snap` and `turn` as a wristband takes them,
 `power <dBm>` to cap its radio from 2 to 20 dBm for a test (not kept
 across a restart), another `marker`, and `marker off`, which restarts it
-as a wristband. The cap is no smooth stand-in for distance: with the Plus
+as a wristband. The cap is a poor stand-in for distance: with the Plus
 as the marker, the StickS3 read it 17 dB weaker at the lowest cap than at
 the highest, but the caps between moved it in steps, and not always the
 same way (at 6.75 dBm it read weaker than at 5.25). On the Plus, `show` also says
 what the band draws from USB, the mean since the last `show`. Only the
 USB cable reaches the console, and
-whoever holds the cable holds the band and its buttons anyway; no frame from
+whoever holds the cable holds the band and its buttons anyway. No frame from
 the relay reaches it.
 
 **Off and on.** A band left on in a bag drains all week: the Wi-Fi, the
 beacon and the socket never rest. Holding the face and side buttons together
 for 3 s (`OFF_HOLD_MS`) turns it off, a hold no bump in a crowd
-makes: the face says `POWER OFF` over a bar while it is held, the band tells
+makes. The face says `POWER OFF` over a bar while it is held, the band tells
 the relay, lets its socket go, says `POWER OFF` / `POWER BUTTON: ON` and plays
 `down`, and 2.5 s later the power chip cuts the power (`M5.Power.powerOff()`:
 the AXP192 on a StickC Plus, the M5PM1 on a StickS3), so nothing runs and
@@ -348,7 +359,7 @@ the same. The power button turns it on again, and it boots, joins and says
 hello as after any restart. Neither key does anything of its own once both
 are down, so the hold never sets off NOT NOW on the way. The phone shows the
 band as `OFF` straight away, never as `OFFLINE`, and its sheet says the power
-button turns it on; How this works says how to turn it off. Not while it is
+button turns it on; How this works says how to turn it off. It does not turn off while it is
 plugged in: on a USB cable the power chip turns the band straight back on (a
 StickC Plus told to power off on its cable was back on the relay, on a new
 address, within twenty seconds, 5 Oct 2026), so a band reading more than
@@ -356,8 +367,8 @@ address, within twenty seconds, 5 Oct 2026), so a band reading more than
 charges and drains nothing.
 It also turns itself off: a band nobody has paired (nor is pairing),
 off its cable, with no key pressed and no console line for 30 minutes
-(`IDLE_OFF_MS`), so one forgotten in a bag after the show drains half an hour,
-not the night. A marker never does: it is nobody's by design.
+(`IDLE_OFF_MS`), powers down. One forgotten in a bag after the show drains
+for half an hour instead of the whole night. A marker never does: it is nobody's by design.
 
 **Its Wi-Fi, from a phone.** Until 7 Oct 2026 a band joined only what its
 console was told, or what `secrets.h` built in: a laptop, a cable and
@@ -376,10 +387,10 @@ drops any `channel` pin (one venue's channel would keep it off this Wi-Fi),
 says `SAVED` / `JOINING …` and starts again as a wristband on it. A press on
 either button leaves setup unchanged once both have been let go, and so do 10
 minutes with nobody asking for the page (`SETUP_IDLE_MS`). Setup is a start of
-its own, asked for once: no socket, relay or wristband runs beside it, and a
+its own, asked for once. No socket, relay or wristband runs beside it, and a
 setup that goes wrong is a wristband again at the next start. Every name in the
-page was heard over the air, so each is escaped; the password it has now is
-never put in the page; its own Wi-Fi is on a made-up address, as the wristband
+page was heard over the air, so each is escaped. The password it has now is
+never put in the page, and its own Wi-Fi is on a made-up address, as the wristband
 is. It joins 2.4 GHz with a password or open, never a sign-in page: a phone's
 hotspot works, a school's or hotel's sign-in Wi-Fi does not, and the page says
 so. Proven on a StickC Plus, 7 Oct 2026, from a laptop that joined its Wi-Fi:
@@ -387,12 +398,12 @@ the page, both sign-in checks sent to it, a short password refused, a save, and
 the band back on its hotspot and the relay. On 13 Oct 2026 by hand, from a
 phone: hotspot off, `NO WI-FI`, the SIDE hold, a second phone on `OTB-…`, the
 name typed (a hotspot that is off is not in the list), saved, the hotspot on,
-and the band on it and the relay within seconds. The hold asks only once the face says `NO WI-FI`: while a
-show is still believed (ten seconds, `STALE_MS`) a Wi-Fi blip under a meeting
-leaves its FOUND hold alone, and with only the relay out of reach (`NO
+and the band on it and the relay within seconds. The hold asks only once the face says `NO WI-FI`. While a
+show is still believed (ten seconds, `STALE_MS`), a Wi-Fi blip under a meeting
+leaves its FOUND hold alone. With only the relay out of reach (`NO
 SIGNAL` / `NO RELAY`) the hold does nothing, since the Wi-Fi is not what is
-wrong. It was first asked for with both buttons held as the band starts, and
-changed the same day at his word: a start-up window is easy to miss.
+wrong. Setup was first asked for with both buttons held as the band starts, and
+we changed that the same day, because a start-up window is easy to miss.
 
 **It knows a few networks.** Until 13 Oct 2026 a band knew one: set up to a
 teammate's hotspot, it came back to its owner and showed `NO WI-FI`, the
@@ -403,11 +414,11 @@ with its new password; a fourth pushes the oldest out. Knowing one, it joins
 it as before; knowing more, each time it needs Wi-Fi it scans without holding
 the loop and joins the first one near, newest first. After a try that did not
 join, it takes the next one near in turn, so a wrong password on one does not
-keep it off the others; with none heard by name (a hidden network is never),
-it tries each in turn, blind. It waits for the scan's own end, 15 s at most:
-the core calls a scan failed after 6 s, a scan that does not hold the loop
-took 6.2 s on a StickC Plus, and taken at the core's word the first build of
-this never heard a network and never joined (found on the band, 13 Oct 2026,
+keep it off the others. With none heard by name (a hidden network never is),
+it tries each in turn, blind. It waits for the scan's own end, 15 s at most.
+The core calls a scan failed after 6 s, a scan that does not hold the loop
+took 6.2 s on a StickC Plus, and the first build of this, which took the
+core's word, never heard a network and never joined (found on the band, 13 Oct 2026,
 with a timer that also read a try begun after the loop's `now` as long
 overdue). `show` names them all, the setup page says them
 too, and `forget` goes back to the built one alone. A band from before kept
@@ -417,8 +428,8 @@ known.
 **The battery in the corner.** Every lit face on black that does not already
 say the battery (`READY`, `NOT NOW` and `NO SIGNAL` do) carries it small in
 its top right corner: the letters, the check, the waiting face, a preview, a
-wave. Never a card, whose colour is the point from across a room, and never a
-flash. It is the band's own reading, once a second, so it moves on the face
+wave. A card never carries it, since its colour is what matters from across
+a room, and neither does a flash. It is the band's own reading, once a second, so it moves on the face
 before the relay hears it (`withCorner()`; the stand-in at `/band` draws it
 too, and the shared table holds both to it).
 
@@ -436,7 +447,7 @@ the arm, and across the short side, the one reading in which the two wrists
 differ, it read a tenth to three tenths of a g, and the wrong way, so moving
 to the other wrist never turned it. `snap` sends what the screen shows as
 one line, `snap <W> <H> <base64>`, its pixels RGB565 little-endian row by
-row; every landscape face was looked at through it, and the pairing code
+row. Every landscape face was looked at through it, and the pairing code
 read back from the picture with jsQR, the scanner the app uses.
 
 - **Everything that decides anything is in `src/band_logic.h`**, plain C++ with
@@ -456,8 +467,8 @@ read back from the picture with jsQR, the scanner the app uses.
   relay out of reach for ten seconds is no longer believed: the person may have
   gone invisible from their phone since, and a wrist left blue would say
   otherwise. A press then says NO SIGNAL, and whether it is the Wi-Fi or the
-  relay. The socket runs on a task of its own, so a connection that hangs — a
-  captive portal can hold a TLS handshake open for two minutes — never holds
+  relay. The socket runs on a task of its own, so a connection that hangs (a
+  captive portal can hold a TLS handshake open for two minutes) never holds
   up the button or the screen.
 - **The microphone and the speaker take turns.** `main.cpp` opens the
   microphone only while the wrist says it is listening, and each full block
@@ -468,7 +479,7 @@ read back from the picture with jsQR, the scanner the app uses.
   blocks over two at a time, and their samples run 382 ppm fast of
   `millis()`, which counting alone would carry into the pulses at 23 ms a
   minute. So a block clock counts them, held to `millis()` (`BlockClock`,
-  in `beat_logic.h`): a block is never timed after it was handed over, the
+  in `beat_logic.h`). A block is never timed after it was handed over, the
   count creeps later by at most 0.125 ms a block, blocks lost are counted
   over, and the first 16 after it opens are not heard while its filters
   settle. The levels, the tracker and the clock are twins of
@@ -489,10 +500,10 @@ read back from the picture with jsQR, the scanner the app uses.
   off the 5V output the StickS3 keeps off so as to charge, so `setup()`
   switches that output back on for the Plus alone. A buzzer is loud only
   high up, from about 2.8 to 4.7 kHz on the Plus, so the table is written
-  at the buzzer's pitch and a speaker plays it an octave down; a host test
-  refuses a note that starts outside 2.6–4.8 kHz. The first M5StickC has no
+  at the buzzer's pitch and a speaker plays it an octave down. A host test
+  refuses a note that starts outside 2.6-4.8 kHz. The first M5StickC has no
   speaker; it says so once on the console and only lights up. The Plus has
-  no PSRAM, and the buffers share its static RAM with everything else: a
+  no PSRAM, and the buffers share its static RAM with everything else. A
   firmware that held a 24 KB buffer could no longer open TLS to the relay,
   so a host test keeps a buffer at 9600 samples or fewer. `show` prints the
   free heap.
@@ -501,7 +512,7 @@ read back from the picture with jsQR, the scanner the app uses.
   ESP32 checks each ECDSA signature of the chain in software, and 3.0 to 3.4 s
   on the StickS3. The socket task holds its core that long, and the task
   watchdog, which restarts a band whose idle task there has not run for 5 s,
-  restarted the Plus mid-handshake every time; it now allows 20 s. Through a
+  restarted the Plus mid-handshake every time. It now allows 20 s. Through a
   run of handshakes to Fly and to badssl.com's test servers the Plus kept at
   least 50 KB of its heap free.
 - **A change of light alone only turns the backlight.** A flash's dark steps
@@ -522,17 +533,17 @@ read back from the picture with jsQR, the scanner the app uses.
   beacon is an ESP-NOW broadcast at 6 Mbps, so a room of bands takes a sixth
   of the airtime it would at the default 1 Mbps. The listen is promiscuous
   mode, because Arduino-ESP32 2.0's ESP-NOW receive callback gives no signal
-  strength; it takes only an ESP-NOW frame that carries `OTB1`, keeps the
+  strength. It takes only an ESP-NOW frame that carries `OTB1`, keeps the
   strongest reading of each band in that second (`Hearing` in
   `band_logic.h`), and reports the strongest twelve, or that it heard nobody.
   Tried on both bands before it was built: beside the Wi-Fi and a TLS socket
   to the relay, no beacon was lost, and the Plus drew about 101 mA while
   listening against 55 to 75 mA without. A band's outgoing frame is 320
-  bytes now, which a full report (294) fits; it was 256, and a longer frame
+  bytes now, which a full report (294) fits. It was 256, and a longer frame
   would have been cut short without a word.
 - **The pairing code is as wide as the screen allows**, with four light modules
   round it. A tunnel address is a version 4 code, and the canvas's 115 pixels
-  would make each module two pixels — too small to read off a screen this size.
+  would make each module two pixels, too small to read off a screen this size.
 - **The first flash of a StickS3, as it went.** It has no USB-serial chip: the
   S3's own USB is the port, so there is no driver to install and a C-to-C
   cable is fine. Its factory firmware will not be reset into the bootloader,
@@ -546,7 +557,7 @@ read back from the picture with jsQR, the scanner the app uses.
   the console deaf on every model; `setup()` now asks.
 - **Wi-Fi is 2.4 GHz with a password, or open.** Networks behind a web login
   page, like a campus guest network, a university login, like eduroam, or
-  OWE ("enhanced open") do not work: a phone's hotspot on 2.4 GHz does. On
+  OWE ("enhanced open") do not work. A phone's hotspot on 2.4 GHz does. On
   the Android phone it was tried with, "Extend compatibility" moved the hotspot
   to 2.4 GHz only once the hotspot was switched off and on, and "turn off
   hotspot automatically" would have switched it off before the band ever
@@ -555,5 +566,5 @@ read back from the picture with jsQR, the scanner the app uses.
   and a backspace or an arrow is kept as a character: a mistyped line is sent
   as it is and then typed again, which replaces it.
 - **Its fonts are ASCII.** Curly quotes, dashes and Latin accents are folded to
-  it; a pick in a script the fonts cannot draw shows no second line rather than
+  it. A pick in a script the fonts cannot draw shows no second line instead of
   boxes. The phone still shows it whole.

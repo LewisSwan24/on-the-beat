@@ -1,6 +1,6 @@
 # Near: who is near you comes from the wristbands
 
-Date: 26 Sep 2026. Decided with the owner section by section the same day,
+Date: 26 Sep 2026. We decided it section by section the same day,
 after a spike on both real bands and a model of a crowd. It builds on the
 wristband revision of the canvas (revision 6, §3 "Nearness comes from the
 wristbands") and on the waves spec (`2026-09-25-wrist-waves-design.md`),
@@ -8,8 +8,8 @@ whose SAY HI list and waves it narrows.
 
 Revision 6 has two parts: wristbands hear each other, which says who is near
 you; and wristbands the venue leaves at the bar and by the stage, which say
-`near the bar` or `by the stage`. The owner chose the first alone for this
-round, the markers for the next. Of three ways to say who is near, he chose
+`near the bar` or `by the stage`. We chose the first alone for this
+round, the markers for the next. Of three ways to say who is near, we chose
 the relay deciding the five nearest from what the bands report.
 
 ## What is true today
@@ -88,7 +88,7 @@ Without one, nothing changes.
   than five".
 - The five hold only among people wearing a wristband. People without one
   cannot be heard, which says nothing about where they are, so they are
-  listed as today (the owner's choice).
+  listed as today (our choice).
 
 ## §1. On the air: the wristband
 
@@ -133,8 +133,8 @@ All numbers are named constants in `firmware/src/band_logic.h`.
   hearing the other in the last `HEARD_MS` (30 s), in memory only; for each
   band, when it last reported and on which channel.
 - **A pair's score** is the median of those samples, both directions
-  together, so it is the same from either side. *Amended 28 Sep 2026, the
-  owner's choice after the second security review:* how near b is to a is
+  together, so it is the same from either side. *Amended 28 Sep 2026, our
+  choice after the second security review:* how near b is to a is
   the median of what a's own band heard of b, and nothing b's band said. As
   first written, a band's lie entered the other person's score, which §3
   below said it could not: five made-up people on SAY HI with scripted bands

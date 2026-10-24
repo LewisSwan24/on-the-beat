@@ -1,15 +1,15 @@
 # Staff: reports reach the venue team
 
-Date: 28 Sep 2026. Decided with the owner question by question the same
-day, after the second security review. It adds a surface the Claude Design
+Date: 28 Sep 2026. We decided it question by question the same day,
+after the second security review. It adds a surface the Claude Design
 canvas does not have: a page for a venue's own team.
 
 ## What is true today
 
 Checked on 28 Sep 2026, in the code:
 
-- **A report goes to a log.** The phone's Report — from a person's sheet
-  (their handle), from *Report something* (a match, or *Something else*) —
+- **A report goes to a log.** The phone's Report, from a person's sheet
+  (their handle) or from *Report something* (a match, or *Something else*),
   sends `{t:'report', handle, why:''}`. `room.report()` keeps `{ at, from,
   about, band, why }`, the newest 1,000 a venue, and the relay prints each
   one to its own log (`REPORT {...}`). Nobody reads that log during a night.
@@ -40,8 +40,8 @@ if they gave any, without ever learning a name, a contact or who reported.
 
 - **A staff page** at `/staff`, which the canvas does not have: someone has
   to read the reports the canvas promises go to the team.
-- **Report asks for a few words.** The canvas's Report is one tap. The owner
-  chose on 28 Sep 2026 an optional short field, since "someone was reported
+- **Report asks for a few words.** The canvas's Report is one tap. We chose
+  on 28 Sep 2026 an optional short field, since "someone was reported
   near the bar" alone gives staff little to act on.
 
 ## §1. What a report keeps, and what staff see (`relay/room.js`)
@@ -74,8 +74,8 @@ if they gave any, without ever learning a name, a contact or who reported.
 - **Making one.** `npm run staff-code` (`scripts/staff-code.mjs`) asks for
   the venue's show id and a passcode of at least 8 characters, twice, and
   never echoes it. It prints one entry, `"<venue>": "scrypt$16384$8$1$<salt
-  hex>$<hash hex>"`, and nothing else. The owner runs it in his own
-  terminal and puts the entries in the relay's environment as
+  hex>$<hash hex>"`, and nothing else. We run it in our own
+  terminal and put the entries in the relay's environment as
   `STAFF_CODES`, a JSON object, with `flyctl secrets set`. No passcode is
   ever in the repository, in `relay/shows.json`, in `/api/shows`, in a log
   or in a test other than a test passcode.
@@ -83,8 +83,8 @@ if they gave any, without ever learning a name, a contact or who reported.
   sign-in names a venue and a code: a venue with no entry is `no staff
   page`; otherwise `crypto.scrypt` (asynchronous, off the event loop's
   critical path) and `timingSafeEqual` decide. Every sign-in by code counts
-  as an attempt on the same counters as pairing — five a minute a socket,
-  twenty a minute an address — and past them it is `too many tries`.
+  as an attempt on the same counters as pairing (five a minute a socket,
+  twenty a minute an address), and past them it is `too many tries`.
 - **Staying signed in.** A right code gets a token: 32 random hex digits,
   kept in memory with its venue, good until the venue's night ends at 06:00
   (`nightTz`). The page keeps it in `sessionStorage` and signs in with it
@@ -176,8 +176,8 @@ says after it is unchanged.
 - **In a browser**, on a local relay with a test passcode: a phone reports
   someone with words; the staff page shows it within a second, with the
   sound after a tap; two staff tabs share *Handled*.
-- **Live**: deployed to Fly; the owner makes the real passcode, sets the
-  secret and signs in himself.
+- **Live**: deployed to Fly; we make the real passcode, set the
+  secret and sign in ourselves.
 
 ## Also to change when this is built
 

@@ -1,7 +1,7 @@
 # Staff: a new report reaches a closed or sleeping staff device
 
-Date: 29 Sep 2026. Item 3 of the owner's queue of 28 Sep (「2134」), decided
-with him question by question the same day. His choices:
+Date: 29 Sep 2026. Item 3 of our queue of 28 Sep (「2134」), decided
+question by question the same day. Our choices:
 
 - a system notification, by Web Push (「系统通知（推荐）」);
 - only the venue and how many are open on the lock screen
@@ -10,7 +10,7 @@ with him question by question the same day. His choices:
 - Web Push written on `node:crypto`, with no new dependency
   (「A · Node 自带加密库自己写（推荐）」).
 
-He approved the design in three sections, as presented.
+We approved the design in three sections, as presented.
 
 ## What is true today
 
@@ -313,20 +313,20 @@ real push services.
   - each line of §1;
   - SIGN OUT unsubscribing.
 - **A real push on this laptop.** A separate Chrome window runs with a
-  throwaway profile, never the owner's Chrome. It opens the local relay's
+  throwaway profile, never our own Chrome. It opens the local relay's
   staff page with a test passcode, turns notifications on and gets a real
   `fcm.googleapis.com` endpoint. A stand-in phone then reports. Proof is the
   relay's `1 sent`, plus the notification's title and body read back with
-  `getNotifications()`. The owner is told first, because a Chrome window and
-  a notification appear on his screen.
+  `getNotifications()`. We are told first, because a Chrome window and
+  a notification appear on our screen.
 - **On Fly**, after deploying, check that:
   - the log says `push: keys made at /data/push-keys.json`, and
     `push: keys from …` after a restart;
   - `/staff.webmanifest` and `/staff-sw.js` answer with their types.
 
-  No venue has `STAFF_CODES` there yet, so a push on Fly waits for him.
-- **Owed by him.**
-  - His Android phone: turn notifications on, lock the phone, have a
+  No venue has `STAFF_CODES` there yet, so a push on Fly waits for us.
+- **Owed by us.**
+  - Our Android phone: turn notifications on, lock the phone, have a
     report made, see the lock screen, and tap straight into the list.
   - An iPhone, if there is one, from the Home Screen.
 

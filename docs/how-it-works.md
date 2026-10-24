@@ -6,24 +6,24 @@ Everything a phone is shown comes out of `viewFor()` in `relay/room.js`. That
 function is the product's promises as code, and `tests/room.test.js` holds
 each one.
 
-1. **Nobody sees where you are.** A person carries a band — `in this room`,
-   `near the bar`, `by the stage`, `somewhere out the back` — and nothing
+1. **Nobody sees where you are.** A person carries a band (`in this room`,
+   `near the bar`, `by the stage`, `somewhere out the back`) and nothing
    finer. There is no position anywhere in the system to leak. On phones
    alone, everyone is `in this room`: a web page cannot tell where in a venue
    a phone is, and it does not guess. Only a marker the venue puts up, heard
-   clearly by a person's own wristband, names a finer band (*Markers*,
-   below). What wristbands hear of each other only takes people off SAY HI's
-   list (*Who is near*, below), and no phone or wristband is ever told how
+   clearly by a person's own wristband, names a finer band (*Markers*, in
+   `docs/wristband.md`). What wristbands hear of each other only takes people off SAY HI's
+   list (*Who is near*, in `docs/wristband.md`), and no phone or wristband is ever told how
    near anyone is.
 2. **No name and no photo until you both say yes.** Before a mutual yes a
-   person is a handle, a band and at most a track. Handles are per viewer —
-   the same person has a different handle on every phone — so two phones
+   person is a handle, a band and at most a track. Handles are per viewer
+   (the same person has a different handle on every phone), so two phones
    cannot compare notes about who is who.
 3. **One tap makes you invisible.** NOT NOW takes you off every list and
    shows you nobody's. It is kept on the phone, so a reload or a flat signal
    does not turn you back on; only TURN BACK ON (or arming a card) does.
 4. **If someone declines, you never see each other again tonight.** The
-   decline is Block — and "Not this one" on a match is a decline, which asks
+   decline is Block, and "Not this one" on a match is a decline, which asks
    *Block them for tonight?* first, since it cannot be taken back. It is
    silent, both ways, and it outlives leaving the room, so a phone that slept
    in a pocket for ten minutes does not come back unblocked.
@@ -32,43 +32,42 @@ What each kind of yes shows the other side before it is returned:
 
 | | seen by the other person? |
 |---|---|
-| a wave (SAY HI) | yes — a blue dot on a row that is still only a band, so they can wave back; and on their wristband, a short call and a count of who waits, never who |
-| a like (FIRST SONG?) | never — it was for an answer, not a face |
-| a dance back (LET'S DANCE!) | yes — the clip or photo goes straight to them, with no name on it |
-| a team-up (LET'S GUESS!) | never — like a like, it shows only on your own list, as ASKED; they see your score, never your answers, and learn you asked only if they team up back |
+| a wave (SAY HI) | yes: a blue dot on a row that is still only a band, so they can wave back; and on their wristband, a short call and a count of who waits, never who |
+| a like (FIRST SONG?) | never: it was for an answer, not a face |
+| a dance back (LET'S DANCE!) | yes: the clip or photo goes straight to them, with no name on it |
+| a team-up (LET'S GUESS!) | never: like a like, it shows only on your own list, as ASKED; they see your score, never your answers, and learn you asked only if they team up back |
 
 None of them is ever reported as declined. A yes that is not returned just
 never becomes a match.
 
 ## How it is built
 
-- **`relay/`** — one Node process: the pages, and one room per venue over a
+- **`relay/`**: one Node process: the pages, and one room per venue over a
   WebSocket at `/api/ws`. One process on purpose: a host that scales out can
   put two phones at the same gig into two different rooms that share a name.
   The night is held in memory and, with `NIGHT_FILE` set (on Fly), written
-  to that file so a restart carries it on (*Always on*, above); without it,
+  to that file so a restart carries it on (*Always on*, in `docs/running.md`). Without it,
   stop the relay and the night is gone.
   - After a change the relay pushes each phone its own `viewFor()`, at
     most every 100 ms a room, so a burst of changes is one push. A room
     whose pushes cost more waits four times what they cost (never past 2 s),
     so pushing takes a quarter of the relay's time at most.
   - What each wristband heard of the others and of the markers is kept
-    30 s, in memory, and never leaves the relay; every five seconds each
+    30 s, in memory, and never leaves the relay. Every five seconds each
     room works out who is near whom and who is in which area, and pushes
     only the views that changed.
   - A dropped socket is not leaving: a person stays in the room for two
     minutes, so a locked screen does not cost them their place.
-  - Clips are kept in memory, one on the floor per person, for an hour —
-    the canvas says "it loops on the floor for an hour", and it does. Every
+  - Clips are kept in memory, one on the floor per person, for an hour.
+    The canvas says "it loops on the floor for an hour", and it does. Every
     room's clips together stay under 40 MB, about a hundred floor clips of
     five seconds, which is what the Fly machine's 207 MB leaves room for
-    (*What is not done*, first bullet): past that the oldest go first, in
+    (`docs/not-done.md`, first bullet): past that the oldest go first, in
     whichever room they are. A posed photo is kept the same way: a JPEG of
     at most 300 KB, in the same one place per person.
-    Each is served only to someone whose own view shows it (*Abuse
-    resistance*, below).
+    Each is served only to someone whose own view shows it (`docs/abuse-resistance.md`).
   - Reports go to the venue's own staff page, `/staff`, live, and to its
-    staff devices' notifications (The staff page, below). The log says only
+    staff devices' notifications (`docs/staff-page.md`). The log says only
     that one came.
   - `relay/push.js` is Web Push on `node:crypto` alone: the relay's own
     keys, kept in `PUSH_KEYS_FILE`; each payload sealed for one device
@@ -80,8 +79,8 @@ never becomes a match.
     fewer is asked whole, still shuffled). The relay keeps the answers, and the
     venue list phones are given carries no quiz. A venue with no quiz has
     LET'S GUESS! closed all night: the phone still shows the card, greyed
-    (`resting` in the view), and a tap says there is no quiz here tonight;
-    it never arms, and the wristband steps over it. A listed show with no
+    (`resting` in the view), and a tap says there is no quiz here tonight.
+    It never arms, and the wristband steps over it. A listed show with no
     times yet gets none made up: the phone says "no times yet". A venue nobody listed still gets a room, named by what
     was typed, with case, accents, punctuation, `&` for `and` and a leading
     `the` let go (`app/lib/typed.js`), so "the Fortitude Music Hall" and
@@ -91,7 +90,7 @@ never becomes a match.
     venue take it off every list). A made room is listed after the shows
     for the rest of the night, three a network and two hundred a relay, and
     goes at 06:00. A phone lists tonight's rooms nearest first, working out
-    the distance itself; its own place never leaves it except rounded to
+    the distance itself. Its own place never leaves it except rounded to
     about 100 m, as the place of a room it makes, and it asks "Wrong
     place?" when the room it is in is more than 500 m away
     (`app/lib/where.js`, `docs/superpowers/specs/2026-10-13-venue-cards-design.md`).
@@ -115,7 +114,7 @@ never becomes a match.
     the meeting's own number and spot. One no, or ten minutes with no answer
     (`JOIN_MS`), keeps them out, and they are not told who. A meeting stays
     pairs underneath, sharing a `group` id, so keeping a contact, found and
-    the wristband work between two people as before; in a meeting of three
+    the wristband work between two people as before. In a meeting of three
     or four, LET'S FINISH takes only you out, and the rest go on. One FOUND
     (side hold or phone) counts for every pair you are in, and the band
     plays found only once everyone in the meeting has said it; a newcomer
@@ -124,13 +123,13 @@ never becomes a match.
     where they are (`note`, `view.talk`): a ready line or their own words,
     up to `NOTE_MAX` (60) characters, one every 1.5 s and 20 each, printable
     text only. Only the meeting sees them, they close once everyone has
-    found everyone, and they live in memory alone, never in the night file.
-    `tests/talk.test.js`. `tests/cards.test.js` and `tests/firmware.test.js` hold
+    found everyone, and they live in memory alone, never in the night file
+    (`tests/talk.test.js`). `tests/cards.test.js` and `tests/firmware.test.js` hold
     everything to it, so a card added there is either complete or red:
     words idle and armed, an icon in the subset font, `--id` and `--id-g`
     in the stylesheet, its screens, its play and its own list, and the same
     table in the firmware.
-- **`app/`** — React, built by Vite into `dist/`, installable as a PWA.
+- **`app/`**: React, built by Vite into `dist/`, installable as a PWA.
   - `lib/net.js`: on every join the phone says again what it is (name, armed
     card, NOT NOW, pick), because the relay may have restarted without its
     night.
@@ -138,7 +137,7 @@ never becomes a match.
     since a socket can die without ever closing. Actions taken with no signal
     are queued: "Saved. It'll sync when you're out."
   - `lib/store.js`: the phone keeps its own record of the night in
-    `localStorage` — where it was, what it did, who it met — and, for good,
+    `localStorage` (where it was, what it did, who it met) and, for good,
     any contact both sides kept. A night gets its own random id, so a person
     is not the same stranger to the relay two nights running.
   - `lib/phase.js`: DOORS · SUPPORT · BREAK · HEADLINE · AFTER, from the show's
@@ -172,5 +171,5 @@ never becomes a match.
     (`vite.config.js`: a `data:` URL is refused under `font-src 'self'`, and a
     subset of a handful of icons would be small enough to be inlined), which a
     test proves by building a tiny one with the real config.
-- **`firmware/`** — the wristband itself, an M5StickC Plus or a StickS3 on a
-  strap, built with PlatformIO. See The wristband's firmware, below.
+- **`firmware/`**: the wristband itself, an M5StickC Plus or a StickS3 on a
+  strap, built with PlatformIO. See *The wristband's firmware* in `docs/wristband.md`.

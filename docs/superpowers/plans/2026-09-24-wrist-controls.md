@@ -4,31 +4,31 @@
 
 **Goal:** From the wrist alone a person can change which card is armed, come back from NOT NOW, and see whether the relay took it; the phone follows the relay, and pairing ends with a two-digit check.
 
-**Architecture:** The relay (`relay/server.js`, `relay/room.js`) stays the one place a person's state lives; it gains a per-boot band identity (key → id), a per-pairing secret, a pairing check, `rev`/`seq`/`by` per person, the wrist's `set`, and one grace. The phone gets a pure `follow()` (`app/lib/follow.js`) and never asserts state on load. The wrist is one state machine written twice — `app/lib/wrist.js` for `/band` and a `Wrist` class in `firmware/src/band_logic.h` — held to one fixture table (`tests/fixtures/wrist-cases.json`) through a line protocol both read.
+**Architecture:** The relay (`relay/server.js`, `relay/room.js`) stays the one place a person's state lives; it gains a per-boot band identity (key → id), a per-pairing secret, a pairing check, `rev`/`seq`/`by` per person, the wrist's `set`, and one grace. The phone gets a pure `follow()` (`app/lib/follow.js`) and never asserts state on load. The wrist is one state machine written twice (`app/lib/wrist.js` for `/band` and a `Wrist` class in `firmware/src/band_logic.h`) and held to one fixture table (`tests/fixtures/wrist-cases.json`) through a line protocol both read.
 
 **Tech Stack:** Node 22+ (`node --test`, `ws`), React 19 + Vite 8, C++17 (WinLibs g++ here, GCC in CI, Arduino-ESP32 via PlatformIO for M5StickC Plus/Plus2 and M5StickS3).
 
-**Spec:** `docs/superpowers/specs/2026-09-24-wrist-controls-design.md` (approved; §0–§4 and the timings table are quoted by name below). Read it before any task.
+**Spec:** `docs/superpowers/specs/2026-09-24-wrist-controls-design.md` (approved; §0-§4 and the timings table are quoted by name below). Read it before any task.
 
 ## Global Constraints
 
-- Artefacts are English: code, comments, commit messages, README, test names. Talk to the owner in Chinese.
+- Artefacts are English: code, comments, commit messages, README, test names. Talk to us in Chinese.
 - Timings are named constants, never literals in tests or fixtures: `WAKE_MS = 6000`, `HOLD_MS = 1500`, `CHOOSE_MS = 6000`, `COMMIT_MS = 3000`, `CONFIRM_MS = 10000`, `RESULT_MS = 3000`, `PAIR_CHECK_MS = 60000`, `BAND_ALONE_MS = 3600000` (60 min). This plan adds `BAR_MS = 300` for the spec's "from 0.3 s".
 - Band identity: a random 128-bit key made at every boot, RAM only, never told to a phone; id = first 32 hex of SHA-256 over the key's 16 raw bytes. Secret: 32 hex, made by the relay on YES, RAM only on the wrist, stored with the night on the phone.
 - Hello: `{"t":"wristband","id":…,"key":…,"v":2[,"secret":…][,"quiet":true][,"battery":N]}`.
 - KEY1 is M5Unified `BtnA`, KEY2 is `BtnB`; `BtnPWR` is never used.
-- The owner's principle: a change that hides a person may arrive late; a change that shows them may not.
-- Repository `LewisSwan24/on-the-beat` (private). Commit after each task; push to `main` when the stage's `npm test` is green. Never the team repository `cimi2232/DECO3500` — `tools/hooks/pre-push` refuses it; check it is installed with `ls .git/hooks/pre-push` before the first push.
+- Our principle: a change that hides a person may arrive late; a change that shows them may not.
+- Repository `LewisSwan24/on-the-beat` (private). Commit after each task; push to `main` when the stage's `npm test` is green. Never the team repository `cimi2232/DECO3500`: `tools/hooks/pre-push` refuses it; check it is installed with `ls .git/hooks/pre-push` before the first push.
 - `CLAUDE.md` is not in git and is not edited by this plan. Nothing from `../on-the-beat-research/` or `../on-the-beat-design/` enters the repository.
 - `npm test` builds first (the relay serves `dist/`). Running one test file alone: `npm run build` first, and again after restoring a mutation.
 - Windows host: the Bash tool is Git Bash; PowerShell is also available. The host binary's output is split on `/\r?\n/`. MinGW has no sanitizers: `tests/firmware.test.js` already falls back to a plain build; CI keeps the sanitizers.
-- The device is an M5StickS3 on `COM8`, flashed with `C:\Users\LewisDong\.platformio\penv\Scripts\pio.exe run -d firmware -e m5sticks3 -t upload --upload-port COM8`. The owner's serial monitor may hold COM8: ask him to close it first.
+- The device is an M5StickS3 on `COM8`, flashed with `C:\Users\LewisDong\.platformio\penv\Scripts\pio.exe run -d firmware -e m5sticks3 -t upload --upload-port COM8`. Our serial monitor may hold COM8: ask us to close it first.
 - Never more than ten background tasks at once (global instructions). Work directly; this plan needs no fan-out.
 - Commit messages end with the attribution trailer the session's system reminder gives (today: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`).
 
 ## Two procedures used throughout
 
-**P1 — Mutation check.** Every relay guard gets one, and rule 4 on the phone gets one. Each task names the exact edit and the exact test.
+**P1: Mutation check.** Every relay guard gets one, and rule 4 on the phone gets one. Each task names the exact edit and the exact test.
 
 1. Make the named edit (one guard broken, nothing else).
 2. Run `npm run build >/dev/null && node --test <the named test file> 2>&1 | grep -E "^✖|^ℹ (pass|fail)"`.
@@ -40,7 +40,7 @@ If the wrong test goes red, or none does, stop: the test does not hold the guard
 
 A few guards are what other tests stand on (a live wristband holding its person, the hour, 06:00, noting the seq). Breaking one of those reddens its own test *and* the tests built on it; for those the task names the whole expected set, marked **Expected red (exactly)**, and the check passes only if exactly that set goes red. Every relay mutation in this plan was run against a finished copy of the relay while the plan was written, not against each intermediate step: 37 of 42 isolate to one test, and the other five are listed with their sets. At an intermediate task a set can be smaller (a test that is not written yet cannot go red); it is never larger.
 
-**P2 — Close a stage.** `npm test` (expect `ℹ fail 0`; the firmware tests must run, not skip, from Task 1 on), then `git push origin main`. A push that cannot reach github.com:443 while `gh` works is the network: check with `curl -sI https://github.com`, retry, leave git config alone.
+**P2: Close a stage.** `npm test` (expect `ℹ fail 0`; the firmware tests must run, not skip, from Task 1 on), then `git push origin main`. A push that cannot reach github.com:443 while `gh` works is the network: check with `curl -sI https://github.com`, retry, leave git config alone.
 
 ## Files
 
@@ -54,7 +54,7 @@ Created:
 | `relay/night.js` | `nightOf(ms, tz)`: 06:00 in the venue's time zone |
 | `tests/relay-harness.js` | Phones, wristbands, raw sockets and pairing helpers shared by the relay tests (not a test file) |
 | `tests/wristband.test.js` | §0 identity and the check; rule 1 `set` |
-| `tests/rules.test.js` | Rule 2 (grace, hour, 06:00), join `quiet`, NOT NOW remembered, rules 3–5, leaving |
+| `tests/rules.test.js` | Rule 2 (grace, hour, 06:00), join `quiet`, NOT NOW remembered, rules 3-5, leaving |
 | `tests/sha256.test.js` | `app/lib/sha256.js` against `node:crypto` |
 | `tests/wrist-table.js` | The fixture's line protocol, the JS runner, the checker (not a test file) |
 | `tests/fixtures/wrist-cases.json` | One table of wrist cases for both wrists |
@@ -69,13 +69,13 @@ Modified: `relay/server.js`, `relay/room.js`, `relay/band.js`, `app/App.jsx`, `a
 
 | Stage | Tasks | Leaves |
 |---|---|---|
-| A. Tooling | 1–2 | a local C++ compiler; CI building both envs |
-| B. §0 Identity and the check | 3–9 | key → id, v2 hello, the check, secrets, waiting for the owner; phone and both wrists speak it |
-| C. §2 The relay decides | 10–14 | rev/seq/by/fresh, one grace + hour + 06:00, `set`, rules 3–5, durable leave |
-| D. §3 The phone follows | 15–17 | `follow.js`, `net.js` order, App wiring |
-| E. §1/§4 One Wrist, twice | 18–20 | `wrist.js` + table; C++ reader; C++ `Wrist` on the same table |
-| F. Wiring | 21–23 | `main.cpp` and `/band` over the Wrist; copy with the constants + grep test |
-| G. Docs and proof | 24–26 | README; browser; the real band |
+| A. Tooling | 1-2 | a local C++ compiler; CI building both envs |
+| B. §0 Identity and the check | 3-9 | key → id, v2 hello, the check, secrets, waiting for the owner; phone and both wrists speak it |
+| C. §2 The relay decides | 10-14 | rev/seq/by/fresh, one grace + hour + 06:00, `set`, rules 3-5, durable leave |
+| D. §3 The phone follows | 15-17 | `follow.js`, `net.js` order, App wiring |
+| E. §1/§4 One Wrist, twice | 18-20 | `wrist.js` + table; C++ reader; C++ `Wrist` on the same table |
+| F. Wiring | 21-23 | `main.cpp` and `/band` over the Wrist; copy with the constants + grep test |
+| G. Docs and proof | 24-26 | README; browser; the real band |
 
 Every task ends green and is committed on its own; each stage ends with P2.
 
@@ -94,7 +94,7 @@ Every task ends green and is committed on its own; each stage ends with P2.
 
 MSVC is already here (Visual Studio 2022 BuildTools, `cl` 19.44, found while this plan was written and used to compile its C++), but `tests/firmware.test.js` drives GCC-style flags (`-std=c++17 -Wall -Wextra -Werror`, the sanitizers), which `cl` does not take; the spec asks for WinLibs g++, and CI is GCC.
 
-- [ ] **Step 1: Ask the owner, in Chinese, to approve the install command.** The main session recorded his approval of WinLibs g++ on 24 Sep, but the command accepts package agreements, which needs his explicit yes for this exact line:
+- [ ] **Step 1: Ask us, in Chinese, to approve the install command.** The main session recorded our approval of WinLibs g++ on 24 Sep, but the command accepts package agreements, which needs our explicit yes for this exact line:
 
 ```powershell
 winget install --id BrechtSanders.WinLibs.POSIX.UCRT --exact --accept-package-agreements --accept-source-agreements
@@ -115,7 +115,7 @@ $env:CXX = $gpp.FullName
 Run: `npm run build >/dev/null && node --test tests/firmware.test.js 2>&1 | grep -E "^✖|^ℹ (pass|fail|skipped)"`
 Expected: the tests run (not skipped) and at least `the code a wristband draws opens the app on its own four letters` and `what the firmware says, the relay takes…` fail, because MinGW writes `\r\n` and every answer ends in `\r`. If instead the build itself fails under `-Werror` with a MinGW-only warning, fix that warning in `firmware/host/logic_test.cpp` or `band_logic.h` with the smallest change and note it in the commit.
 
-- [ ] **Step 4: Split on either line ending** — in `tests/firmware.test.js`, `speak()`:
+- [ ] **Step 4: Split on either line ending** in `tests/firmware.test.js`, `speak()`:
 
 ```js
   const out = r.stdout.split(/\r?\n/).slice(0, -1);
@@ -191,7 +191,7 @@ Expected: two `[SUCCESS]` lines.
 
 Also update the header comment's `firmware` paragraph: "built by PlatformIO for both envs, the ESP32 (`m5stickc`) and the StickS3 (`m5sticks3`), and kept as downloads: each app on its own, and one image each that flashes whole at 0x0 (the ESP32's bootloader sits at 0x1000 inside it, the S3's at 0x0)."
 
-- [ ] **Step 3: README** — the **CI.** paragraph under "Run it" becomes: "**CI.** Every push to `main` and every pull request runs `npm test` and builds the wristband's firmware for both envs with PlatformIO (`.github/workflows/ci.yml`). Each run keeps the firmware as a download: each env's `firmware.bin`, and one image each that flashes whole at `0x0`, bootloader and partition table included — `otb-wristband-full.bin` for the M5StickC Plus, `otb-wristband-s3-full.bin` for the StickS3." And in "What is not done", replace "CI builds the ESP32 firmware with PlatformIO on every push — about 1.2 MB of the 3 MB app partition — and keeps the image to flash; it does not build the StickS3 env." with "CI builds both envs with PlatformIO on every push — the ESP32 image is about 1.2 MB of its 3 MB app partition — and keeps each image to flash."
+- [ ] **Step 3: README**: the **CI.** paragraph under "Run it" becomes: "**CI.** Every push to `main` and every pull request runs `npm test` and builds the wristband's firmware for both envs with PlatformIO (`.github/workflows/ci.yml`). Each run keeps the firmware as a download: each env's `firmware.bin`, and one image each that flashes whole at `0x0`, bootloader and partition table included — `otb-wristband-full.bin` for the M5StickC Plus, `otb-wristband-s3-full.bin` for the StickS3." And in "What is not done", replace "CI builds the ESP32 firmware with PlatformIO on every push — about 1.2 MB of the 3 MB app partition — and keeps the image to flash; it does not build the StickS3 env." with "CI builds both envs with PlatformIO on every push — the ESP32 image is about 1.2 MB of its 3 MB app partition — and keeps each image to flash."
 
 - [ ] **Step 4: Full suite, commit, push (closes Stage A with P2)**
 
@@ -228,7 +228,7 @@ This stage must ship before `set` exists (spec §0, "Why first"). Order inside i
 - Produces (C++): `std::string sha256Hex(const uint8_t*, size_t)`, `std::vector<uint8_t> hexBytes(const std::string&)`, `std::string makeKey(const std::function<uint32_t()>&)`, `std::string idFor(const std::string& keyHex)`, `std::string helloFrame(const std::string& id, const std::string& key, int battery, const std::string& secret = "", bool quiet = false)`.
 - Produces (host): `speak` verbs `key` → 32 hex; `idfor <key>` → id; `sha256 <hex>` → 64 hex; `hello <key> <battery> [secret|-] [quiet]` → the hello frame.
 
-- [ ] **Step 1: Write the failing JS test** — `tests/sha256.test.js`:
+- [ ] **Step 1: Write the failing JS test** in `tests/sha256.test.js`:
 
 ```js
 // ON THE BEAT — the stand-in's SHA-256, held to node:crypto.
@@ -330,7 +330,7 @@ export const bandIdOf = (keyHex) => toHex(sha256(fromHex(keyHex))).slice(0, 32);
 Run: `node --test tests/sha256.test.js 2>&1 | grep -E "^ℹ (pass|fail)"`
 Expected: `ℹ pass 2`, `ℹ fail 0`. (This module was run against `node:crypto` while this plan was written.)
 
-- [ ] **Step 5: Write the failing firmware tests** — in `tests/firmware.test.js`, import `createHash` beside `randomBytes`, add after the imports:
+- [ ] **Step 5: Write the failing firmware tests** in `tests/firmware.test.js`, import `createHash` beside `randomBytes`, add after the imports:
 
 ```js
 const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'hex')).digest('hex').slice(0, 32);
@@ -582,7 +582,7 @@ git commit -m "Make a band key at every boot; the id is its hash, and the hello 
 - Consumes: `bandIdOf` semantics from Task 3.
 - Produces (relay): `export const bandIdOf = (keyHex) => string` from `relay/server.js`; band records gain `old: boolean`; a refused hello answers `{t:'error',why:'bad band'}` and closes with code 4001; a replaced band socket is closed with 4000.
 - Produces (tests): `helpers(port: () => number)` → `{ phone, wristband, hello, reply, pairBand, rawSocket, close, cleanup }`; `newKey()`, `pause(ms)`.
-  - `phone(venue, { band, ip, quiet, me })` — every phone gets its own `cf-connecting-ip` unless `ip` is given, so the per-address limit trips only where a test means it to.
+  - `phone(venue, { band, ip, quiet, me })`: every phone gets its own `cf-connecting-ip` unless `ip` is given, so the per-address limit trips only where a test means it to.
   - `wristband(battery = 62, { key, secret, quiet, v1 })` → `{ ws, id, key, secret, show, replies, send, until(pred(show, band), ms) }`; records the `paired` secret and every `set`/`error` reply.
   - `hello(frame)` → `{ ws, reply, closed }` (`closed` is the close code, or null within 300 ms).
   - `pairBand(phone, band)` → the `paired` message (this task: by the letters alone; Task 5 puts the check in).
@@ -732,9 +732,9 @@ In `tests/server.test.js`: import `bandIdOf` from the relay and `{ helpers, newK
 - `a phone back before its wristband holds the claim…`: `const key = newKey(); const id = bandIdOf(key);` replaces the random id, and the band is `await wristband(40, { key })`.
 - `the band table has a ceiling…`: `const key = newKey(); band.send(JSON.stringify({ t: 'wristband', id: bandIdOf(key), key, v: 2, battery: 88 }));`.
 
-`bandIdOf` is not exported by the relay yet, so the suite fails to load — that is this task's first red.
+`bandIdOf` is not exported by the relay yet, so the suite fails to load. That is this task's first red.
 
-- [ ] **Step 2: Write the failing tests** — `tests/wristband.test.js`:
+- [ ] **Step 2: Write the failing tests** in `tests/wristband.test.js`:
 
 ```js
 // ON THE BEAT — who a wristband is, pairing with a check, and the wrist's own `set`.
@@ -908,7 +908,7 @@ git commit -m "Refuse a hello whose key does not hash to its id, and frames from
 - Produces (C++): `wordsFor`/`lightFor` know `kind == "check"`.
 - Produces (tests): `pairBand(phone, band)` goes through the check and waits for the band's secret.
 
-- [ ] **Step 1: Write the failing relay tests** — append to `tests/wristband.test.js` (and add `PAIR_CHECK_MS` to its relay import):
+- [ ] **Step 1: Write the failing relay tests** at the end of `tests/wristband.test.js` (and add `PAIR_CHECK_MS` to its relay import):
 
 ```js
 // ---------- §0: the check ----------
@@ -1063,7 +1063,7 @@ and update the existing pairing tests in `tests/server.test.js`:
   ana.send({ t: 'pair', code });
   assert.ok((await ana.until((v) => v.me.check)).me.check, 'the letters still reach it inside the grace window');
   ```
-- `the band table has a ceiling…`: the late phone is asked, not paired —
+- `the band table has a ceiling…`: the late phone is asked, not paired:
   ```js
     let checked = null, refused = null;
     late.on('message', (d) => { const m = JSON.parse(String(d)); if (m.t === 'view' && m.view.me.check) checked = m.view.me.check; if (m.t === 'error') refused = m.why; });
@@ -1263,9 +1263,9 @@ git commit -m "End every pairing with a check number the phone confirms"
 
 **Interfaces:**
 - Consumes: `b.secret` made on YES (Task 5); the harness's `wristband(…, { secret })`.
-- Produces: a hello for a paired id is refused (`bad band`, 4001) unless it carries that record's `secret`; the phone's claim is `{t:'pair', band, secret}` and is answered `{t:'claim', ok:true, band}` or `{t:'claim', ok:false, why:'waiting'|'gone'}` — never `paired`, never `no such wristband`. A claim for an id the relay does not hold, with a well-formed id and secret, keeps a placeholder with that secret and answers `waiting`.
+- Produces: a hello for a paired id is refused (`bad band`, 4001) unless it carries that record's `secret`; the phone's claim is `{t:'pair', band, secret}` and is answered `{t:'claim', ok:true, band}` or `{t:'claim', ok:false, why:'waiting'|'gone'}`; it is never `paired` and never `no such wristband`. A claim for an id the relay does not hold, with a well-formed id and secret, keeps a placeholder with that secret and answers `waiting`.
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/wristband.test.js`:
+- [ ] **Step 1: Write the failing tests** at the end of `tests/wristband.test.js`:
 
 ```js
 // ---------- §0: the secret ----------
@@ -1417,7 +1417,7 @@ Between this task and Task 9 a real wristband that drops its Wi-Fi is refused on
 - Produces: option `bandAloneMs = BAND_ALONE_MS`; `export const BAND_ALONE_MS = 60 * 60_000`; band records gain `waiting`, `waitingAt`, `quiet`; a `gone` map of forgotten ids; `holdOn(b)`; `forget(id, at)`; `bandShow({ …, waiting })` → `{ kind: 'waiting' }`; a no-view show is `{ kind: 'off', battery, away: true }`.
 - Removes: `CLAIM_GRACE_MS` (a placeholder is kept for `BAND_ALONE_MS`).
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/wristband.test.js` (add `BAND_ALONE_MS` to its relay import and `import { randomBytes } from 'node:crypto';`):
+- [ ] **Step 1: Write the failing tests** at the end of `tests/wristband.test.js` (add `BAND_ALONE_MS` to its relay import and `import { randomBytes } from 'node:crypto';`):
 
 ```js
 // ---------- §0: after a relay restart ----------
@@ -1643,7 +1643,7 @@ git commit -m "After a relay restart, keep a paired wristband waiting for its ow
 - Produces: `PAIR_SAY` in `app/lib/pairing.js` (every relay answer the phone words, by name); night state `wristband` (id) and `bandSecret`; the phone's claim `{t:'pair', band, secret}`; `{t:'confirm', yes}`; `band.offline` (away two minutes) on the chip, with `PAIR AGAIN` in the wristband sheet.
 - Removes: the `/pair/` link's one-tap confirm (`pairConfirm`, `Pair`'s `confirm` prop).
 
-- [ ] **Step 1: Write the failing test** — `tests/pairing.test.js`, add `PAIR_SAY` to the import and:
+- [ ] **Step 1: Write the failing test** in `tests/pairing.test.js`, add `PAIR_SAY` to the import and:
 
 ```js
 test('every answer the relay gives a pairing phone has words, and the check asks about the number', () => {
@@ -1682,7 +1682,7 @@ export const PAIR_SAY = {
 };
 ```
 
-Run: `node --test tests/pairing.test.js 2>&1 | grep -E "^ℹ (pass|fail)"` — Expected: `ℹ fail 0`.
+Run: `node --test tests/pairing.test.js 2>&1 | grep -E "^ℹ (pass|fail)"`. Expected: `ℹ fail 0`.
 
 - [ ] **Step 4: The check sheet, and the answers, in `app/App.jsx`.**
   1. Import `PAIR_SAY` beside `codeFrom`. Delete the `pairConfirm` state and its comment, and the `linked` effect's `setPairConfirm(linked)` becomes `setPairCode(linked)`; the effect's comment becomes: "A code from the address lands on the pair screen pre-filled. It pairs nothing on its own: like typed or scanned letters, it only starts the check, and the person must see the number on their own wrist and say yes."
@@ -1806,7 +1806,7 @@ git commit -m "Ask on the phone whether the wrist shows the check number; keep t
 - Produces (C++): `Show::away`; `Frame::secret`; `wordsFor`: check → `{big, "ON YOUR PHONE?"}` (Task 5), waiting → `{"OPEN YOUR PHONE", "OR SWITCH ME OFF"}`, awake and off → NO SIGNAL (offline) / `{"NOT NOW", pct}` (quiet) / `{"OPEN YOUR PHONE", "TO COME BACK"}` (away) / `{"READY", pct}`; `lightFor`: waiting → `LIGHT_AWAKE` always.
 - Produces (host): the `show` verb's JSON gains `"away"`.
 
-- [ ] **Step 1: Write the failing C++ checks** — in `logic_test.cpp`, `frames()`:
+- [ ] **Step 1: Write the failing C++ checks** in `logic_test.cpp`, `frames()`:
 
 ```cpp
   Frame p;
@@ -1837,7 +1837,7 @@ and `face()`:
   CHECK(w.big == "NOT NOW" && w.small == "62%");
 ```
 
-and one existing check in `face()` changes on purpose — a press under NOT NOW from the wrist now says so: `CHECK(wordsFor(f, true, 62, Signal::LIVE).big == "READY");` (just after `f = faceFor(&song, false, true);`) becomes `… .big == "NOT NOW");`.
+and one existing check in `face()` changes on purpose, because a press under NOT NOW from the wrist now says so: `CHECK(wordsFor(f, true, 62, Signal::LIVE).big == "READY");` (just after `f = faceFor(&song, false, true);`) becomes `… .big == "NOT NOW");`.
 
 In `tests/firmware.test.js` (the round trip): the `got` expectation gains `away: !!s.away,` after `quiet`; add `if (s.kind === 'waiting') assert.deepEqual(words, { big: 'OPEN YOUR PHONE', small: 'OR SWITCH ME OFF' }, text);`; and before the "Every frame the relay sent" block, a wristband the relay does not know comes back with a secret:
 
@@ -1891,7 +1891,7 @@ Run: `npm run build >/dev/null && node --test tests/firmware.test.js 2>&1 | grep
 Expected: `ℹ fail 0`.
 
 - [ ] **Step 5: `main.cpp` keeps the secret and sends the hello from the loop.** The hello now depends on the secret and on a hold still waiting, which live on the loop, so the loop sends it:
-  1. `std::string bandKey, bandId, secret, ssid, pass, relayText;` — `secret` with the comment `// given on YES; RAM only, so a reboot is a new wristband`.
+  1. `std::string bandKey, bandId, secret, ssid, pass, relayText;`, with `secret` carrying the comment `// given on YES; RAM only, so a reboot is a new wristband`.
   2. `Out::text` becomes `char text[256];  // a hello with its key, secret and quiet is about 190 bytes`.
   3. `onSocket`'s `WStype_CONNECTED` becomes:
      ```cpp
@@ -2000,7 +2000,7 @@ git commit -m "Keep the pairing secret on both wrists, and show the check, waiti
 git push origin main
 ```
 
-Then flash the band (Global Constraints; ask the owner to close his serial monitor first) and pair it once through the check, to prove the real hello is not cut short: the serial console must print `on the relay:` and no `the relay says: bad band`.
+Then flash the band (Global Constraints; ask us to close our serial monitor first) and pair it once through the check, to prove the real hello is not cut short: the serial console must print `on the relay:` and no `the relay says: bad band`.
 
 
 ## Stage C — §2 The relay decides
@@ -2015,7 +2015,7 @@ Then flash the band (Global Constraints; ask the owner to close his serial monit
 - Produces (band): a show made from a view carries `armed` (`null` for none) and `rev`; pairing, check, test, waiting and away shows carry neither.
 - Produces (relay): a hold from the wrist, and a hold applied at a claim, are `by: 'band'`.
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/room.test.js`:
+- [ ] **Step 1: Write the failing tests** at the end of `tests/room.test.js`:
 
 ```js
 // ---------- who changed it, and when (spec §2) ----------
@@ -2052,7 +2052,7 @@ test('a person made again never reuses a rev', () => {
 });
 ```
 
-In `tests/band.test.js`, the first test's expected show gains the two fields — `{ kind: 'hi', intent: 'hi', big: 'HI :)', small: 'blue means hello', dim: false, armed: 'hi', rev: 0 }` — and add:
+In `tests/band.test.js`, the first test's expected show gains the two fields (`{ kind: 'hi', intent: 'hi', big: 'HI :)', small: 'blue means hello', dim: false, armed: 'hi', rev: 0 }`), and add:
 
 ```js
 test('a show made from the view names what is armed and its rev; the others name neither', () => {
@@ -2143,7 +2143,7 @@ git commit -m "Give every person rev, seq and by, and name armed and rev on the 
 **Interfaces:**
 - Produces: `export const GRACE_MS = 120_000`; `createRelay({ …, graceMs = GRACE_MS, nightTz })` (`nightTz` an IANA name; the machine's own zone when absent; `NIGHT_TZ` in the environment for `node relay/server.js`); `nightOf(ms, tz)` → `'YYYY-MM-DD'` of `ms − 6 h` in `tz`; rooms gain `heard: Map(id → when a phone of theirs last spoke)`; `startGrace(r, me)`, `stopGrace(r, me)`, `leaveRoom(r, me)`.
 
-- [ ] **Step 1: Write the failing tests** — `tests/rules.test.js`:
+- [ ] **Step 1: Write the failing tests** in `tests/rules.test.js`:
 
 ```js
 // ON THE BEAT — the relay decides: who is in the room, and which re-said fact counts.
@@ -2448,7 +2448,7 @@ git commit -m "Hold a person in the room by a live wristband, for the hour or un
 - Consumes: `room.revOf`, `arm(…, 'band')`, `setInvisible(…, 'band')` (Task 10); the hour (Task 11) for "no room".
 - Produces: band → relay `{"t":"set","intent":"hi"|"song"|"dance"|null,"basis":<int>}`; relay → band `{"t":"set","ok":false,"why":"unpaired"|"no room"|"changed"|"too fast"}` for a refusal; a frame that is not exactly a set is dropped with no answer; `SET_GAP_MS = 1000`.
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/wristband.test.js`:
+- [ ] **Step 1: Write the failing tests** at the end of `tests/wristband.test.js`:
 
 ```js
 // ---------- rule 1: the wrist's set ----------
@@ -2534,7 +2534,7 @@ In `tests/server.test.js`, `malformed and hostile messages…`: add `{ t: 'set',
 - [ ] **Step 2: Run to see them fail**
 
 Run: `npm run build >/dev/null && node --test tests/wristband.test.js 2>&1 | grep -E "^✖|^ℹ (pass|fail)"`
-Expected: the set tests fail (no answer, nothing changes). `malformed sets are dropped whole…` passes already — nothing takes `set` yet — and its mutation check below holds it.
+Expected: the set tests fail (no answer, nothing changes). `malformed sets are dropped whole…` passes already, since nothing takes `set` yet, and its mutation check below holds it.
 
 - [ ] **Step 3: Implement in `relay/server.js`.** Add `INTENTS` to the `./room.js` import; `const SET_GAP_MS = 1000;              // a wristband may change its person at most once a second`; `makeBand` gains `setAt: 0,`. Before `handleBand`:
 
@@ -2584,11 +2584,11 @@ git commit -m "Let a paired wristband set its person's card, naming the rev it c
 - Modify: `relay/room.js` (`join`, `leave`, `fromPhone`), `relay/server.js` (`join`, the `arm`/`invisible` cases), `tests/rules.test.js`
 
 **Interfaces:**
-- Produces (room): `join(id, { band, quiet })` — a person made here starts invisible if they left invisible tonight or `quiet` is true; `quiet` is ignored for someone already here. `fromPhone(id, m)` → `'changed'` or `null`: notes `seq` (the max, whether or not applied); an `again` copy is applied only if it is news (`seq > p.seq`) and it hides; a showing change with an integer `basis` other than `rev` is refused; one with no basis is taken.
+- Produces (room): `join(id, { band, quiet })`: a person made here starts invisible if they left invisible tonight or `quiet` is true; `quiet` is ignored for someone already here. `fromPhone(id, m)` → `'changed'` or `null`: notes `seq` (the max, whether or not applied); an `again` copy is applied only if it is news (`seq > p.seq`) and it hides; a showing change with an integer `basis` other than `rev` is refused; one with no basis is taken.
 - Produces (relay): a phone's `arm`/`invisible` with a `seq` present but not finite is dropped; a refusal answers `{t:'refused', why:'changed', seq}`; a join may carry `quiet: true`.
 - Replaces: today's "a re-said fact never undoes NOT NOW" special case in the `arm`/`invisible` cases (its test in `tests/server.test.js` stays as it is).
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/rules.test.js`:
+- [ ] **Step 1: Write the failing tests** at the end of `tests/rules.test.js`:
 
 ```js
 // ---------- joining: quiet, and NOT NOW remembered ----------
@@ -2783,7 +2783,7 @@ In `tests/server.test.js`, `malformed and hostile messages…` gains `{ t: 'arm'
 - [ ] **Step 5: Run to see them pass**
 
 Run: `npm run build >/dev/null && node --test tests/rules.test.js tests/server.test.js tests/room.test.js 2>&1 | grep -E "^✖|^ℹ (pass|fail)"`
-Expected: `ℹ fail 0` — including `holding the wristband's button is NOT NOW, and a phone coming back does not undo it`, unchanged.
+Expected: `ℹ fail 0`. That includes `holding the wristband's button is NOT NOW, and a phone coming back does not undo it`, which is unchanged.
 
 - [ ] **Step 6: Mutation checks (P1)**, file `tests/rules.test.js`:
   - `ws.r.room.join(me, { band: m.band, quiet: m.quiet === true });` → `ws.r.room.join(me, { band: m.band });` ⇒ `a join with quiet makes a new person invisible…`
@@ -2812,7 +2812,7 @@ git commit -m "Apply a re-said fact only when it is news and hides; refuse a sho
 **Interfaces:**
 - Produces: relay → phone `{t:'left'}` answering a `leave`; a leave unpairs the person's wristband; a hold on a paired wristband whose person is not in a room is kept as `b.quiet` and applied (`by: 'band'`) when a phone of theirs joins.
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/rules.test.js`:
+- [ ] **Step 1: Write the failing tests** at the end of `tests/rules.test.js`:
 
 ```js
 // ---------- leaving ----------
@@ -2907,7 +2907,7 @@ git push origin main
 - Produces: `INTENT_OF` (moved here from `App.jsx`); `FOLLOW_SAY`; `follow(phone, view)` with `phone = { armed, invisible, seq, asked, refused, screen }` → `null` (rule 4: `view.me.seq < phone.seq`) or `{ armed, invisible, seq, said: { arm, invisible }, screen, clearStack, toast: { text, unpair } | null, events: ['hi']? }`; `nextSeq(last, now)`; `tapMessage(t, value, seq, rev)`.
 - `phone.seq` is the last seq this phone sent or followed; `phone.asked` the seq of its own last tap; `phone.refused` the seq of its last showing tap refused `changed`.
 
-- [ ] **Step 1: Write the failing tests** — `tests/follow.test.js`:
+- [ ] **Step 1: Write the failing tests** in `tests/follow.test.js`:
 
 ```js
 // ON THE BEAT — the phone following the relay: every row of the table.
@@ -3134,7 +3134,7 @@ git commit -m "Decide in one pure function how the phone follows the relay's vie
 **Interfaces:**
 - Produces: `export const SAID_ORDER = ['pair', 'invisible', 'profile', 'pick', 'arm', 'leave']`; the join carries `quiet: true` while the kept `invisible` is on; `live()` → whether a socket is open now. `say`, `keep`, `forget`, `send` keep their meaning.
 
-- [ ] **Step 1: Write the failing tests** — `tests/net.test.js`:
+- [ ] **Step 1: Write the failing tests** in `tests/net.test.js`:
 
 ```js
 // ON THE BEAT — the phone's line: what it re-says, in what order, and what a page load sends.
@@ -3302,7 +3302,7 @@ and the toast render:
 
 with, in `app/styles.css` after `.toast`: `.toast .act { display: block; margin-top: 8px; padding: 0; border: 0; background: none; color: var(--stop); font: 700 13px/1.2 var(--sans); letter-spacing: .06em; cursor: pointer; }`.
 
-- [ ] **Step 3: Taps carry seq and basis; offline only what hides goes.** Replace `arm`, `notNow` and `backOn`. The owner decided on 24 Sep 2026 that a card turned off offline is queued like NOT NOW: it hides, and hiding may arrive late.
+- [ ] **Step 3: Taps carry seq and basis; offline only what hides goes.** Replace `arm`, `notNow` and `backOn`. We decided on 24 Sep 2026 that a card turned off offline is queued like NOT NOW: it hides, and hiding may arrive late.
 
 ```jsx
   // A tap (§2 rules 4 and 5): a new seq, and the rev it was chosen from when it shows the person.
@@ -3446,7 +3446,7 @@ git push origin main
 
 ## Stage E — §1 and §4: one Wrist, twice
 
-The machine is written once in JavaScript against the table, then ported to C++ against the same table. Both were run against all 21 cases while this plan was written: `app/lib/wrist.js` under `node --test`, and the C++ below compiled with MSVC 19.44 (`/std:c++17 /W4`, no warnings) and driven through `logic_test wrist` — every case passed, all 201 host checks passed, and a deliberate break (dropping the NOT SENT re-hold) was caught by exactly its case. GCC's `-Wall -Wextra -Werror` has not seen it yet: if it flags something, fix the warning, not the flag.
+The machine is written once in JavaScript against the table, then ported to C++ against the same table. Both were run against all 21 cases while this plan was written: `app/lib/wrist.js` under `node --test`, and the C++ below compiled with MSVC 19.44 (`/std:c++17 /W4`, no warnings) and driven through `logic_test wrist`. Every case passed, all 201 host checks passed, and a deliberate break (dropping the NOT SENT re-hold) was caught by exactly its case. GCC's `-Wall -Wextra -Werror` has not seen it yet: if it flags something, fix the warning, not the flag.
 
 ### Task 18: `wrist.js` and the table of cases
 
@@ -3456,9 +3456,9 @@ The machine is written once in JavaScript against the table, then ported to C++ 
 **Interfaces:**
 - Consumes: `bandIdOf` (`app/lib/sha256.js`, Task 3); relay shows with `armed`/`rev` (Task 10), `check`/`waiting`/`away` (Tasks 5, 7); `{t:'set', ok:false, why}` (Task 12); `{t:'paired', secret}` (Task 5).
 - Produces: `WAKE_MS, HOLD_MS, BAR_MS, CHOOSE_MS, COMMIT_MS, CONFIRM_MS, RESULT_MS, PING_EVERY_MS, DEAF_MS, STALE_MS, QUIET_CONFIRM_MS, LIGHT_*`, `CARD_WORDS`, `CONSTS`; `createWrist({ key })` → `{ id, key, secret(), keyDown(k, now), keyUp(k, now), linkUp(now), linkDown(now), heard(now), frame(text, now), tick(now), setBattery(n), setWifi(on), take() → string[] (frame text or 'DROP'), face(now) → { big, small, field, ink, light, bar, code } }`.
-- Produces (tests): the line protocol — `key <hex>`, then `<t> tick|heard|up|down|key1 down|key1 up|key2 down|key2 up|frame <json>|battery <n>|wifi 0|1` — and `lines(case, consts)`, `runJs(protocol)`, `check(case, protocol, answers, consts)`, `TABLE`. Every line after the first answers one line `{"sent":[…],"face":{…}}` (`{}` for `heard`).
+- Produces (tests): the line protocol (`key <hex>`, then `<t> tick|heard|up|down|key1 down|key1 up|key2 down|key2 up|frame <json>|battery <n>|wifi 0|1`), and `lines(case, consts)`, `runJs(protocol)`, `check(case, protocol, answers, consts)`, `TABLE`. Every line after the first answers one line `{"sent":[…],"face":{…}}` (`{}` for `heard`).
 
-- [ ] **Step 1: Write the table** — `tests/fixtures/wrist-cases.json`. Times are written in the constants' names and start from `T0 = 1000`; `"press": 2` is a KEY2 press held 100 ms; `"$ID"`/`"$KEY"` are the key's id and the key; `sent` lists every frame but pings, exactly; `face` lists only the fields that matter; a `LIGHT_*` name is its value.
+- [ ] **Step 1: Write the table** in `tests/fixtures/wrist-cases.json`. Times are written in the constants' names and start from `T0 = 1000`; `"press": 2` is a KEY2 press held 100 ms; `"$ID"`/`"$KEY"` are the key's id and the key; `sent` lists every frame but pings, exactly; `face` lists only the fields that matter; a `LIGHT_*` name is its value.
 
 ```json
 {
@@ -3770,7 +3770,7 @@ The machine is written once in JavaScript against the table, then ported to C++ 
 }
 ```
 
-- [ ] **Step 2: Write the runner** — `tests/wrist-table.js`:
+- [ ] **Step 2: Write the runner** in `tests/wrist-table.js`:
 
 ```js
 // ON THE BEAT — the wrist's table of cases, and how to run it.
@@ -4421,7 +4421,7 @@ inline bool readFrame(const std::string& text, Frame& f) {
 - [ ] **Step 4: Run to see them pass**
 
 Run: `npm run build >/dev/null && node --test tests/firmware.test.js 2>&1 | grep -E "^✖|^ℹ (pass|fail)"`
-Expected: `ℹ fail 0` — the round trip now holds every show the relay sent against what the firmware read, `armed` and `rev` included.
+Expected: `ℹ fail 0`. The round trip now holds every show the relay sent against what the firmware read, `armed` and `rev` included.
 
 - [ ] **Step 5: Both firmware envs build, then commit**
 
@@ -4443,7 +4443,7 @@ git commit -m "Read what is armed, the rev, null and whole numbers, and a refuse
 - Produces (host): `logic_test wrist` (the table's line protocol on stdin); the `consts` speak verb.
 - Keeps: `Button` stays until `main.cpp` moves onto the `Wrist` (Task 21), so every commit still builds for both wristbands; its check is rewritten on the named constants.
 
-- [ ] **Step 1: Write the failing tests** — in `tests/firmware.test.js`, import `{ CONSTS } from '../app/lib/wrist.js'` and `{ TABLE, lines, check } from './wrist-table.js'`, and add:
+- [ ] **Step 1: Write the failing tests** in `tests/firmware.test.js`, import `{ CONSTS } from '../app/lib/wrist.js'` and `{ TABLE, lines, check } from './wrist-table.js'`, and add:
 
 ```js
 test('the firmware and the stand-in keep the same constants, by name', { skip }, () => {
@@ -4918,7 +4918,7 @@ and, first in `main()`: `if (argc > 1 && std::string(argv[1]) == "wrist") return
 - [ ] **Step 6: Run to see them pass**
 
 Run: `npm run build >/dev/null && node --test tests/firmware.test.js 2>&1 | grep -E "^✖|^ℹ (pass|fail)"`
-Expected: `ℹ fail 0` — the constants test and one `band_logic.h: …` test per case.
+Expected: `ℹ fail 0` for the constants test and for one `band_logic.h: …` test per case.
 
 - [ ] **Step 7: Check the table holds the port** (run once, restored, rebuilt): in `Wrist::tick`, delete `if (fromQuiet_) quiet_.held();` ⇒ exactly `band_logic.h: NOT SENT leaving NOT NOW holds NOT NOW again, in the next hello` goes red.
 
@@ -5291,7 +5291,7 @@ git commit -m "Run /band on wrist.js with a side button, and draw the Wrist's ow
 - Create: `tests/copy.test.js`
 - Modify: `app/App.jsx` (the house rules sheet), `app/screens/Met.jsx` (`Quiet`), `relay/server.js` (the wristband section's comment), `firmware/src/band_logic.h` (header, `LIGHT_AWAKE`), `README.md` (the wristband's phrases)
 
-- [ ] **Step 1: Write the failing test** — `tests/copy.test.js`:
+- [ ] **Step 1: Write the failing test** in `tests/copy.test.js`:
 
 ```js
 // ON THE BEAT — the words about the wristband keep up with it.
@@ -5390,7 +5390,7 @@ git push origin main
 **Files:**
 - Modify: `README.md`
 
-Each edit below names the passage it replaces. Keep the file's voice: short declarative sentences, no marketing, a reason for every choice. `tests/copy.test.js` must stay green — so the old wristband is described as "a single button", "a 3 s wake", "a 1 s hold", never in the phrases it greps for.
+Each edit below names the passage it replaces. Keep the file's voice: short declarative sentences, no marketing, a reason for every choice. `tests/copy.test.js` must stay green, so the old wristband is described as "a single button", "a 3 s wake", "a 1 s hold", never in the phrases it greps for.
 
 - [ ] **Step 1: Run it.** After the code block add:
 
@@ -5400,7 +5400,7 @@ names the venue's time zone (an IANA name); without it the relay uses its own
 machine's.
 ```
 
-- [ ] **Step 2: The wristband — the opening paragraph.** "an M5StickC on a strap" becomes "an M5StickC Plus or a StickS3 on a strap", and the paragraph ends: "It has two buttons, so from the wrist alone, with the phone in a pocket, a person can change which card is armed, come back from NOT NOW, and see whether that was taken."
+- [ ] **Step 2: The wristband, the opening paragraph.** "an M5StickC on a strap" becomes "an M5StickC Plus or a StickS3 on a strap", and the paragraph ends: "It has two buttons, so from the wrist alone, with the phone in a pocket, a person can change which card is armed, come back from NOT NOW, and see whether that was taken."
 
 - [ ] **Step 3: Pairing.** In the pairing bullet, the third way in ends "…with the letters already in — after onboarding, for someone new." (drop "and one tap pairs it" and "It never pairs on its own; see Abuse resistance for why."). Replace the paragraph from "The relay then tells the phone the wristband's id" to "…flashes the wristband white once, so the right wrist knows." with:
 
@@ -5533,7 +5533,7 @@ Follow `CLAUDE.md`'s "Verifying the phone in a browser" for seeding. Start the r
 - [ ] **Step 4: The toast's UNPAIR.** Choose from the wrist again and tap `NOT YOU? UNPAIR` on the toast: the stand-in shows new letters, Rae's chip says `pair`.
 - [ ] **Step 5: Reload after a wrist change.** Pair again; choose FIRST SONG? on the wrist; reload Rae's page: the card is FIRST SONG? at once, and the second phone never sees her card go off.
 - [ ] **Step 6: A reconnect.** Close the stand-in's socket from `javascript_tool` (not the page): its face keeps the card for ten seconds, then goes dark; it reconnects with its secret and shows the card again, still paired.
-- [ ] **Step 7: A relay restart with the phone closed.** Close Rae's tab; stop the relay by its port and start it again: the stand-in shows `OPEN YOUR PHONE` / `OR SWITCH ME OFF`. Hold its face button 1.5 s. Open Rae's tab: she lands on the quiet screen — the hold survived — and the stand-in is paired, dark.
+- [ ] **Step 7: A relay restart with the phone closed.** Close Rae's tab; stop the relay by its port and start it again: the stand-in shows `OPEN YOUR PHONE` / `OR SWITCH ME OFF`. Hold its face button 1.5 s. Open Rae's tab: she lands on the quiet screen (the hold survived), and the stand-in is paired, dark.
 - [ ] **Step 8: Offline and leaving.** Stop the relay; on Rae's phone tap a card → *Not connected — try again*; with a card armed, tap it off → off at once, and after the relay is back the second phone confirms it is off; tap NOT NOW → the quiet screen. Start the relay: the second phone never sees her. Tap *I've left the venue* → *Leaving…*, then the venue list; the stand-in shows new letters.
 - [ ] **Step 9: Stop everything.** Stop the relay by its port (`Get-NetTCPConnection -LocalPort 8790` → `Stop-Process`); reset the pane (`resize_window` preset `desktop`).
 
@@ -5542,9 +5542,9 @@ Follow `CLAUDE.md`'s "Verifying the phone in a browser" for seeding. Start the r
 **Files:**
 - Modify: `README.md` ("What is not done": what was tried on the band, as it went)
 
-The owner's hands are needed: only he can press the band and lock his phone. Ask him in Chinese, one step at a time, and read the band's serial console for evidence rather than taking a step as done.
+Our hands are needed: only we can press the band and lock our phone. Ask us in Chinese, one step at a time, and read the band's serial console for evidence rather than taking a step as done.
 
-- [ ] **Step 1: Ask him to close his serial monitor** (it holds COM8), then flash:
+- [ ] **Step 1: Ask us to close our serial monitor** (it holds COM8), then flash:
 
 ```powershell
 & C:\Users\LewisDong\.platformio\penv\Scripts\pio.exe run -d firmware -e m5sticks3 -t upload --upload-port COM8
@@ -5552,9 +5552,9 @@ The owner's hands are needed: only he can press the band and lock his phone. Ask
 
 Expected: `SUCCESS`. The Wi-Fi and relay it was given before are kept across the flash (Preferences); the old stored `id` is removed at first boot (Task 3).
 
-- [ ] **Step 2: A relay his phone can reach.** `npm start` and `npm run tunnel` (both Bash `run_in_background`). Wait for cloudflared's `Registered tunnel connection` and confirm the name over DoH before using it (`CLAUDE.md`: an address looked up too early is dead here for thirty minutes). Give the band the address at its console (`relay https://…`); `show` must say `on it`.
-- [ ] **Step 3: Every flow once**, his phone on the tunnel address: pair through the check (and one NO); SIDE to choose each card and OFF; face-button hold for NOT NOW; SIDE hold to come back; the phone's toasts and `NOT YOU? UNPAIR`; stop and start the relay with his phone closed (the band says `OPEN YOUR PHONE` / `OR SWITCH ME OFF`, and his phone pairs it again on opening). Watch the console for `the relay says:` lines; there should be none but the ones a step expects.
-- [ ] **Step 4: The pocket test.** A second browser, on the laptop, joins his venue as another person. He locks his phone and puts it in a pocket for more than two minutes; then chooses SAY HI on the band. The second browser must show him in WHO'S NEAR. Then he unlocks the phone: the card must still be SAY HI, and no toast may say his tap failed.
+- [ ] **Step 2: A relay our phone can reach.** `npm start` and `npm run tunnel` (both Bash `run_in_background`). Wait for cloudflared's `Registered tunnel connection` and confirm the name over DoH before using it (`CLAUDE.md`: an address looked up too early is dead here for thirty minutes). Give the band the address at its console (`relay https://…`); `show` must say `on it`.
+- [ ] **Step 3: Every flow once**, our phone on the tunnel address: pair through the check (and one NO); SIDE to choose each card and OFF; face-button hold for NOT NOW; SIDE hold to come back; the phone's toasts and `NOT YOU? UNPAIR`; stop and start the relay with our phone closed (the band says `OPEN YOUR PHONE` / `OR SWITCH ME OFF`, and our phone pairs it again on opening). Watch the console for `the relay says:` lines; there should be none but the ones a step expects.
+- [ ] **Step 4: The pocket test.** A second browser, on the laptop, joins our venue as another person. We lock our phone and put it in a pocket for more than two minutes, then choose SAY HI on the band. The second browser must show us in WHO'S NEAR. Then we unlock the phone: the card must still be SAY HI, and no toast may say our tap failed.
 - [ ] **Step 5: Write down what happened.** In README "What is not done", **The firmware has run on one wristband** gains a sentence stating what was tried on the band with the wrist controls, the date, and anything that did not work; anything that did not work also gets a failing test and a fix, each its own commit.
 - [ ] **Step 6: Commit, push, and stop what was started**
 
@@ -5565,5 +5565,5 @@ git commit -m "Record the wrist controls on a real band and phone"
 git push origin main
 ```
 
-Stop the relay and the tunnel by port/process, and tell him in Chinese what passed and what did not.
+Stop the relay and the tunnel by port/process, and tell us in Chinese what passed and what did not.
 
