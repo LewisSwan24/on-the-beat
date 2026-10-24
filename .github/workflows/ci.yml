@@ -100,7 +100,8 @@ jobs:
           push: false
           tags: on-the-beat:ci
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # A cache that fails to save (it happens: "error writing layer blob") is a slower next run, not a failed one.
+          cache-to: type=gha,mode=max,ignore-error=true
       - name: Start it as Fly starts it, /data owned by root
         run: |
           docker run -d --name relay -p 8080:8080 --tmpfs /data \
