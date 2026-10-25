@@ -20,9 +20,9 @@
   },
   "dependencies": {
     "jsqr": "file:vendor/jsqr-1.4.0.tgz",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "ws": "8.21.3"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",
